@@ -17,16 +17,26 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type SignerClient struct {
-	client *rpc.Client
-	status string
-	logger log.Logger
+	client     *rpc.Client
+	status     string
+	logger     log.Logger
+	clientName string
+}
+
+func getClientNameFromCertificate(cert tls.Certificate) string {
+	if cert.Leaf != nil && len(cert.Leaf.DNSNames) > 0 {
+		return cert.Leaf.DNSNames[0]
+	}
+	return "unknown"
 }
 
 func NewSignerClient(logger log.Logger, endpoint string, tlsConfig optls.CLIConfig) (*SignerClient, error) {
 	var httpClient *http.Client
+	var clientName string = "unknown"
 	if tlsConfig.TLSCaCert != "" {
 		logger.Info("tlsConfig specified, loading tls config")
 		caCert, err := os.ReadFile(tlsConfig.TLSCaCert)
@@ -35,6 +45,12 @@ func NewSignerClient(logger log.Logger, endpoint string, tlsConfig optls.CLIConf
 		}
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
+
+		cert, err := tls.LoadX509KeyPair(tlsConfig.TLSCert, tlsConfig.TLSKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tls.cert or tls.key: %w", err)
+		}
+		clientName = getClientNameFromCertificate(cert)
 
 		// certman watches for newer client certifictes and automatically reloads them
 		cm, err := certman.New(logger, tlsConfig.TLSCert, tlsConfig.TLSKey)
@@ -69,6 +85,7 @@ func NewSignerClient(logger log.Logger, endpoint string, tlsConfig optls.CLIConf
 	}
 
 	signer := &SignerClient{logger: logger, client: rpcClient}
+	signer.clientName = clientName
 	// Check if reachable
 	version, err := signer.pingVersion()
 	if err != nil {
@@ -95,15 +112,24 @@ func (s *SignerClient) pingVersion() (string, error) {
 func (s *SignerClient) SignTransaction(ctx context.Context, chainId *big.Int, from common.Address, tx *types.Transaction) (*types.Transaction, error) {
 	args := NewTransactionArgsFromTransaction(chainId, from, tx)
 
+	labels := prometheus.Labels{"client": s.clientName, "status": "error", "error": ""}
+	defer func() {
+		MetricSignTransactionTotal.With(labels).Inc()
+	}()
+
 	var result hexutil.Bytes
 	if err := s.client.CallContext(ctx, &result, "eth_signTransaction", args); err != nil {
+		labels["error"] = "call_error"
 		return nil, fmt.Errorf("eth_signTransaction failed: %w", err)
 	}
 
 	signed := &types.Transaction{}
 	if err := signed.UnmarshalBinary(result); err != nil {
+		labels["error"] = "unmarshal_error"
 		return nil, err
 	}
+
+	labels["status"] = "success"
 
 	return signed, nil
 }
