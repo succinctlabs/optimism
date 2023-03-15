@@ -81,14 +81,6 @@ func main() {
 				Usage:    "Comma separated list of hardhat deployment directories",
 				Required: true,
 			},
-			cli.BoolFlag{
-				Name:  "dry-run",
-				Usage: "Dry run the upgrade by not committing the database",
-			},
-			cli.BoolFlag{
-				Name:  "no-check",
-				Usage: "Do not perform sanity checks. This should only be used for testing",
-			},
 			cli.IntFlag{
 				Name:  "db-cache",
 				Usage: "LevelDB cache size in mb",
@@ -98,17 +90,6 @@ func main() {
 				Name:  "db-handles",
 				Usage: "LevelDB number of handles",
 				Value: 60,
-			},
-			cli.StringFlag{
-				Name:     "rollup-config-out",
-				Usage:    "Path that op-node config will be written to disk",
-				Value:    "rollup.json",
-				Required: true,
-			},
-			cli.BoolFlag{
-				Name:     "post-check-only",
-				Usage:    "Only perform sanity checks",
-				Required: false,
 			},
 		},
 		Action: func(ctx *cli.Context) error {
