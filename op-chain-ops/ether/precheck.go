@@ -3,7 +3,10 @@ package ether
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/crossdomain"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/util"
@@ -14,6 +17,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 )
+
+const (
+	checkJobs = 16
+)
+
+var maxSlot = common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 
 // PreCheckBalances checks that the given list of addresses and allowances represents all storage
 // slots in the LegacyERC20ETH contract. We don't have to filter out extra addresses like we do for
@@ -26,6 +35,10 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 		return nil, fmt.Errorf("no chain params for %d", chainID)
 	}
 
+	return doMigration(db, addresses, allowances, params.ExpectedSupplyDelta, noCheck)
+}
+
+func doMigration(db *state.StateDB, addresses []common.Address, allowances []*crossdomain.Allowance, expDiff *big.Int, noCheck bool) (FilteredOVMETHAddresses, error) {
 	// We'll need to maintain a list of all addresses that we've seen along with all of the storage
 	// slots based on the witness data.
 	addrs := make([]common.Address, 0)
@@ -57,25 +70,110 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 
 	// Build a mapping of every storage slot in the LegacyERC20ETH contract, except the list of
 	// slots that we know we can ignore (totalSupply, name, symbol).
-	var count int
 	slotsAct := make(map[common.Hash]common.Hash)
-	progress := util.ProgressLogger(1000, "Read OVM_ETH storage slot")
-	err := db.ForEachStorage(predeploys.LegacyERC20ETHAddr, func(key, value common.Hash) bool {
-		progress()
 
-		// We can safely ignore specific slots (totalSupply, name, symbol).
-		if ignoredSlots[key] {
-			return true
+	// WaitGroup to wait on each iteration job to finish.
+	var wg sync.WaitGroup
+	// Channel to receive storage slot keys and values from each iteration job.
+	kvCh := make(chan [2]common.Hash)
+
+	// Divide the key space into partitions by dividing the key space by the number
+	// of jobs. This will leave some slots left over, which we handle below.
+	partSize := new(big.Int).Div(maxSlot.Big(), big.NewInt(checkJobs))
+
+	// Define a worker function to iterate over each partition.
+	worker := func(start, end common.Hash) {
+		// Decrement the WaitGroup when the function returns.
+		defer wg.Done()
+
+		// Create a new storage trie. Each trie returned by db.StorageTrie
+		// is a copy, so this is safe for concurrent use.
+		st, err := db.StorageTrie(predeploys.LegacyERC20ETHAddr)
+		if err != nil {
+			// Should never happen, so explode if it does.
+			log.Crit("cannot get storage trie for LegacyERC20ETHAddr", "err", err)
 		}
 
-		// Slot exists, so add it to the map.
-		slotsAct[key] = value
-		count++
-		return true
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cannot iterate over LegacyERC20ETHAddr: %w", err)
+		it := trie.NewIterator(st.NodeIterator(start.Bytes()))
+
+		// Below code is largely based on db.ForEachStorage. We can't use that
+		// because it doesn't allow us to specify a start and end key.
+		for it.Next() {
+			// Use the raw (i.e., secure hashed) key to check if we've reached
+			// the end of the partition.
+			if new(big.Int).SetBytes(it.Key).Cmp(end.Big()) >= 0 {
+				break
+			}
+
+			// Skip if the value is empty.
+			rawValue := it.Value
+			if len(rawValue) == 0 {
+				continue
+			}
+
+			// Get the preimage.
+			key := common.BytesToHash(st.GetKey(it.Key))
+
+			// Parse the raw value.
+			_, content, _, err := rlp.Split(rawValue)
+			if err != nil {
+				// Should never happen, so explode if it does.
+				log.Crit("mal-formed data in state: %v", err)
+			}
+
+			// Convert the value to a common.Hash, then send to the channel.
+			value := common.BytesToHash(content)
+			kvCh <- [2]common.Hash{key, value}
+		}
 	}
+
+	for i := 0; i < checkJobs; i++ {
+		wg.Add(1)
+
+		// Compute the start and end keys for this partition.
+		start := common.BigToHash(new(big.Int).Mul(big.NewInt(int64(i)), partSize))
+		var end common.Hash
+		if i < checkJobs-1 {
+			// If this is not the last partition, use the next partition's start key as the end.
+			end = common.BigToHash(new(big.Int).Mul(big.NewInt(int64(i+1)), partSize))
+		} else {
+			// If this is the last partition, use the max slot as the end.
+			end = maxSlot
+		}
+
+		// Kick off our worker.
+		go worker(start, end)
+	}
+
+	// Make a channel to make sure that the collector process completes.
+	finCh := make(chan struct{})
+
+	// Kick off another background process to collect
+	// values from the channel and add them to the map.
+	var count int
+	progress := util.ProgressLogger(1000, "Collected OVM_ETH storage slot")
+	go func() {
+		for kv := range kvCh {
+			key := kv[0]
+			value := kv[1]
+
+			progress()
+
+			// We can safely ignore specific slots (totalSupply, name, symbol).
+			if ignoredSlots[key] {
+				continue
+			}
+
+			// Slot exists, so add it to the map.
+			slotsAct[key] = value
+			count++
+		}
+		finCh <- struct{}{}
+	}()
+
+	wg.Wait()
+	close(kvCh)
+	<-finCh
 
 	// Log how many slots were iterated over.
 	log.Info("Iterated legacy balances", "count", count)
@@ -101,19 +199,14 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 		// No accounts should have a balance in state. If they do, bail.
 		addr := slotsAddrs[slot]
 		bal := db.GetBalance(addr)
-		if bal.Sign() > 0 {
-			if noCheck {
-				log.Error(
-					"account has non-zero balance in state - should never happen",
-					"addr", addr,
-					"balance", bal.String(),
-				)
-			} else {
-				log.Crit(
-					"account has non-zero balance in state - should never happen",
-					"addr", addr,
-					"balance", bal.String(),
-				)
+		if bal.Sign() != 0 {
+			log.Error(
+				"account has non-zero balance in state - should never happen",
+				"addr", addr,
+				"balance", bal.String(),
+			)
+			if !noCheck {
+				return nil, fmt.Errorf("account has non-zero balance in state - should never happen: %s", addr.String())
 			}
 		}
 
@@ -147,23 +240,16 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 	// actually *overcollateralized* by some tiny amount.
 	totalSupply := getOVMETHTotalSupply(db)
 	delta := new(big.Int).Sub(totalSupply, totalFound)
-	if delta.Cmp(params.ExpectedSupplyDelta) != 0 {
-		if noCheck {
-			log.Error(
-				"supply mismatch",
-				"migrated", totalFound.String(),
-				"supply", totalSupply.String(),
-				"delta", delta.String(),
-				"exp_delta", params.ExpectedSupplyDelta.String(),
-			)
-		} else {
-			log.Crit(
-				"supply mismatch",
-				"migrated", totalFound.String(),
-				"supply", totalSupply.String(),
-				"delta", delta.String(),
-				"exp_delta", params.ExpectedSupplyDelta.String(),
-			)
+	if delta.Cmp(expDiff) != 0 {
+		log.Error(
+			"supply mismatch",
+			"migrated", totalFound.String(),
+			"supply", totalSupply.String(),
+			"delta", delta.String(),
+			"exp_delta", expDiff.String(),
+		)
+		if !noCheck {
+			return nil, fmt.Errorf("supply mismatch: %s", delta.String())
 		}
 	}
 
@@ -173,7 +259,7 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 		"migrated", totalFound.String(),
 		"supply", totalSupply.String(),
 		"delta", delta.String(),
-		"exp_delta", params.ExpectedSupplyDelta.String(),
+		"exp_delta", expDiff.String(),
 	)
 
 	// We know we have at least a superset of all addresses here since we know that we have every
