@@ -32,6 +32,8 @@ type BatchSubmitter struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	closeReqs chan closeRequest
+
 	mutex   sync.Mutex
 	running bool
 
@@ -39,6 +41,12 @@ type BatchSubmitter struct {
 	lastStoredBlock eth.BlockID
 
 	state *channelManager
+}
+
+type closeRequest struct {
+	ctx    context.Context
+	frame  derive.Frame
+	result chan error
 }
 
 // NewBatchSubmitterFromCLIConfig initializes the BatchSubmitter, gathering any resources
@@ -136,16 +144,23 @@ func (l *BatchSubmitter) CloseChannel(ctx context.Context, id derive.ChannelID, 
 		Data:        nil,
 		IsLast:      true,
 	}
+
+	res := make(chan error, 1)
+	l.closeReqs <- closeRequest{ctx: ctx, frame: f, result: res}
+	return <-res
+}
+
+func (l *BatchSubmitter) closeChannel(ctx context.Context, f derive.Frame) error {
 	var dest bytes.Buffer
-	dest.WriteByte(derive.DerivationVersion0)  // channel format version
+	dest.WriteByte(derive.DerivationVersion0) // channel format version
 	if err := f.MarshalBinary(&dest); err != nil {
 		return fmt.Errorf("failed to construct closing frame")
 	}
 	txInput := dest.Bytes()
-	log := l.log.New("data", hexutil.Bytes(txInput), "id", id, "frame_number", frameNumber)
+	log := l.log.New("data", hexutil.Bytes(txInput), "id", f.ID, "frame_number", f.FrameNumber)
 	log.Warn("RPC call is closing channel")
 	if receipt, err := l.txMgr.SendTransaction(ctx, txInput); err != nil {
-		return fmt.Errorf("failed to send tx to close channel %s (frame num %d): %w", id, frameNumber, err)
+		return fmt.Errorf("failed to send tx to close channel %s (frame num %d): %w", f.ID, f.FrameNumber, err)
 	} else {
 		l.log.Info("Successfully submitted closing tx for channel", "tx_hash", receipt.TxHash, "gas_used", receipt.GasUsed)
 		return nil
@@ -296,6 +311,14 @@ func (l *BatchSubmitter) loop() {
 	ticker := time.NewTicker(l.PollInterval)
 	defer ticker.Stop()
 	for {
+		// priority on handling close requests
+		select {
+		case cr := <-l.closeReqs:
+			cr.result <- l.closeChannel(cr.ctx, cr.frame)
+		default:
+			// continue normal operation
+		}
+
 		select {
 		case <-ticker.C:
 			l.loadBlocksIntoState(l.ctx)
