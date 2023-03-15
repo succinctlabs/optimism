@@ -19,7 +19,7 @@ import (
 // slots in the LegacyERC20ETH contract. We don't have to filter out extra addresses like we do for
 // withdrawals because we'll simply carry the balance of a given address to the new system, if the
 // account is extra then it won't have any balance and nothing will happen.
-func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.Address, allowances []*crossdomain.Allowance, chainID int, noCheck bool) ([]common.Address, error) {
+func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.Address, allowances []*crossdomain.Allowance, chainID int, noCheck bool) (FilteredOVMETHAddresses, error) {
 	// Chain params to use for integrity checking.
 	params := crossdomain.ParamsByChainID[chainID]
 	if params == nil {
@@ -29,27 +29,31 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 	// We'll need to maintain a list of all addresses that we've seen along with all of the storage
 	// slots based on the witness data.
 	addrs := make([]common.Address, 0)
+	slotsAddrs := make(map[common.Hash]common.Address)
 	slotsInp := make(map[common.Hash]int)
 
 	// For each known address, compute its balance key and add it to the list of addresses.
 	// Mint events are instrumented as regular ETH events in the witness data, so we no longer
 	// need to iterate over mint events during the migration.
 	for _, addr := range addresses {
-		addrs = append(addrs, addr)
-		slotsInp[CalcOVMETHStorageKey(addr)] = 1
+		sk := CalcOVMETHStorageKey(addr)
+		slotsAddrs[sk] = addr
+		slotsInp[sk] = 1
 	}
 
 	// For each known allowance, compute its storage key and add it to the list of addresses.
 	for _, allowance := range allowances {
-		addrs = append(addrs, allowance.From)
-		slotsInp[CalcAllowanceStorageKey(allowance.From, allowance.To)] = 2
+		sk := CalcAllowanceStorageKey(allowance.From, allowance.To)
+		slotsAddrs[sk] = allowance.From
+		slotsInp[sk] = 2
 	}
 
 	// Add the old SequencerEntrypoint because someone sent it ETH a long time ago and it has a
 	// balance but none of our instrumentation could easily find it. Special case.
 	sequencerEntrypointAddr := common.HexToAddress("0x4200000000000000000000000000000000000005")
-	addrs = append(addrs, sequencerEntrypointAddr)
-	slotsInp[CalcOVMETHStorageKey(sequencerEntrypointAddr)] = 1
+	entrySK := CalcOVMETHStorageKey(sequencerEntrypointAddr)
+	slotsAddrs[entrySK] = sequencerEntrypointAddr
+	slotsInp[entrySK] = 1
 
 	// Build a mapping of every storage slot in the LegacyERC20ETH contract, except the list of
 	// slots that we know we can ignore (totalSupply, name, symbol).
@@ -81,6 +85,7 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 	// expected supply delta.
 	totalFound := new(big.Int)
 	var unknown bool
+	progress = util.ProgressLogger(1000, "Checked OVM_ETH storage slot")
 	for slot := range slotsAct {
 		slotType, ok := slotsInp[slot]
 		if !ok {
@@ -93,11 +98,31 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 			}
 		}
 
+		// No accounts should have a balance in state. If they do, bail.
+		addr := slotsAddrs[slot]
+		bal := db.GetBalance(addr)
+		if bal.Sign() > 0 {
+			if noCheck {
+				log.Error(
+					"account has non-zero balance in state - should never happen",
+					"addr", addr,
+					"balance", bal.String(),
+				)
+			} else {
+				log.Crit(
+					"account has non-zero balance in state - should never happen",
+					"addr", addr,
+					"balance", bal.String(),
+				)
+			}
+		}
+
 		// Add balances to the total found.
 		switch slotType {
 		case 1:
 			// Balance slot.
 			totalFound.Add(totalFound, slotsAct[slot].Big())
+			addrs = append(addrs, addr)
 		case 2:
 			// Allowance slot.
 			continue
@@ -109,6 +134,8 @@ func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.
 				log.Crit("unknown slot type: %d", slotType)
 			}
 		}
+
+		progress()
 	}
 	if unknown {
 		return nil, errors.New("unknown storage slots in state (see logs for details)")
