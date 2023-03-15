@@ -49,7 +49,7 @@ func MigrateLegacyETH(db *state.StateDB, addresses FilteredOVMETHAddresses, chai
 		// Balances are pre-checked not have any balances in state.
 
 		// Pull out the OVM ETH balance.
-		ovmBalance := getOVMETHBalance(db, addr)
+		ovmBalance := GetOVMETHBalance(db, addr)
 
 		// Actually perform the migration by setting the appropriate values in state.
 		db.SetBalance(addr, ovmBalance)

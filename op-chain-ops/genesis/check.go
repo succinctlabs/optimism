@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-chain-ops/ether"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -251,7 +252,7 @@ func PostCheckPredeploys(prevDB, currDB *state.StateDB) error {
 
 		// Balances and nonces should match legacy
 		oldNonce := prevDB.GetNonce(addr)
-		oldBalance := prevDB.GetBalance(addr)
+		oldBalance := ether.GetOVMETHBalance(prevDB, addr)
 		newNonce := currDB.GetNonce(addr)
 		newBalance := currDB.GetBalance(addr)
 		if oldNonce != newNonce {
