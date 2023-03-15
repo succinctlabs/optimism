@@ -1,7 +1,6 @@
 package ether
 
 import (
-	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -19,10 +18,15 @@ import (
 )
 
 const (
-	checkJobs = 32
+	checkJobs = 64
 )
 
 var maxSlot = common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+
+type accountData struct {
+	balance *big.Int
+	address common.Address
+}
 
 // PreCheckBalances checks that the given list of addresses and allowances represents all storage
 // slots in the LegacyERC20ETH contract. We don't have to filter out extra addresses like we do for
@@ -68,14 +72,17 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 	slotsAddrs[entrySK] = sequencerEntrypointAddr
 	slotsInp[entrySK] = 1
 
-	// Build a mapping of every storage slot in the LegacyERC20ETH contract, except the list of
-	// slots that we know we can ignore (totalSupply, name, symbol).
-	slotsAct := make(map[common.Hash]common.Hash)
-
 	// WaitGroup to wait on each iteration job to finish.
 	var wg sync.WaitGroup
 	// Channel to receive storage slot keys and values from each iteration job.
-	kvCh := make(chan [2]common.Hash)
+	outCh := make(chan accountData)
+	// Channel to receive errors from each iteration job.
+	errCh := make(chan error, checkJobs)
+	// Channel to cancel all iteration jobs.
+	cancelCh := make(chan struct{})
+
+	// Keep track of the total migrated supply.
+	totalFound := new(big.Int)
 
 	// Divide the key space into partitions by dividing the key space by the number
 	// of jobs. This will leave some slots left over, which we handle below.
@@ -99,10 +106,18 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 		// Below code is largely based on db.ForEachStorage. We can't use that
 		// because it doesn't allow us to specify a start and end key.
 		for it.Next() {
+			select {
+			case <-cancelCh:
+				// If we've already received an error, stop processing.
+				return
+			default:
+				break
+			}
+
 			// Use the raw (i.e., secure hashed) key to check if we've reached
 			// the end of the partition.
 			if new(big.Int).SetBytes(it.Key).Cmp(end.Big()) >= 0 {
-				break
+				return
 			}
 
 			// Skip if the value is empty.
@@ -121,9 +136,56 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 				log.Crit("mal-formed data in state: %v", err)
 			}
 
-			// Convert the value to a common.Hash, then send to the channel.
-			value := common.BytesToHash(content)
-			kvCh <- [2]common.Hash{key, value}
+			// We can safely ignore specific slots (totalSupply, name, symbol).
+			if ignoredSlots[key] {
+				continue
+			}
+
+			// No accounts should have a balance in state. If they do, bail.
+			addr := slotsAddrs[key]
+			bal := db.GetBalance(addr)
+			if bal.Sign() != 0 {
+				log.Error(
+					"account has non-zero balance in state - should never happen",
+					"addr", addr,
+					"balance", bal.String(),
+				)
+				if !noCheck {
+					errCh <- fmt.Errorf("account has non-zero balance in state - should never happen: %s", addr.String())
+					return
+				}
+			}
+
+			slotType, ok := slotsInp[key]
+			if !ok {
+				if noCheck {
+					log.Error("ignoring unknown storage slot in state", "slot", key.String())
+				} else {
+					errCh <- fmt.Errorf("unknown storage slot in state: %s", key.String())
+					return
+				}
+			}
+
+			// Add balances to the total found.
+			switch slotType {
+			case 1:
+				// Convert the value to a common.Hash, then send to the channel.
+				value := common.BytesToHash(content)
+				outCh <- accountData{
+					balance: value.Big(),
+					address: addr,
+				}
+			case 2:
+				// Allowance slot.
+				continue
+			default:
+				// Should never happen.
+				if noCheck {
+					log.Error("unknown slot type", "slot", key, "type", slotType)
+				} else {
+					log.Crit("unknown slot type %d, should never happen", slotType)
+				}
+			}
 		}
 	}
 
@@ -148,91 +210,50 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 	// Make a channel to make sure that the collector process completes.
 	finCh := make(chan struct{})
 
+	// Keep track of the last error seen.
+	var lastErr error
+
+	// Only cancel things once.
+	var cancelOnce sync.Once
+
 	// Kick off another background process to collect
 	// values from the channel and add them to the map.
 	var count int
 	progress := util.ProgressLogger(1000, "Collected OVM_ETH storage slot")
 	go func() {
-		for kv := range kvCh {
-			key := kv[0]
-			value := kv[1]
-
-			progress()
-
-			// We can safely ignore specific slots (totalSupply, name, symbol).
-			if ignoredSlots[key] {
-				continue
+		defer func() {
+			finCh <- struct{}{}
+		}()
+		for {
+			select {
+			case account := <-outCh:
+				progress()
+				// Accumulate addresses and total supply.
+				addrs = append(addrs, account.address)
+				totalFound = new(big.Int).Add(totalFound, account.balance)
+			case err := <-errCh:
+				lastErr = err
+				cancelOnce.Do(func() {
+					close(cancelCh)
+				})
+			case <-cancelCh:
+				return
 			}
-
-			// Slot exists, so add it to the map.
-			slotsAct[key] = value
-			count++
 		}
-		finCh <- struct{}{}
 	}()
 
 	wg.Wait()
-	close(kvCh)
+	cancelOnce.Do(func() {
+		close(cancelCh)
+	})
 	<-finCh
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
 
 	// Log how many slots were iterated over.
 	log.Info("Iterated legacy balances", "count", count)
-
-	// Iterate over the list of known slots and check that we have a slot for each one. We'll also
-	// keep track of the total balance to be migrated and throw if the total supply exceeds the
-	// expected supply delta.
-	totalFound := new(big.Int)
-	var unknown bool
-	progress = util.ProgressLogger(1000, "Checked OVM_ETH storage slot")
-	for slot := range slotsAct {
-		slotType, ok := slotsInp[slot]
-		if !ok {
-			if noCheck {
-				log.Error("ignoring unknown storage slot in state", "slot", slot.String())
-			} else {
-				unknown = true
-				log.Error("unknown storage slot in state", "slot", slot.String())
-				continue
-			}
-		}
-
-		// No accounts should have a balance in state. If they do, bail.
-		addr := slotsAddrs[slot]
-		bal := db.GetBalance(addr)
-		if bal.Sign() != 0 {
-			log.Error(
-				"account has non-zero balance in state - should never happen",
-				"addr", addr,
-				"balance", bal.String(),
-			)
-			if !noCheck {
-				return nil, fmt.Errorf("account has non-zero balance in state - should never happen: %s", addr.String())
-			}
-		}
-
-		// Add balances to the total found.
-		switch slotType {
-		case 1:
-			// Balance slot.
-			totalFound.Add(totalFound, slotsAct[slot].Big())
-			addrs = append(addrs, addr)
-		case 2:
-			// Allowance slot.
-			continue
-		default:
-			// Should never happen.
-			if noCheck {
-				log.Error("unknown slot type", "slot", slot, "type", slotType)
-			} else {
-				log.Crit("unknown slot type: %d", slotType)
-			}
-		}
-
-		progress()
-	}
-	if unknown {
-		return nil, errors.New("unknown storage slots in state (see logs for details)")
-	}
 
 	// Verify the supply delta. Recorded total supply in the LegacyERC20ETH contract may be higher
 	// than the actual migrated amount because self-destructs will remove ETH supply in a way that
