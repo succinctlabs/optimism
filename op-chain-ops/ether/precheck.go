@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	checkJobs = 16
+	checkJobs = 32
 )
 
 var maxSlot = common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")

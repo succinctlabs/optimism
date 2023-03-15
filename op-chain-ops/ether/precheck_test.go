@@ -246,7 +246,7 @@ func TestPreCheckBalancesRandom(t *testing.T) {
 
 	totalSupply := big.NewInt(0)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		for i := 0; i < rand.Intn(1000); i++ {
 			addr := randAddr(t)
 			addresses = append(addresses, addr)
