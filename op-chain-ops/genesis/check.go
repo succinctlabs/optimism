@@ -553,7 +553,7 @@ func CheckWithdrawalsAfter(db vm.StateDB, data crossdomain.MigrationData, l1Cros
 		} else {
 			// Otherwise, ensure that withdrawals from senders other than the L2XDM are _not_ migrated.
 			if migratedValue != abiFalse {
-				innerErr = fmt.Errorf("a migration from a sender other than the L2XDM was migrated")
+				innerErr = fmt.Errorf("a migration from a sender other than the L2XDM was migrated. sender: %s, migrated value: %s", wd.XDomainSender, migratedValue)
 				return false
 			}
 		}
