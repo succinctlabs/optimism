@@ -1,6 +1,7 @@
 package batcher
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	opcrypto "github.com/ethereum-optimism/optimism/op-service/crypto"
 	"github.com/ethereum-optimism/optimism/op-service/txmgr"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -121,6 +124,32 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger) (*BatchSub
 		state: NewChannelManager(l, cfg.Channel),
 	}, nil
 
+}
+
+func (l *BatchSubmitter) CloseChannel(ctx context.Context, id derive.ChannelID, frameNumber uint16) error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	f := derive.Frame{
+		ID:          id,
+		FrameNumber: frameNumber,
+		Data:        nil,
+		IsLast:      true,
+	}
+	var dest bytes.Buffer
+	dest.WriteByte(derive.DerivationVersion0)  // channel format version
+	if err := f.MarshalBinary(&dest); err != nil {
+		return fmt.Errorf("failed to construct closing frame")
+	}
+	txInput := dest.Bytes()
+	log := l.log.New("data", hexutil.Bytes(txInput), "id", id, "frame_number", frameNumber)
+	log.Warn("RPC call is closing channel")
+	if receipt, err := l.txMgr.SendTransaction(ctx, txInput); err != nil {
+		return fmt.Errorf("failed to send tx to close channel %s (frame num %d): %w", id, frameNumber, err)
+	} else {
+		l.log.Info("Successfully submitted closing tx for channel", "tx_hash", receipt.TxHash, "gas_used", receipt.GasUsed)
+		return nil
+	}
 }
 
 func (l *BatchSubmitter) Start() error {
