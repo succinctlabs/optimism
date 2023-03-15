@@ -190,7 +190,10 @@ func TestPreCheckBalances(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			db := makeLegacyETH(t, tt.totalSupply, tt.stateBalances, tt.stateAllowances)
-			addrs, err := doMigration(db, tt.inputAddresses, tt.inputAllowances, tt.expDiff, false)
+			factory := func() (*state.StateDB, error) {
+				return db, nil
+			}
+			addrs, err := doMigration(factory, tt.inputAddresses, tt.inputAllowances, tt.expDiff, false)
 
 			// Sort the addresses since they come in in a random order.
 			sort.Slice(addrs, func(i, j int) bool {
@@ -269,7 +272,11 @@ func TestPreCheckBalancesRandom(t *testing.T) {
 		}
 
 		db := makeLegacyETH(t, totalSupply, stateBalances, stateAllowances)
-		outAddrs, err := doMigration(db, addresses, allowances, big.NewInt(0), false)
+		factory := func() (*state.StateDB, error) {
+			return db, nil
+		}
+
+		outAddrs, err := doMigration(factory, addresses, allowances, big.NewInt(0), false)
 		require.NoError(t, err)
 
 		sort.Slice(outAddrs, func(i, j int) bool {

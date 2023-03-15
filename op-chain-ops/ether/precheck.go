@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-bindings/predeploys"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -28,21 +27,23 @@ type accountData struct {
 	address common.Address
 }
 
+type DBFactory func() (*state.StateDB, error)
+
 // PreCheckBalances checks that the given list of addresses and allowances represents all storage
 // slots in the LegacyERC20ETH contract. We don't have to filter out extra addresses like we do for
 // withdrawals because we'll simply carry the balance of a given address to the new system, if the
 // account is extra then it won't have any balance and nothing will happen.
-func PreCheckBalances(ldb ethdb.Database, db *state.StateDB, addresses []common.Address, allowances []*crossdomain.Allowance, chainID int, noCheck bool) (FilteredOVMETHAddresses, error) {
+func PreCheckBalances(dbFactory DBFactory, addresses []common.Address, allowances []*crossdomain.Allowance, chainID int, noCheck bool) (FilteredOVMETHAddresses, error) {
 	// Chain params to use for integrity checking.
 	params := crossdomain.ParamsByChainID[chainID]
 	if params == nil {
 		return nil, fmt.Errorf("no chain params for %d", chainID)
 	}
 
-	return doMigration(db, addresses, allowances, params.ExpectedSupplyDelta, noCheck)
+	return doMigration(dbFactory, addresses, allowances, params.ExpectedSupplyDelta, noCheck)
 }
 
-func doMigration(db *state.StateDB, addresses []common.Address, allowances []*crossdomain.Allowance, expDiff *big.Int, noCheck bool) (FilteredOVMETHAddresses, error) {
+func doMigration(dbFactory DBFactory, addresses []common.Address, allowances []*crossdomain.Allowance, expDiff *big.Int, noCheck bool) (FilteredOVMETHAddresses, error) {
 	// We'll need to maintain a list of all addresses that we've seen along with all of the storage
 	// slots based on the witness data.
 	addrs := make([]common.Address, 0)
@@ -92,6 +93,11 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 	worker := func(start, end common.Hash) {
 		// Decrement the WaitGroup when the function returns.
 		defer wg.Done()
+
+		db, err := dbFactory()
+		if err != nil {
+			log.Crit("cannot get database", "err", err)
+		}
 
 		// Create a new storage trie. Each trie returned by db.StorageTrie
 		// is a copy, so this is safe for concurrent use.
@@ -259,6 +265,11 @@ func doMigration(db *state.StateDB, addresses []common.Address, allowances []*cr
 	// than the actual migrated amount because self-destructs will remove ETH supply in a way that
 	// cannot be reflected in the contract. This is fine because self-destructs just mean the L2 is
 	// actually *overcollateralized* by some tiny amount.
+	db, err := dbFactory()
+	if err != nil {
+		log.Crit("cannot get database", "err", err)
+	}
+
 	totalSupply := getOVMETHTotalSupply(db)
 	delta := new(big.Int).Sub(totalSupply, totalFound)
 	if delta.Cmp(expDiff) != 0 {
