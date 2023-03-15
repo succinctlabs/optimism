@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -33,8 +32,8 @@ func main() {
 	log.Root().SetHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(isatty.IsTerminal(os.Stderr.Fd()))))
 
 	app := &cli.App{
-		Name:  "migrate",
-		Usage: "Migrate a legacy database",
+		Name:  "check-migration",
+		Usage: "Run sanity checks on a migrated database",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     "l1-rpc-url",
@@ -107,8 +106,8 @@ func main() {
 				Required: true,
 			},
 			cli.BoolFlag{
-				Name: "post-check-only",
-				Usage: "Only perform sanity checks",
+				Name:     "post-check-only",
+				Usage:    "Only perform sanity checks",
 				Required: false,
 			},
 		},
@@ -181,10 +180,6 @@ func main() {
 
 			dbCache := ctx.Int("db-cache")
 			dbHandles := ctx.Int("db-handles")
-			ldb, err := db.Open(ctx.String("db-path"), dbCache, dbHandles)
-			if err != nil {
-				return err
-			}
 
 			// Read the required deployment addresses from disk if required
 			if err := config.GetDeployedAddresses(hh); err != nil {
@@ -192,19 +187,6 @@ func main() {
 			}
 
 			if err := config.Check(); err != nil {
-				return err
-			}
-
-			dryRun := ctx.Bool("dry-run")
-			noCheck := ctx.Bool("no-check")
-			// Perform the migration
-			res, err := genesis.MigrateDB(ldb, config, block, &migrationData, !dryRun, noCheck)
-			if err != nil {
-				return err
-			}
-
-			// Close the database handle
-			if err := ldb.Close(); err != nil {
 				return err
 			}
 
@@ -237,15 +219,6 @@ func main() {
 				return err
 			}
 
-			opNodeConfig, err := config.RollupConfig(block, res.TransitionBlockHash, res.TransitionHeight)
-			if err != nil {
-				return err
-			}
-
-			if err := writeJSON(ctx.String("rollup-config-out"), opNodeConfig); err != nil {
-				return err
-			}
-
 			return nil
 		},
 	}
@@ -253,16 +226,4 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Crit("error in migration", "err", err)
 	}
-}
-
-func writeJSON(outfile string, input interface{}) error {
-	f, err := os.OpenFile(outfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	return enc.Encode(input)
 }
