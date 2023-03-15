@@ -544,7 +544,7 @@ func CheckWithdrawalsAfter(db vm.StateDB, data crossdomain.MigrationData, l1Cros
 
 		// If the sender is _not_ the L2XDM, the value should not be migrated.
 		wd := wdsByOldSlot[key]
-		if wd.XDomainSender == predeploys.L2CrossDomainMessengerAddr {
+		if wd.MessageSender == predeploys.L2CrossDomainMessengerAddr {
 			// Make sure the value is abiTrue if this withdrawal should be migrated.
 			if migratedValue != abiTrue {
 				innerErr = fmt.Errorf("expected migrated value to be true, but got %s", migratedValue)
