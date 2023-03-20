@@ -412,6 +412,11 @@ func PostCheckLegacyETH(prevDB, migratedDB *state.StateDB, migrationData crossdo
 			return true
 		}
 
+		// Ignore fixed slots.
+		if _, ok := LegacyETHCheckSlots[key]; ok {
+			return true
+		}
+
 		// Ignore allowances.
 		if allowanceSlots[key] {
 			return true
