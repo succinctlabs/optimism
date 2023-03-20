@@ -73,11 +73,7 @@ func Main(version string, cliCtx *cli.Context) error {
 				l.Error("error starting metrics server", err)
 			}
 		}()
-		l1Client, err := dialEthClientWithTimeout(ctx, cfg.L1EthRpc)
-		if err != nil {
-			l.Error("Failed to dial L1 provider")
-		}
-		opmetrics.LaunchBalanceMetrics(ctx, l, registry, "", l1Client, batchSubmitter.From)
+		opmetrics.LaunchBalanceMetrics(ctx, l, registry, "", batchSubmitter.L1Client, batchSubmitter.From)
 	}
 
 	rpcCfg := cfg.RPCConfig

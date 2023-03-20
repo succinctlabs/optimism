@@ -79,6 +79,20 @@ func constructDefaultBatchSubmitter(l log.Logger, mockTxMgr ExternalTxManager, l
 	return &b
 }
 
+/*
+Tests:
+ L2 Reorg handling:
+	 - Read a bunch of blocks from L2
+	 - L2 reorgs before they are submitted to L1?
+	 - Check that new L2 chain gets submitted to L1 (and not any part of old chain)
+ L1 Reorg handling:
+     - Read a bunch of blocks from L2
+   	 - Submit to L1
+	 - L1 reorgs  (two variants here - one where tx are included in alt chain and one where they're not?)
+	 - L2 should reorg to the new L1
+	 - Batcher should submit new data from L2 (previously submitted data, if re-included will be considered invalid now due to batch origin != source origin)
+*/
+
 // TestDriverLoadBlocksIntoState ensures that the [BatchSubmitter] can load blocks into the state.
 func TestDriverLoadBlocksIntoState(t *testing.T) {
 	// Setup the batch submitter

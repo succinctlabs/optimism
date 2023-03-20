@@ -119,12 +119,18 @@ func NewBatchSubmitter(ctx context.Context, cfg Config, l log.Logger) (*BatchSub
 	cfg.log.Info("creating batch submitter", "submitter_addr", cfg.From, "submitter_bal", balance)
 
 	externalTxManager := NewExternalTxManager(l, cfg.TxManagerConfig, cfg.L1Client)
+
+	// TODO: this context only exists because the event loop doesn't reach done
+	// if the tx manager is blocking forever due to e.g. insufficient balance.
+	ctx2, cancel := context.WithCancel(context.Background())
 	return &BatchSubmitter{
 		Config: cfg,
 		txMgr: NewTransactionManager(l,
 			cfg.TxManagerConfig, cfg.Rollup.BatchInboxAddress, cfg.Rollup.L1ChainID,
 			cfg.From, cfg.L1Client, externalTxManager),
-		state: NewChannelManager(l, cfg.Channel),
+		state:  NewChannelManager(l, cfg.Channel),
+		ctx:    ctx2,
+		cancel: cancel,
 	}, nil
 }
 
@@ -140,9 +146,6 @@ func (l *BatchSubmitter) Start() error {
 	l.running = true
 
 	l.done = make(chan struct{})
-	// TODO: this context only exists because the event loop doesn't reach done
-	// if the tx manager is blocking forever due to e.g. insufficient balance.
-	l.ctx, l.cancel = context.WithCancel(context.Background())
 	l.state.Clear()
 	l.lastStoredBlock = eth.BlockID{}
 
@@ -274,44 +277,48 @@ func (l *BatchSubmitter) loop() {
 	for {
 		select {
 		case <-ticker.C:
-			l.loadBlocksIntoState(l.ctx)
-
-		blockLoop:
-			for {
-				l1tip, err := l.l1Tip(l.ctx)
-				if err != nil {
-					l.log.Error("Failed to query L1 tip", "error", err)
-					break
-				}
-
-				// Collect next transaction data
-				txdata, err := l.state.TxData(l1tip.ID())
-				if err == io.EOF {
-					l.log.Trace("no transaction data available")
-					break // local for loop
-				} else if err != nil {
-					l.log.Error("unable to get tx data", "err", err)
-					break
-				}
-				// Record TX Status
-				if receipt, err := l.txMgr.SendTransaction(l.ctx, txdata.Bytes()); err != nil {
-					l.recordFailedTx(txdata.ID(), err)
-				} else {
-					l.recordConfirmedTx(txdata.ID(), receipt)
-				}
-
-				// hack to exit this loop. Proper fix is to do request another send tx or parallel tx sending
-				// from the channel manager rather than sending the channel in a loop. This stalls b/c if the
-				// context is cancelled while sending, it will never fully clear the pending txns.
-				select {
-				case <-l.ctx.Done():
-					break blockLoop
-				default:
-				}
-			}
+			l.Step()
 
 		case <-l.done:
 			return
+		}
+	}
+}
+
+func (l *BatchSubmitter) Step() {
+	l.loadBlocksIntoState(l.ctx)
+
+blockLoop:
+	for {
+		l1tip, err := l.l1Tip(l.ctx)
+		if err != nil {
+			l.log.Error("Failed to query L1 tip", "error", err)
+			break
+		}
+
+		// Collect next transaction data
+		txdata, err := l.state.TxData(l1tip.ID())
+		if err == io.EOF {
+			l.log.Trace("no transaction data available")
+			break // local for loop
+		} else if err != nil {
+			l.log.Error("unable to get tx data", "err", err)
+			break
+		}
+		// Record TX Status
+		if receipt, err := l.txMgr.SendTransaction(l.ctx, txdata.Bytes()); err != nil {
+			l.recordFailedTx(txdata.ID(), err)
+		} else {
+			l.recordConfirmedTx(txdata.ID(), receipt)
+		}
+
+		// hack to exit this loop. Proper fix is to do request another send tx or parallel tx sending
+		// from the channel manager rather than sending the channel in a loop. This stalls b/c if the
+		// context is cancelled while sending, it will never fully clear the pending txns.
+		select {
+		case <-l.ctx.Done():
+			break blockLoop
+		default:
 		}
 	}
 }
