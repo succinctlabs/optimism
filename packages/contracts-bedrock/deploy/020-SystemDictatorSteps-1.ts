@@ -69,12 +69,27 @@ const deployFn: DeployFunction = async (hre) => {
 
   // If we have the key for the controller then we don't need to wait for external txns.
   const isLiveDeployer =
-    deployer.toLowerCase() === hre.deployConfig.controller.toLowerCase()
+  deployer.toLowerCase() === hre.deployConfig.controller.toLowerCase()
+  console.log('isLiveDeployer:', isLiveDeployer)
 
   // Transfer ownership of the ProxyAdmin to the SystemDictator.
   if ((await ProxyAdmin.owner()) !== SystemDictator.address) {
-    console.log(`Setting ProxyAdmin owner to MSD`)
-    await ProxyAdmin.transferOwnership(SystemDictator.address)
+    if(isLiveDeployer) {
+      console.log(`Setting ProxyAdmin owner to MSD`)
+      await ProxyAdmin.transferOwnership(SystemDictator.address)
+    } else {
+      const tx = await ProxyAdmin.populateTransaction.transferOwnership(
+        SystemDictator.address
+      )
+      console.log(`Please transfer ProxyAdmin owner to MSD`)
+      console.log(`ProxyAdmin address: ${ProxyAdmin.address}`)
+      console.log(`Current owner: ${await ProxyAdmin.owner()}`);
+      console.log(`MSD address: ${SystemDictator.address}`)
+      console.log(`JSON:`)
+      console.log(jsonifyTransaction(tx))
+      console.log(getCastCommand(tx))
+      console.log(await getTenderlySimulationLink(SystemDictator.provider, tx))
+    }
   } else {
     console.log(`Proxy admin already owned by MSD`)
   }
@@ -98,22 +113,13 @@ const deployFn: DeployFunction = async (hre) => {
       )
       console.log(`Please transfer AddressManager owner to MSD`)
       console.log(`AddressManager address: ${AddressManager.address}`)
+      console.log(`Current owner: ${await AddressManager.owner()}`);
       console.log(`MSD address: ${SystemDictator.address}`)
       console.log(`JSON:`)
       console.log(jsonifyTransaction(tx))
       console.log(getCastCommand(tx))
       console.log(await getTenderlySimulationLink(SystemDictator.provider, tx))
     }
-
-    // Wait for the ownership transfer to complete.
-    await awaitCondition(
-      async () => {
-        const owner = await AddressManager.owner()
-        return owner === SystemDictator.address
-      },
-      5000,
-      1000
-    )
   } else {
     console.log(`AddressManager already owned by the SystemDictator`)
   }
@@ -136,24 +142,15 @@ const deployFn: DeployFunction = async (hre) => {
       console.log(
         `L1StandardBridgeProxy address: ${L1StandardBridgeProxy.address}`
       )
+      console.log(`Current owner: ${await L1StandardBridgeProxy.callStatic.getOwner({
+        from: ethers.constants.AddressZero,
+      })}`);
       console.log(`MSD address: ${SystemDictator.address}`)
       console.log(`JSON:`)
       console.log(jsonifyTransaction(tx))
       console.log(getCastCommand(tx))
       console.log(await getTenderlySimulationLink(SystemDictator.provider, tx))
     }
-
-    // Wait for the ownership transfer to complete.
-    await awaitCondition(
-      async () => {
-        const owner = await L1StandardBridgeProxy.callStatic.getOwner({
-          from: ethers.constants.AddressZero,
-        })
-        return owner === SystemDictator.address
-      },
-      5000,
-      1000
-    )
   } else {
     console.log(`L1StandardBridge already owned by MSD`)
   }
@@ -174,27 +171,61 @@ const deployFn: DeployFunction = async (hre) => {
       )
       console.log(`Please transfer L1ERC721Bridge (proxy) owner to MSD`)
       console.log(`L1ERC721BridgeProxy address: ${L1ERC721BridgeProxy.address}`)
+      console.log(`Current owner: ${await L1ERC721BridgeProxy.callStatic.admin({
+        from: ethers.constants.AddressZero,
+      })}`);
       console.log(`MSD address: ${SystemDictator.address}`)
       console.log(`JSON:`)
       console.log(jsonifyTransaction(tx))
       console.log(getCastCommand(tx))
       console.log(await getTenderlySimulationLink(SystemDictator.provider, tx))
     }
-
-    // Wait for the ownership transfer to complete.
-    await awaitCondition(
-      async () => {
-        const owner = await L1ERC721BridgeProxy.callStatic.admin({
-          from: ethers.constants.AddressZero,
-        })
-        return owner === SystemDictator.address
-      },
-      5000,
-      1000
-    )
   } else {
     console.log(`L1ERC721Bridge already owned by MSD`)
   }
+
+  console.log(`
+    ************************************************************
+    Waiting for the ownership transfer of the system to the MSD.
+    ************************************************************
+  `);
+
+
+  await awaitCondition(
+    async () => {
+      const owner = await AddressManager.owner()
+      return owner === SystemDictator.address
+    },
+    5000,
+    1000
+  )
+
+  // Wait for the ownership transfer to complete.
+  await awaitCondition(
+    async () => {
+      const owner = await L1StandardBridgeProxy.callStatic.getOwner({
+        from: ethers.constants.AddressZero,
+      })
+      return owner === SystemDictator.address
+    },
+    5000,
+    1000
+  )
+
+  // Wait for the ownership transfer to complete.
+  await awaitCondition(
+    async () => {
+      const owner = await L1ERC721BridgeProxy.callStatic.admin({
+        from: ethers.constants.AddressZero,
+      })
+      return owner === SystemDictator.address
+    },
+    5000,
+    1000
+  )
+
+  console.log(`Ownership transfer complete`);
+  process.exit(1);
 
   // Step 1 is a freebie, it doesn't impact the system.
   await doStep({
