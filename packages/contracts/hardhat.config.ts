@@ -64,6 +64,12 @@ const config: HardhatUserConfig = {
       deploy,
       accounts: [privateKey],
     },
+    mainnetX: {
+      chainId: 1,
+      url: process.env.CONTRACTS_RPC_URL || '',
+      deploy,
+      accounts: [privateKey],
+    },
   },
   mocha: {
     timeout: 50000,

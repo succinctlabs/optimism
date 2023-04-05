@@ -79,6 +79,12 @@ const config: HardhatUserConfig = {
       accounts: [process.env.PRIVATE_KEY_DEPLOYER || ethers.constants.HashZero],
       live: false,
     },
+    mainnetX: {
+      chainId: 1,
+      url: process.env.L1_RPC || '',
+      accounts: [process.env.PRIVATE_KEY_DEPLOYER || ethers.constants.HashZero],
+      live: true,
+    },
     'goerli-forked': {
       chainId: 5,
       url: process.env.L1_RPC || '',
