@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-node/chaincfg"
+	"github.com/ethereum-optimism/optimism/op-node/sources"
 	"github.com/ethereum-optimism/optimism/op-program/config"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/stretchr/testify/require"
@@ -72,11 +73,70 @@ func TestL2(t *testing.T) {
 	require.Equal(t, expected, cfg.L2URL)
 }
 
+func TestL1(t *testing.T) {
+	expected := "https://example.com:8545"
+	cfg := configForArgs(t, addRequiredArgs("--l1", expected))
+	require.Equal(t, expected, cfg.L1URL)
+}
+
+func TestL1TrustRPC(t *testing.T) {
+	t.Run("DefaultFalse", func(t *testing.T) {
+		cfg := configForArgs(t, addRequiredArgs())
+		require.False(t, cfg.L1TrustRPC)
+	})
+	t.Run("Enabled", func(t *testing.T) {
+		cfg := configForArgs(t, addRequiredArgs("--l1.trustrpc"))
+		require.True(t, cfg.L1TrustRPC)
+	})
+	t.Run("EnabledWithArg", func(t *testing.T) {
+		cfg := configForArgs(t, addRequiredArgs("--l1.trustrpc=true"))
+		require.True(t, cfg.L1TrustRPC)
+	})
+	t.Run("Disabled", func(t *testing.T) {
+		cfg := configForArgs(t, addRequiredArgs("--l1.trustrpc=false"))
+		require.False(t, cfg.L1TrustRPC)
+	})
+}
+
+func TestL1RPCKind(t *testing.T) {
+	t.Run("DefaultBasic", func(t *testing.T) {
+		cfg := configForArgs(t, addRequiredArgs())
+		require.Equal(t, sources.RPCKindBasic, cfg.L1RPCKind)
+	})
+	for _, kind := range sources.RPCProviderKinds {
+		t.Run(kind.String(), func(t *testing.T) {
+			cfg := configForArgs(t, addRequiredArgs("--l1.rpckind", kind.String()))
+			require.Equal(t, kind, cfg.L1RPCKind)
+		})
+	}
+	t.Run("RequireLowercase", func(t *testing.T) {
+		verifyArgsInvalid(t, "rpc kind", addRequiredArgs("--l1.rpckind", "AlChemY"))
+	})
+	t.Run("UnknownKind", func(t *testing.T) {
+		verifyArgsInvalid(t, "\"foo\"", addRequiredArgs("--l1.rpckind", "foo"))
+	})
+}
+
 // Offline support will be added later, but for now it just bails out with an error
 func TestOfflineModeNotSupported(t *testing.T) {
 	logger := log.New()
-	err := FaultProofProgram(logger, config.NewConfig(&chaincfg.Goerli))
-	require.ErrorContains(t, err, "offline mode not supported")
+	t.Run("NoL1", func(t *testing.T) {
+		cfg := config.NewConfig(&chaincfg.Goerli)
+		cfg.L2URL = "http://localhost:8545"
+		err := FaultProofProgram(logger, cfg)
+		require.ErrorContains(t, err, "offline mode not supported")
+	})
+	t.Run("NoL2", func(t *testing.T) {
+		cfg := config.NewConfig(&chaincfg.Goerli)
+		cfg.L1URL = "http://localhost:8545"
+		err := FaultProofProgram(logger, cfg)
+		require.ErrorContains(t, err, "offline mode not supported")
+	})
+	t.Run("NoL1OrL2", func(t *testing.T) {
+		cfg := config.NewConfig(&chaincfg.Goerli)
+		err := FaultProofProgram(logger, cfg)
+		require.ErrorContains(t, err, "offline mode not supported")
+	})
 }
 
 func verifyArgsInvalid(t *testing.T, messageContains string, cliArgs []string) {
