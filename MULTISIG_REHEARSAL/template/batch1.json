@@ -1,13 +1,14 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": ${timestamp},
+  "createdAt": 1680701177467,
   "meta": {
     "name": "batch1",
-    "description": "3 ownership transfers and SystemDictator.phase1()",
+    "description": "",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "0xF9B44990e4FE89713e9E196144c09b1AeFfB396C",
     "createdFromOwnerAddress": "",
+    "checksum": "0xe534e49beb7fcd1b4f4507485f21ebf9a4ec9c0eb1b2adb023d9cdcbe4709205"
   },
   "transactions": [
     {
@@ -66,17 +67,6 @@
       "contractInputsValues": {
         "_admin": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423"
       }
-    },
-    {
-      "to": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423",
-      "value": "0",
-      "data": null,
-      "contractMethod": {
-        "inputs": [],
-        "name": "phase1",
-        "payable": false
-      },
-      "contractInputsValues": null
     }
   ]
 }

@@ -1,14 +1,14 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1680701405313,
+  "createdAt": 1680701771019,
   "meta": {
-    "name": "batch2",
+    "name": "batch4",
     "description": "",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "0xF9B44990e4FE89713e9E196144c09b1AeFfB396C",
     "createdFromOwnerAddress": "",
-    "checksum": "0x24721dc9b622b7a543e4ad97c40db3048233b23f3a94be59ced5d598d156d8e0"
+    "checksum": "0x9d66b8ccfb12fbebec7b89ca347c726a3840019c70952e151f0611a731bba330"
   },
   "transactions": [
     {
@@ -17,7 +17,7 @@
       "data": null,
       "contractMethod": {
         "inputs": [],
-        "name": "step1",
+        "name": "step3",
         "payable": false
       },
       "contractInputsValues": null
@@ -28,7 +28,29 @@
       "data": null,
       "contractMethod": {
         "inputs": [],
-        "name": "step2",
+        "name": "step4",
+        "payable": false
+      },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [],
+        "name": "step5",
+        "payable": false
+      },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [],
+        "name": "finalize",
         "payable": false
       },
       "contractInputsValues": null
