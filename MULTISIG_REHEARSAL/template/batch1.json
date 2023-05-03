@@ -1,10 +1,10 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1680701177467,
+  "createdAt": ${timestamp},
   "meta": {
     "name": "batch1",
-    "description": "",
+    "description": "3 ownership transfers and SystemDictator.phase1()",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "0xF9B44990e4FE89713e9E196144c09b1AeFfB396C",
     "createdFromOwnerAddress": "",

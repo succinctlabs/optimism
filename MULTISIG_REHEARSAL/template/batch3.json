@@ -1,14 +1,12 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1680701771019,
   "meta": {
-    "name": "batch4",
+    "name": "batch3",
     "description": "",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "0xF9B44990e4FE89713e9E196144c09b1AeFfB396C",
     "createdFromOwnerAddress": "",
-    "checksum": "0x9d66b8ccfb12fbebec7b89ca347c726a3840019c70952e151f0611a731bba330"
   },
   "transactions": [
     {
