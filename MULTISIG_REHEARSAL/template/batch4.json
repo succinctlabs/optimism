@@ -6,13 +6,13 @@
     "name": "batch5",
     "description": "",
     "txBuilderVersion": "1.13.3",
-    "createdFromSafeAddress": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
+    "createdFromSafeAddress": "${L1UpgradeKeyAddress}",
     "createdFromOwnerAddress": "",
     "checksum": "0x92028ac0501f8e32c1284230c87a373722b093a8d6ab9c56ea29b1c09447142a"
   },
   "transactions": [
     {
-      "to": "0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a",
+    "to": "${OptimismPortalProxy}",
       "value": "0",
       "data": null,
       "contractMethod": {

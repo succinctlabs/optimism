@@ -6,13 +6,13 @@
     "name": "batch2",
     "description": "",
     "txBuilderVersion": "1.13.3",
-    "createdFromSafeAddress": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
+    "createdFromSafeAddress": "${L1UpgradeKeyAddress}",
     "createdFromOwnerAddress": "",
     "checksum": "0x44c90b6fdc46120abaaa105cbe3ebe87e81db216a11f12d40f50b5bf476707fe"
   },
   "transactions": [
     {
-      "to": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423",
+      "to": "${SystemDictatorProxy}",
       "value": "0",
       "data": null,
       "contractMethod": {
