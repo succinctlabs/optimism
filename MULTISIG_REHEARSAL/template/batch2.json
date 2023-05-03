@@ -1,14 +1,14 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1683149683978,
+  "createdAt": ${Batch2CreatedAt},
   "meta": {
     "name": "batch2",
     "description": "",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "${L1UpgradeKeyAddress}",
     "createdFromOwnerAddress": "",
-    "checksum": "0x44c90b6fdc46120abaaa105cbe3ebe87e81db216a11f12d40f50b5bf476707fe"
+    "checksum": "${Batch2Checksum}"
   },
   "transactions": [
     {
@@ -44,7 +44,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_l2OutputOracleDynamicConfig": "[86471832,1680701507]",
+        "_l2OutputOracleDynamicConfig": "[${L2OOStartingBlockNumber},${L2OOStartingTimestamp}]",
         "_optimismPortalDynamicConfig": "true"
       }
     }

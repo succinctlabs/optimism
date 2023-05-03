@@ -1,14 +1,14 @@
 {
   "version": "1.0",
   "chainId": "1",
-  "createdAt": 1683149501024,
+  "createdAt": ${Batch1CreatedAt},
   "meta": {
     "name": "batch1",
     "description": "",
     "txBuilderVersion": "1.13.3",
     "createdFromSafeAddress": "${L1UpgradeKeyAddress}",
     "createdFromOwnerAddress": "",
-    "checksum": "0x463717441909cba8823a30b01f731f4029842964ce5f99cce8d1a1fe589268f6"
+    "checksum": "${Batch1Checksum}"
   },
   "transactions": [
     {
