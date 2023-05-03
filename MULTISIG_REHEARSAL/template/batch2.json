@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "chainId": "1",
+  "createdAt": 1683149683978,
+  "meta": {
+    "name": "batch2",
+    "description": "",
+    "txBuilderVersion": "1.13.3",
+    "createdFromSafeAddress": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
+    "createdFromOwnerAddress": "",
+    "checksum": "0x44c90b6fdc46120abaaa105cbe3ebe87e81db216a11f12d40f50b5bf476707fe"
+  },
+  "transactions": [
+    {
+      "to": "0xd6322f9d48439103d2e9c3bdA7A43F851FbB2423",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "l2OutputOracleStartingBlockNumber",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "l2OutputOracleStartingTimestamp",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct SystemDictator.L2OutputOracleDynamicConfig",
+            "name": "_l2OutputOracleDynamicConfig",
+            "type": "tuple"
+          },
+          {
+            "internalType": "bool",
+            "name": "_optimismPortalDynamicConfig",
+            "type": "bool"
+          }
+        ],
+        "name": "updateDynamicConfig",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "_l2OutputOracleDynamicConfig": "[86471832,1680701507]",
+        "_optimismPortalDynamicConfig": "true"
+      }
+    }
+  ]
+}
