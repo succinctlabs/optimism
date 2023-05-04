@@ -99,6 +99,12 @@ const config: HardhatUserConfig = {
       accounts: [process.env.PRIVATE_KEY_DEPLOYER || ethers.constants.HashZero],
       live: true,
     },
+    'multisig-rehearsal': {
+      chainId: 1,
+      url: process.env.L1_RPC || '',
+      accounts: [process.env.PRIVATE_KEY_DEPLOYER || ethers.constants.HashZero],
+      live: true,
+    },
     'internal-devnet': {
       chainId: 5,
       url: process.env.L1_RPC || '',

@@ -1,11 +1,11 @@
 {
-  "finalSystemOwner": "0x62790eFcB3a5f3A5D398F95B47930A9Addd83807",
-  "portalGuardian": "0x62790eFcB3a5f3A5D398F95B47930A9Addd83807",
-  "controller": "0x2d30335B0b807bBa1682C487BaAFD2Ad6da5D675",
+  "finalSystemOwner": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
+  "portalGuardian": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
+  "controller": "${SystemDictatorProxy}",
 
   "l1StartingBlockTag": "0x4104895a540d87127ff11eef0d51d8f63ce00a6fc211db751a45a4b3a61a9c83",
-  "l1ChainID": 5,
-  "l2ChainID": 420,
+  "l1ChainID": 1,
+  "l2ChainID": 5041400,
   "l2BlockTime": 2,
 
   "maxSequencerDrift": 1200,
@@ -22,7 +22,7 @@
   "l2OutputOracleChallenger": "0x88BCa4Af3d950625752867f826E073E337076581",
   "finalizationPeriodSeconds": 2,
 
-  "proxyAdminOwner": "0x62790eFcB3a5f3A5D398F95B47930A9Addd83807",
+  "proxyAdminOwner": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
 
   "governanceTokenName": "Optimism",
   "governanceTokenSymbol": "OP",
