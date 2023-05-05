@@ -238,7 +238,6 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await AddressManager.owner()) !== hre.deployConfig.controller) {
     // Transfer ownership to the controller address.
     await AddressManager.transferOwnership(
-      SystemDictatorProxy.address
       hre.deployConfig.controller
     )
   }
@@ -246,7 +245,6 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await L1StandardBridgeProxyWithSigner.getOwner()) !== hre.deployConfig.controller) {
     // Transfer ownership to the controller address.
     await L1StandardBridgeProxyWithSigner.setOwner(
-      SystemDictatorProxy.address
       hre.deployConfig.controller
     )
   }
@@ -254,7 +252,6 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await L1ERC721BridgeProxyWithSigner.admin()) !== hre.deployConfig.controller) {
     // Transfer ownership to the controller address.
     await L1ERC721BridgeProxyWithSigner.changeAdmin(
-      SystemDictatorProxy.address
       hre.deployConfig.controller
     )
   }
