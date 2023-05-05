@@ -20,6 +20,12 @@ const deployFn: DeployFunction = async (hre) => {
     SystemDictatorProxy,
     SystemDictatorProxyWithSigner,
     SystemDictatorImpl,
+    ProxyAdmin,
+    AddressManager,
+    L1StandardBridgeProxy,
+    L1StandardBridgeProxyWithSigner,
+    L1ERC721BridgeProxy,
+    L1ERC721BridgeProxyWithSigner,
   ] = await getContractsFromArtifacts(hre, [
     {
       name: 'SystemDictatorProxy',
@@ -35,6 +41,28 @@ const deployFn: DeployFunction = async (hre) => {
     },
     {
       name: 'SystemDictator',
+      signerOrProvider: deployer,
+    },
+    {
+      name: 'ProxyAdmin',
+      signerOrProvider: deployer,
+    },
+    {
+      name: 'Lib_AddressManager',
+      signerOrProvider: deployer,
+    },
+    {
+      name: 'Proxy__OVM_L1StandardBridge',
+    },
+    {
+      name: 'Proxy__OVM_L1StandardBridge',
+      signerOrProvider: deployer,
+    },
+    {
+      name: 'L1ERC721BridgeProxy',
+    },
+    {
+      name: 'L1ERC721BridgeProxy',
       signerOrProvider: deployer,
     },
   ])
@@ -181,7 +209,7 @@ const deployFn: DeployFunction = async (hre) => {
     console.log('Transferring ownership of the SystemDictator proxy...')
 
     // Transfer ownership to the controller address.
-    await SystemDictatorProxyWithSigner.transferOwnership(
+    await SystemDictatorProxyWithSigner.changeAdmin(
       hre.deployConfig.controller
     )
 
@@ -198,6 +226,39 @@ const deployFn: DeployFunction = async (hre) => {
       1000
     )
   }
+
+  // Transfer ownership of the ProxyAdmin to the SystemDictator.
+  if ((await ProxyAdmin.owner()) !== SystemDictatorProxy.address) {
+    // Transfer ownership to the controller address.
+    await ProxyAdmin.transferOwnership(
+      SystemDictatorProxy.address
+    )
+  }
+
+  if ((await AddressManager.owner()) !== hre.deployConfig.controller) {
+    // Transfer ownership to the controller address.
+    await AddressManager.transferOwnership(
+      SystemDictatorProxy.address
+      hre.deployConfig.controller
+    )
+  }
+
+  if ((await L1StandardBridgeProxyWithSigner.getOwner()) !== hre.deployConfig.controller) {
+    // Transfer ownership to the controller address.
+    await L1StandardBridgeProxyWithSigner.setOwner(
+      SystemDictatorProxy.address
+      hre.deployConfig.controller
+    )
+  }
+
+  if ((await L1ERC721BridgeProxyWithSigner.admin()) !== hre.deployConfig.controller) {
+    // Transfer ownership to the controller address.
+    await L1ERC721BridgeProxyWithSigner.changeAdmin(
+      SystemDictatorProxy.address
+      hre.deployConfig.controller
+    )
+  }
+
 }
 
 deployFn.tags = ['SystemDictatorImpl', 'setup', 'l1']

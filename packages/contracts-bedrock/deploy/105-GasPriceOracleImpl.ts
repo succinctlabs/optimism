@@ -5,6 +5,7 @@ import '@nomiclabs/hardhat-ethers'
 import { assertContractVariable, deploy } from '../src/deploy-utils'
 
 const deployFn: DeployFunction = async (hre) => {
+  return // added by kz for multisig rehearsal.
   await deploy({
     hre,
     name: 'GasPriceOracle',

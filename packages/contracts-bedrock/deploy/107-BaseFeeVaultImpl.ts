@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import { assertContractVariable, deploy } from '../src/deploy-utils'
 
 const deployFn: DeployFunction = async (hre) => {
+  return // added by kz for multisig rehearsal.
   const l1 = hre.network.companionNetworks['l1']
   const deployConfig = hre.getDeployConfig(l1)
 

@@ -7,6 +7,7 @@ import { predeploys } from '../src/constants'
 import { assertContractVariable, deploy } from '../src/deploy-utils'
 
 const deployFn: DeployFunction = async (hre) => {
+  return // added by kz for multisig rehearsal.
   const Artifact__L1ERC721Bridge = await hre.companionNetworks[
     'l1'
   ].deployments.get('L1ERC721BridgeProxy')

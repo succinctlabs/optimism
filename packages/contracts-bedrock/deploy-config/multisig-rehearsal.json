@@ -1,7 +1,7 @@
 {
   "finalSystemOwner": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
   "portalGuardian": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
-  "controller": "${SystemDictatorProxy}",
+  "controller": "0xAB23dE0DbE0aedF356af3F815c8B47D88575D82d",
   "l1StartingBlockTag": "0x4104895a540d87127ff11eef0d51d8f63ce00a6fc211db751a45a4b3a61a9c83",
   "l1ChainID": 1,
   "l2ChainID": 5041400,
