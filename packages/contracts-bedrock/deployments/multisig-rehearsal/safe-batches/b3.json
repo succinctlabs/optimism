@@ -17,6 +17,17 @@
         "payable": false
       },
       "contractInputsValues": {}
+    },
+    {
+      "to": "0x743196D53914a3Dc227f606A418B0b8598EC54bb",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [],
+        "name": "unpause",
+        "payable": false
+      },
+      "contractInputsValues": {}
     }
   ]
 }
