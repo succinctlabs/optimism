@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"math/big"
 	"path/filepath"
@@ -118,6 +119,8 @@ func (ch *Cheater) RunAndClose(fn HeadFn) error {
 		return fmt.Errorf("error committing trie db: %w", err)
 	}
 
+	log.Info("writing cheat", "block", header.Number, "new_hash", blockHash.Hex(), "prev_hash", preHeader.Hash(), "stateRoot", stateRoot.Hex())
+
 	// based on core.BlockChain.writeHeadBlock:
 	// Add the block to the canonical chain number scheme and mark as the head
 	batch := ch.DB.NewBatch()
@@ -167,6 +170,8 @@ func (ch *Cheater) RunAndClose(fn HeadFn) error {
 	// bc.hc.SetCurrentHeader(block.Header())
 	// headFastBlockGauge.Update(int64(block.NumberU64()))
 	// headBlockGauge.Update(int64(block.NumberU64()))
+
+	log.Info("cheat succesfully applied")
 
 	return ch.Close()
 }
