@@ -83,11 +83,6 @@ func main() {
 				Usage: "RPC URL for an L1 Node",
 			},
 			&cli.StringFlag{
-				Name:  "l2-rpc-url",
-				Value: "http://127.0.0.1:9545",
-				Usage: "RPC URL for an L2 Node",
-			},
-			&cli.StringFlag{
 				Name:  "optimism-portal-address",
 				Usage: "Address of the OptimismPortal on L1",
 			},

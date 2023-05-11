@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -58,7 +59,11 @@ func OpenGethDB(dataDirPath string, readOnly bool) (*Cheater, error) {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := core.NewBlockChain(db, nil, nil, nil,
+	shanghaiTs := uint64(time.Now().Add(365 * 24 * time.Hour).Unix())
+	overrides := &core.ChainOverrides{
+		OverrideShanghai: &shanghaiTs,
+	}
+	ch, err := core.NewBlockChain(db, nil, nil, overrides,
 		beacon.New(ethash.NewFullFaker()), vm.Config{}, nil, nil)
 	if err != nil {
 		_ = db.Close()
