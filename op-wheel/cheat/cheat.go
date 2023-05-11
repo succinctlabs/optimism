@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"math/big"
@@ -110,48 +111,48 @@ func (ch *Cheater) RunAndClose(fn HeadFn) error {
 		_ = ch.Close()
 		return fmt.Errorf("failed to commit state change: %w", err)
 	}
-	header := preHeader // copy the header
-	header.Root = stateRoot
-	blockHash := header.Hash()
+	newHeader := types.CopyHeader(preHeader) // copy the header
+	newHeader.Root = stateRoot
+	newBlockHash := newHeader.Hash()
 
 	// We have to manually commit the updated state root to the database.
 	if err := state.Database().TrieDB().Commit(stateRoot, true); err != nil {
 		return fmt.Errorf("error committing trie db: %w", err)
 	}
 
-	log.Info("writing cheat", "block", header.Number, "new_hash", blockHash.Hex(), "prev_hash", preHeader.Hash(), "stateRoot", stateRoot.Hex())
+	log.Info("writing cheat", "block", newHeader.Number, "new_hash", newBlockHash, "prev_hash", preHeader.Hash(), "stateRoot", stateRoot.Hex())
 
 	// based on core.BlockChain.writeHeadBlock:
 	// Add the block to the canonical chain number scheme and mark as the head
 	batch := ch.DB.NewBatch()
 	preID := eth.BlockID{Hash: preHeader.Hash(), Number: preHeader.Number.Uint64()}
 	if ch.Blockchain.CurrentFinalBlock().Hash() == preID.Hash {
-		rawdb.WriteFinalizedBlockHash(batch, blockHash)
+		rawdb.WriteFinalizedBlockHash(batch, newBlockHash)
 	}
 	rawdb.DeleteHeaderNumber(batch, preHeader.Hash())
-	rawdb.WriteHeadHeaderHash(batch, blockHash)
-	rawdb.WriteHeadFastBlockHash(batch, blockHash)
-	rawdb.WriteCanonicalHash(batch, blockHash, preID.Number)
-	rawdb.WriteHeaderNumber(batch, blockHash, preID.Number)
-	rawdb.WriteHeader(batch, header)
+	rawdb.WriteHeadHeaderHash(batch, newBlockHash)
+	rawdb.WriteHeadFastBlockHash(batch, newBlockHash)
+	rawdb.WriteCanonicalHash(batch, newBlockHash, preID.Number)
+	rawdb.WriteHeaderNumber(batch, newBlockHash, preID.Number)
+	rawdb.WriteHeader(batch, newHeader)
 	// not keyed by blockhash, and we didn't remove any txs, so we just leave this one as-is.
 	// rawdb.WriteTxLookupEntriesByBlock(batch, block)
-	rawdb.WriteHeadBlockHash(batch, blockHash)
+	rawdb.WriteHeadBlockHash(batch, newBlockHash)
 
 	// Geth stores the TD for each block separately from the block itself. We must update this
 	// manually, otherwise Geth thinks we haven't reached TTD yet and tries to build a block
 	// using Clique consensus, which causes a panic.
-	rawdb.WriteTd(batch, blockHash, preID.Number, ch.Blockchain.GetTd(preID.Hash, preID.Number))
+	rawdb.WriteTd(batch, newBlockHash, preID.Number, ch.Blockchain.GetTd(preID.Hash, preID.Number))
 
 	// Need to copy over receipts since they are keyed by block hash.
 	receipts := rawdb.ReadReceipts(ch.DB, preID.Hash, preID.Number, ch.Blockchain.Config())
-	rawdb.WriteReceipts(batch, blockHash, preID.Number, receipts)
+	rawdb.WriteReceipts(batch, newBlockHash, preID.Number, receipts)
 
 	// Geth maintains an internal mapping between block bodies and their hashes. None of the database
 	// accessors above update this mapping, so we need to do it manually.
 	oldKey := blockBodyKey(preID.Number, preID.Hash)
 	oldBody := rawdb.ReadBodyRLP(ch.DB, preID.Hash, preID.Number)
-	newKey := blockBodyKey(preID.Number, blockHash)
+	newKey := blockBodyKey(preID.Number, newBlockHash)
 	if err := batch.Delete(oldKey); err != nil {
 		return fmt.Errorf("error deleting old block body key")
 	}
