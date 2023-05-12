@@ -6,7 +6,6 @@ import '@nomiclabs/hardhat-ethers'
 import { assertContractVariable, deploy } from '../src/deploy-utils'
 
 const deployFn: DeployFunction = async (hre) => {
-  return // added by kz for multisig rehearsal.
   const Artifact__L1StandardBridge = await hre.companionNetworks[
     'l1'
   ].deployments.get('L1StandardBridgeProxy')

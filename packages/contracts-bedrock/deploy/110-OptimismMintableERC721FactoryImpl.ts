@@ -7,7 +7,6 @@ import { assertContractVariable, deploy } from '../src/deploy-utils'
 import { predeploys } from '../src/constants'
 
 const deployFn: DeployFunction = async (hre) => {
-  return // added by kz for multisig rehearsal.
   const OptimismMintableERC721Factory = await hre.ethers.getContractAt(
     'OptimismMintableERC721Factory',
     predeploys.OptimismMintableERC721Factory

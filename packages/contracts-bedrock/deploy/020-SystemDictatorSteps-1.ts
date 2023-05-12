@@ -19,7 +19,6 @@ import {
 const uint128Max = ethers.BigNumber.from('0xffffffffffffffffffffffffffffffff')
 
 const deployFn: DeployFunction = async (hre) => {
-  return // added by kz for multisig rehearsal.
   const { deployer } = await hre.getNamedAccounts()
 
   // Set up required contract references.

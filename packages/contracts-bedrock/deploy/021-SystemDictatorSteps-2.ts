@@ -20,7 +20,6 @@ import {
 } from '../src/deploy-utils'
 
 const deployFn: DeployFunction = async (hre) => {
-  return // added by kz for multisig rehearsal.
   const { deployer } = await hre.getNamedAccounts()
 
   // Set up required contract references.
