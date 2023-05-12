@@ -5,14 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"io"
-	"math/big"
-	"path/filepath"
-	"strings"
-	"time"
-
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
@@ -20,11 +12,17 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+	"io"
+	"math/big"
+	"path/filepath"
+	"strings"
 )
 
 var HundredETH = big.NewInt(0).Mul(big.NewInt(100), big.NewInt(1000000000000000000))
@@ -61,7 +59,7 @@ func OpenGethDB(dataDirPath string, readOnly bool) (*Cheater, error) {
 	if err != nil {
 		return nil, err
 	}
-	shanghaiTs := uint64(time.Now().Add(365 * 24 * time.Hour).Unix())
+	shanghaiTs := uint64(0)
 	overrides := &core.ChainOverrides{
 		OverrideShanghai: &shanghaiTs,
 	}
