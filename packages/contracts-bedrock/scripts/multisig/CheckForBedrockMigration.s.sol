@@ -34,6 +34,7 @@ contract BedrockMigrationChecker is Script, StdAssertions {
         address OptimismPortalProxy;
         address PortalSender;
         address SystemConfigProxy;
+        address SystemDictatorImpl;
         address SystemDictatorProxy;
     }
 
@@ -61,6 +62,7 @@ contract BedrockMigrationChecker is Script, StdAssertions {
         checkOptimismPortalProxy(contracts);
         checkPortalSender(contracts);
         checkSystemConfigProxy(contracts);
+        checkSystemDictatorImpl(contracts);
         checkSystemDictatorProxy(contracts);
     }
 
@@ -146,8 +148,13 @@ contract BedrockMigrationChecker is Script, StdAssertions {
         console2.log("Checking SystemConfigProxy %s", contracts.SystemConfigProxy);
     }
 
+    function checkSystemDictatorImpl(ContractSet memory contracts) internal {
+        console2.log("Checking SystemDictator %s", contracts.SystemDictatorImpl);
+    }
+
     function checkSystemDictatorProxy(ContractSet memory contracts) internal {
         console2.log("Checking SystemDictatorProxy %s", contracts.SystemDictatorProxy);
+        checkAddressIsExpected(contracts.SystemDictatorImpl, contracts.SystemDictatorProxy, "implementation()");
         checkAddressIsExpected(contracts.L1UpgradeKey, contracts.SystemDictatorProxy, "owner()");
         checkAddressIsExpected(contracts.L1UpgradeKey, contracts.SystemDictatorProxy, "admin()");
     }
@@ -191,6 +198,7 @@ contract BedrockMigrationChecker is Script, StdAssertions {
                 OptimismPortalProxy: getAddressFromJson(string.concat(deploymentJsonDir, "/OptimismPortalProxy.json")),
                 PortalSender: getAddressFromJson(string.concat(deploymentJsonDir, "/PortalSender.json")),
                 SystemConfigProxy: getAddressFromJson(string.concat(deploymentJsonDir, "/SystemConfigProxy.json")),
+                SystemDictatorImpl: getAddressFromJson(string.concat(deploymentJsonDir, "/SystemDictator.json")),
                 SystemDictatorProxy: getAddressFromJson(string.concat(deploymentJsonDir, "/SystemDictatorProxy.json"))
             });
     }
