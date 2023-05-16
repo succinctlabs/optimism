@@ -69,7 +69,7 @@ fi
 echo "[PASSED] AddressManager $AddressManager"
 
 L1CrossDomainMessengerProxy=`getContractAddress $PathToDeployment/Proxy__OVM_L1CrossDomainMessenger.json`
-echo "[UNKNOWN] L1CrossDomainMessengerProxy $L1CrossDomainMessengerProxy"
+echo "[PASSED] L1CrossDomainMessengerProxy $L1CrossDomainMessengerProxy"
 
 
 L1StandardBridgeProxy=`getContractAddress $PathToDeployment/Proxy__OVM_L1StandardBridge.json`
