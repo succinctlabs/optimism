@@ -229,6 +229,7 @@ const deployFn: DeployFunction = async (hre) => {
 
   // Transfer ownership of the ProxyAdmin to the SystemDictator.
   if ((await ProxyAdmin.callStatic.owner()) !== SystemDictatorProxy.address) {
+    console.log('Transferring ownership of the ProxyAdmin...')
     // Transfer ownership to the controller address.
     await ProxyAdmin.transferOwnership(
       SystemDictatorProxy.address
@@ -236,6 +237,7 @@ const deployFn: DeployFunction = async (hre) => {
   }
 
   if ((await AddressManager.callStatic.owner()) !== hre.deployConfig.controller) {
+    console.log('Transferring ownership of the AddressManager...')
     // Transfer ownership to the controller address.
     await AddressManager.transferOwnership(
       hre.deployConfig.controller
@@ -245,6 +247,7 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await L1StandardBridgeProxy.callStatic.getOwner({
     from: ethers.constants.AddressZero,
   })) !== hre.deployConfig.controller) {
+    console.log('Transferring ownership of the L1StandardBridgeProxy...')
     // Transfer ownership to the controller address.
     await L1StandardBridgeProxyWithSigner.setOwner(
       hre.deployConfig.controller
@@ -254,6 +257,7 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await L1ERC721BridgeProxy.callStatic.admin({
     from: ethers.constants.AddressZero,
   })) !== hre.deployConfig.controller) {
+    console.log('Transferring ownership of the L1ERC721BridgeProxy...')
     // Transfer ownership to the controller address.
     await L1ERC721BridgeProxyWithSigner.changeAdmin(
       hre.deployConfig.controller
