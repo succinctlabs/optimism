@@ -231,9 +231,10 @@ const deployFn: DeployFunction = async (hre) => {
   if ((await ProxyAdmin.callStatic.owner()) !== SystemDictatorProxy.address) {
     console.log('Transferring ownership of the ProxyAdmin...')
     // Transfer ownership to the controller address.
-    await ProxyAdmin.transferOwnership(
-      SystemDictatorProxy.address
-    )
+    // await ProxyAdmin.transferOwnership(
+    //   SystemDictatorProxy.address
+    // )
+    console.log("TODO(do-not-merge): transfer ownership of the ProxyAdmin to SystemDictatorProxy.")
   }
 
   if ((await AddressManager.callStatic.owner()) !== hre.deployConfig.controller) {
