@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "chainId": "1",
+  "meta": {
+    "name": "EscapeHatch",
+    "description": "",
+    "txBuilderVersion": "1.14.1"
+  },
+  "transactions": [
+    {
+    "to": "0xECc3BB2fC639807543Ecc0cB8C033700aBd9b29a",
+    "value": "0",
+    "data": null,
+    "contractMethod": {
+      "inputs": [],
+      "name": "exit1",
+      "payable": false
+    },
+    "contractInputsValues": null
+  },
+    {
+    "to": "0xECc3BB2fC639807543Ecc0cB8C033700aBd9b29a",
+    "value": "0",
+    "data": null,
+    "contractMethod": {
+      "inputs": [],
+      "name": "finalize",
+      "payable": false
+    },
+    "contractInputsValues": null
+  }
+  ]
+}

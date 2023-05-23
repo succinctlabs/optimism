@@ -8,7 +8,7 @@
   },
   "transactions": [
     {
-      "to": "0x3C0dD22068a69433938097ad335Cb44a9DBf5c1A",
+      "to": "0xECc3BB2fC639807543Ecc0cB8C033700aBd9b29a",
       "value": "0",
       "data": null,
       "contractMethod": {
@@ -40,7 +40,7 @@
         "payable": false
       },
       "contractInputsValues": {
-        "_l2OutputOracleDynamicConfig": "[86471832,1680701507]",
+        "_l2OutputOracleDynamicConfig": "[9999, 9999]",
         "_optimismPortalDynamicConfig": "true"
       }
     }
