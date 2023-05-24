@@ -30,25 +30,42 @@ hostname: "127.0.0.1"
 port: 7300
 ```
 
-- **chain configuration**
+## Deploying and running indexer
 
-Configure chain constants such as chainId, contract addresses ect.
+`@eth-optimism/indexer` consists of a single Golang server 
 
-For known chains pass in the chainId as `preset`
+In addition to the app itself, you will also need a Postgres instance
+To run or deploy your app a docker container is provided. 
 
-- **rpcs**
+```yaml Example docker-compose.yml
+version: '3.8'
 
-Configures the rpcs used to populate the indexer database
+services:
+  postgres:
+    image: postgres:latest
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -q -U db_username -d db_name" ]
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/data/postgres
 
-- **db**
+  indexer:
+    build:
+      context: ..
+      dockerfile: indexer/Dockerfile
+    healthcheck:
+      test: curl localhost:8080/healthz
+    environment:
+      - 8080:8080
+    volumes:
+      - /path/to/my/indexer.toml:/indexer/indexer.toml
+    depends_on:
+      postgres:
+        condition: service_healthy
+        
+volumes:
+  postgres_data:
 
-Configures the Postgresql db
-
-- **api**
-
-Configures the api server
-
-- **metrics**
-
-Configures the metrics server
+```
 
