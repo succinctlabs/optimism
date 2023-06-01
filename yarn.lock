@@ -914,6 +914,25 @@
     minimatch "^3.1.2"
     strip-json-comments "^3.1.1"
 
+"@eth-optimism/contracts-bedrock@canary":
+  version "0.0.0-20230601165341"
+  resolved "https://registry.yarnpkg.com/@eth-optimism/contracts-bedrock/-/contracts-bedrock-0.0.0-20230601165341.tgz#4583bc698abd7a2fac5c3bb4c55d479c3bf51a03"
+  integrity sha512-1+ZXvA4KWPhlDFbqPW07Rd+gib6gzWgEFn3MgXThAqhUvHqID4YyRVEKjACpXLWR0tCn7FPPfxwd9VhGh/Vwzw==
+  dependencies:
+    "@eth-optimism/core-utils" "^0.12.0"
+    "@openzeppelin/contracts" "4.7.3"
+    "@openzeppelin/contracts-upgradeable" "4.7.3"
+    ethers "^5.7.0"
+
+"@eth-optimism/contracts@canary":
+  version "0.0.0-20230601165341"
+  resolved "https://registry.yarnpkg.com/@eth-optimism/contracts/-/contracts-0.0.0-20230601165341.tgz#5a907f6d5de6766e9e2aabf00cd972dbb6173706"
+  integrity sha512-puI8tR26Z8ikbMiJNQ5VaFv/K+OsnEHOm2E16sMgxaIwbviak8SR2KP7k2fGwRk3otH/Iviz/fUpPcgEF33LGQ==
+  dependencies:
+    "@eth-optimism/core-utils" "0.12.0"
+    "@ethersproject/abstract-provider" "^5.7.0"
+    "@ethersproject/abstract-signer" "^5.7.0"
+
 "@eth-optimism/core-utils@^0.5.2":
   version "0.5.5"
   resolved "https://registry.yarnpkg.com/@eth-optimism/core-utils/-/core-utils-0.5.5.tgz#0e2bb95b23965fb51adfb8ba6841c3afd26a6411"
