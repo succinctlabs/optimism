@@ -5,8 +5,10 @@
 **Table of Contents**
 
 - [Gas Stipend](#gas-stipend)
+- [Default Values](#default-values)
 - [Limiting Guaranteed Gas](#limiting-guaranteed-gas)
 - [Rationale for burning L1 Gas](#rationale-for-burning-l1-gas)
+- [On Preventing Griefing Attacks](#on-preventing-griefing-attacks)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -35,6 +37,17 @@ To offset the gas spent on the deposit event, we credit `gas spent * L1 basefee`
 the L2 gas, where `gas spent` is the amount of L1 gas spent processing the deposit. If the ETH value
 of this credit is greater than the ETH value of the requested guaranteed gas
 (`requested guaranteed gas * L2 gas price`), no L1 gas is burnt.
+
+## Default Values
+
+| Variable                        | Value             |
+| ------------------------------- | ----------------- |
+| Max Resource Limit              | 20,000,000        |
+| Elasticity Multiplier           | 10                |
+| Base Fee Max Change Denominator | 8                 |
+| Minimum Base Fee                | 1 gwei            |
+| Maximum Base Fee                | type(uint128).max |
+| System Tx Max Gas               | 1,000,000         |
 
 ## Limiting Guaranteed Gas
 
@@ -80,7 +93,7 @@ def clamp(v: i256, min: u128, max: u128) -> u128:
 if prev_num == now_num:
     now_basefee = prev_basefee
     now_bought_gas = prev_bought_gas + requested_gas
-elif prev_num != now_num :
+elif prev_num != now_num:
     # Width extension and conversion to signed integer math
     gas_used_delta = int128(prev_bought_gas) - int128(TARGET_RESOURCE_LIMIT)
     # Use truncating (round to 0) division - solidity's default.
@@ -88,18 +101,18 @@ elif prev_num != now_num :
     base_fee_per_gas_delta = prev_basefee * gas_used_delta / TARGET_RESOURCE_LIMIT / BASE_FEE_MAX_CHANGE_DENOMINATOR
     now_basefee_wide = prev_basefee + base_fee_per_gas_delta
 
-    now_basefee = clamp(now_basefee_wide, min=MINIMUM_BASEFEE, max=UINT_64_MAX_VALUE)
+    now_basefee = clamp(now_basefee_wide, min=MINIMUM_BASEFEE, max=UINT_128_MAX_VALUE)
     now_bought_gas =  requested_gas
 
-# If we skipped multiple blocks between the previous block and now update the basefee again.
-# This is not exactly the same as iterating the above function, but quite close for reasonable
-# gas target values. It is also constant time wrt the number of missed blocks which is important
-# for keeping gas usage stable.
-if prev_num + 1 < now_num:
-    n = now_num - prev_num - 1
-    # Apply 7/8 reduction to prev_basefee for the n empty blocks in a row.
-    now_basefee_wide = prev_basefee * pow(1-(1/BASE_FEE_MAX_CHANGE_DENOMINATOR), n)
-    now_basefee = clamp(now_basefee_wide, min=MINIMUM_BASEFEE, max=UINT_64_MAX_VALUE)
+    # If we skipped multiple blocks between the previous block and now update the basefee again.
+    # This is not exactly the same as iterating the above function, but quite close for reasonable
+    # gas target values. It is also constant time wrt the number of missed blocks which is important
+    # for keeping gas usage stable.
+    if prev_num + 1 < now_num:
+        n = now_num - prev_num - 1
+        # Apply 7/8 reduction to prev_basefee for the n empty blocks in a row.
+        now_basefee_wide = now_basefee * pow(1-(1/BASE_FEE_MAX_CHANGE_DENOMINATOR), n)
+        now_basefee = clamp(now_basefee_wide, min=MINIMUM_BASEFEE, max=type(uint128).max)
 
 require(now_bought_gas < MAX_RESOURCE_LIMIT)
 
@@ -123,3 +136,20 @@ The payable version (Option 2) will likely have discount applied to it (or conve
 premium applied to it).
 
 For the initial release of bedrock, only #1 is supported.
+
+## On Preventing Griefing Attacks
+
+The cost of purchasing all of the deposit gas in every block must be expensive
+enough to prevent attackers from griefing all deposits to the network.
+An attacker would observe a deposit in the mempool and frontrun it with a deposit
+that purchases enough gas such that the other deposit reverts.
+The smaller the max resource limit is, the easier this attack is to pull off.
+This attack is mitigated by having a large resource limit as well as a large
+elastcity multiplier. This means that the target resource usage is kept small,
+giving a lot of room for the deposit base fee to rise when the max resource limit
+is being purchased.
+
+This attack should be too expensive to pull off in practice, but if an extremely
+wealthy adversary does decide to grief network deposits for an extended period
+of time, efforts will be placed to ensure that deposits are able to be processed
+on the network.

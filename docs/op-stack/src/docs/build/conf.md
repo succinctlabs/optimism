@@ -13,7 +13,7 @@ OP Stack configuration is an active work in progress and will likely evolve sign
 
 ## New Blockchain Configuration
 
-New OP Stack blockchains are currently configured with a JSON file inside the Optimism repository. The file is `<optimism repository>/packages/contracts-bedrock/deploy-config/<chain name>.json`. For example, [this is the configuration file for the tutorial blockchain](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/deploy-config/getting-started.json). 
+New OP Stack blockchains are currently configured with a JSON file inside the Optimism repository. The file is `<optimism repository>/packages/contracts-bedrock/deploy-config/<chain name>.json`. For example, [this is the configuration file for the tutorial blockchain](https://github.com/ethereum-optimism/optimism/blob/develop/packages/contracts-bedrock/deploy-config/getting-started.json).
 
 
 ### Admin accounts
@@ -29,10 +29,25 @@ New OP Stack blockchains are currently configured with a JSON file inside the Op
 
 | Key | Type | Description | Default value |
 | --- | --- | --- | --- |
-| `baseFeeVaultRecipient` | L1 Address | L1 address that the base fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
-| `l1FeeVaultRecipient` | L1 Address | L1 address that the L1 data fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
-| `sequencerFeeVaultRecipient` | L1 Address | L1 address that the tip fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
+| `baseFeeVaultRecipient` | L1 or L2 Address | Address that the base fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
+| `l1FeeVaultRecipient` | L1 or L2 Address | Address that the L1 data fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
+| `sequencerFeeVaultRecipient` | L1 or L2 Address | Address that the tip fees from all transactions on the L2 can be withdrawn to. | It is recommended to have a single admin account to retain a common security model. |
 
+### Minimum Fee Withdrawal Amounts
+
+| Key | Type | Description | Default value |
+| --- | --- | --- | --- |
+| `baseFeeVaultMinimumWithdrawalAmount` | Number in wei | The minimum amount of funds the `BaseFeeVault` contract must have for a fee withdrawal. | 10 ether |
+| `l1FeeVaultMinimumWithdrawalAmount` | Number in wei | The minimum amount of funds the `L1FeeVault` contract must have for a fee withdrawal. | 10 ether |
+| `sequencerFeeVaultWithdrawalAmount` | Number in wei | The minimum amount of funds the `SequencerFeeVault` contract must have for a fee withdrawal. | 10 ether |
+
+### Withdrawal Network
+
+| Key | Type | Description | Default value |
+| --- | --- | --- | --- |
+| `baseFeeVaultWithdrawalNetwork` | Number representing network enum | A value of `0` will withdraw funds to the recient address on L1 and a value of `1` will withdraw funds to the recient address on L2. |
+| `l1FeeVaultWithdrawalNetwork` | Number representing network enum | A value of `0` will withdraw funds to the recient address on L1 and a value of `1` will withdraw funds to the recient address on L2. |
+| `sequencerFeeVaultWithdrawalNetwork` | Number representing network enum | A value of `0` will withdraw funds to the recient address on L1 and a value of `1` will withdraw funds to the recient address on L2. |
 
 ### Misc.
 
@@ -50,7 +65,7 @@ These fields apply to L2 blocks: Their timing, when do they need to be written t
 
 | Key | Type | Description | Default value |
 | --- | --- | --- | --- |
-| `l2BlockTime` | Number of seconds | Number of seconds between each L2 block. | 2 |
+| `l2BlockTime` | Number of seconds | Number of seconds between each L2 block. Must be <= L1 block time (12 on mainnet and Goerli) | 2 |
 | `maxSequencerDrift` | Number of seconds | How far the L2 timestamp can differ from the actual L1 timestamp | 600 (10 minutes) |
 | `sequencerWindowSize` | Number of blocks | Maximum number of L1 blocks that a Sequencer can wait to incorporate the information in a specific L1 block. For example, if the window is `10` then the information in L1 block `n` must be incorporated by L1 block `n+10`. | 3600 (12 hours) |
 | `channelTimeout` | Number of blocks | Maximum number of L1 blocks that a transaction channel frame can be considered valid. A transaction channel frame is a chunk of a compressed batch of transactions. After the timeout, the frame is dropped. | 300 (1 hour) |

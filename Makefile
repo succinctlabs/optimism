@@ -12,8 +12,8 @@ build-ts: submodules
 	if [ -n "$$NVM_DIR" ]; then \
 		. $$NVM_DIR/nvm.sh && nvm use; \
 	fi
-	yarn install
-	yarn build
+	pnpm install
+	pnpm build
 .PHONY: build-ts
 
 submodules:
@@ -32,6 +32,14 @@ op-node:
 	make -C ./op-node op-node
 .PHONY: op-node
 
+generate-mocks-op-node:
+	make -C ./op-node generate-mocks
+.PHONY: generate-mocks-op-node
+
+generate-mocks-op-service:
+	make -C ./op-service generate-mocks
+.PHONY: generate-mocks-op-service
+
 op-batcher:
 	make -C ./op-batcher op-batcher
 .PHONY: op-batcher
@@ -39,6 +47,14 @@ op-batcher:
 op-proposer:
 	make -C ./op-proposer op-proposer
 .PHONY: op-proposer
+
+op-challenger:
+	make -C ./op-challenger op-challenger
+.PHONY: op-challenger
+
+op-program:
+	make -C ./op-program op-program
+.PHONY: op-program
 
 mod-tidy:
 	# Below GOPRIVATE line allows mod-tidy to be run immediately after
@@ -58,11 +74,11 @@ nuke: clean devnet-clean
 .PHONY: nuke
 
 devnet-up:
-	@bash ./ops-bedrock/devnet-up.sh
+	PYTHONPATH=./bedrock-devnet python3 ./bedrock-devnet/main.py --monorepo-dir=.
 .PHONY: devnet-up
 
 devnet-up-deploy:
-	PYTHONPATH=./bedrock-devnet python3 ./bedrock-devnet/main.py --monorepo-dir=.
+	PYTHONPATH=./bedrock-devnet python3 ./bedrock-devnet/main.py --monorepo-dir=. --deploy
 .PHONY: devnet-up-deploy
 
 devnet-down:
@@ -86,7 +102,7 @@ test-unit:
 	make -C ./op-proposer test
 	make -C ./op-batcher test
 	make -C ./op-e2e test
-	yarn test
+	pnpm test
 .PHONY: test-unit
 
 test-integration:
@@ -112,3 +128,6 @@ tag-bedrock-go-modules:
 update-op-geth:
 	./ops/scripts/update-op-geth.py
 .PHONY: update-op-geth
+
+bedrock-markdown-links:
+	docker run --init -it -v `pwd`:/input lycheeverse/lychee --verbose --no-progress --exclude-loopback --exclude twitter.com --exclude explorer.optimism.io --exclude-mail /input/README.md "/input/specs/**/*.md"

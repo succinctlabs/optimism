@@ -10,26 +10,28 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 )
 
-// Channel In Reader reads a batch from the channel
+// ChannelInReader reads a batch from the channel
 // This does decompression and limits the max RLP size
 // This is a pure function from the channel, but each channel (or channel fragment)
 // must be tagged with an L1 inclusion block to be passed to the batch queue.
-
 type ChannelInReader struct {
 	log log.Logger
 
 	nextBatchFn func() (BatchWithL1InclusionBlock, error)
 
 	prev *ChannelBank
+
+	metrics Metrics
 }
 
-var _ ResetableStage = (*ChannelInReader)(nil)
+var _ ResettableStage = (*ChannelInReader)(nil)
 
 // NewChannelInReader creates a ChannelInReader, which should be Reset(origin) before use.
-func NewChannelInReader(log log.Logger, prev *ChannelBank) *ChannelInReader {
+func NewChannelInReader(log log.Logger, prev *ChannelBank, metrics Metrics) *ChannelInReader {
 	return &ChannelInReader{
-		log:  log,
-		prev: prev,
+		log:     log,
+		prev:    prev,
+		metrics: metrics,
 	}
 }
 
@@ -41,6 +43,7 @@ func (cr *ChannelInReader) Origin() eth.L1BlockRef {
 func (cr *ChannelInReader) WriteChannel(data []byte) error {
 	if f, err := BatchReader(bytes.NewBuffer(data), cr.Origin()); err == nil {
 		cr.nextBatchFn = f
+		cr.metrics.RecordChannelInputBytes(len(data))
 		return nil
 	} else {
 		cr.log.Error("Error creating batch reader from channel data", "err", err)

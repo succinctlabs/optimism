@@ -79,7 +79,7 @@ func MakeDeployParams(t require.TestingT, tp *TestParams) *DeployParams {
 		L1GenesisBlockNonce:         0,
 		CliqueSignerAddress:         common.Address{}, // proof of stake, no clique
 		L1GenesisBlockTimestamp:     hexutil.Uint64(time.Now().Unix()),
-		L1GenesisBlockGasLimit:      15_000_000,
+		L1GenesisBlockGasLimit:      30_000_000,
 		L1GenesisBlockDifficulty:    uint64ToBig(1),
 		L1GenesisBlockMixHash:       common.Hash{},
 		L1GenesisBlockCoinbase:      common.Address{},
@@ -90,7 +90,7 @@ func MakeDeployParams(t require.TestingT, tp *TestParams) *DeployParams {
 		FinalizationPeriodSeconds:   12,
 
 		L2GenesisBlockNonce:         0,
-		L2GenesisBlockGasLimit:      15_000_000,
+		L2GenesisBlockGasLimit:      30_000_000,
 		L2GenesisBlockDifficulty:    uint64ToBig(0),
 		L2GenesisBlockMixHash:       common.Hash{},
 		L2GenesisBlockNumber:        0,
@@ -102,9 +102,15 @@ func MakeDeployParams(t require.TestingT, tp *TestParams) *DeployParams {
 		GasPriceOracleScalar:        1000_000,
 		DeploymentWaitConfirmations: 1,
 
-		SequencerFeeVaultRecipient: common.Address{19: 1},
-		BaseFeeVaultRecipient:      common.Address{19: 2},
-		L1FeeVaultRecipient:        common.Address{19: 3},
+		SequencerFeeVaultRecipient:               common.Address{19: 1},
+		BaseFeeVaultRecipient:                    common.Address{19: 2},
+		L1FeeVaultRecipient:                      common.Address{19: 3},
+		BaseFeeVaultMinimumWithdrawalAmount:      uint64ToBig(1000_000_000), // 1 gwei
+		L1FeeVaultMinimumWithdrawalAmount:        uint64ToBig(1000_000_000), // 1 gwei
+		SequencerFeeVaultMinimumWithdrawalAmount: uint64ToBig(1000_000_000), // 1 gwei
+		BaseFeeVaultWithdrawalNetwork:            uint8(1),                  // L2 withdrawal network
+		L1FeeVaultWithdrawalNetwork:              uint8(1),                  // L2 withdrawal network
+		SequencerFeeVaultWithdrawalNetwork:       uint8(1),                  // L2 withdrawal network
 
 		EIP1559Elasticity:  10,
 		EIP1559Denominator: 50,
@@ -169,7 +175,7 @@ func Setup(t require.TestingT, deployParams *DeployParams, alloc *AllocParams) *
 	if alloc.PrefundTestUsers {
 		for _, addr := range deployParams.Addresses.All() {
 			l1Genesis.Alloc[addr] = core.GenesisAccount{
-				Balance: Ether(1e6),
+				Balance: Ether(1e12),
 			}
 		}
 	}
@@ -179,12 +185,12 @@ func Setup(t require.TestingT, deployParams *DeployParams, alloc *AllocParams) *
 
 	l1Block := l1Genesis.ToBlock()
 
-	l2Genesis, err := genesis.BuildL2DeveloperGenesis(deployConf, l1Block)
+	l2Genesis, err := genesis.BuildL2Genesis(deployConf, l1Block)
 	require.NoError(t, err, "failed to create l2 genesis")
 	if alloc.PrefundTestUsers {
 		for _, addr := range deployParams.Addresses.All() {
 			l2Genesis.Alloc[addr] = core.GenesisAccount{
-				Balance: Ether(1e6),
+				Balance: Ether(1e12),
 			}
 		}
 	}

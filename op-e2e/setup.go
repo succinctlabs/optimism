@@ -3,14 +3,28 @@ package op_e2e
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path"
 	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ethereum-optimism/optimism/op-node/p2p/store"
+	"github.com/ethereum-optimism/optimism/op-service/clock"
+	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+
+	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -24,6 +38,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bss "github.com/ethereum-optimism/optimism/op-batcher/batcher"
+	"github.com/ethereum-optimism/optimism/op-batcher/compressor"
+	batchermetrics "github.com/ethereum-optimism/optimism/op-batcher/metrics"
 	"github.com/ethereum-optimism/optimism/op-bindings/predeploys"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/genesis"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils"
@@ -36,13 +52,28 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/rollup/driver"
 	"github.com/ethereum-optimism/optimism/op-node/sources"
 	"github.com/ethereum-optimism/optimism/op-node/testlog"
+	proposermetrics "github.com/ethereum-optimism/optimism/op-proposer/metrics"
 	l2os "github.com/ethereum-optimism/optimism/op-proposer/proposer"
 	oplog "github.com/ethereum-optimism/optimism/op-service/log"
+	"github.com/ethereum-optimism/optimism/op-service/txmgr"
 )
 
 var (
 	testingJWTSecret = [32]byte{123}
 )
+
+func newTxMgrConfig(l1Addr string, privKey *ecdsa.PrivateKey) txmgr.CLIConfig {
+	return txmgr.CLIConfig{
+		L1RPCURL:                  l1Addr,
+		PrivateKey:                hexPriv(privKey),
+		NumConfirmations:          1,
+		SafeAbortNonceTooLowCount: 3,
+		ResubmissionTimeout:       3 * time.Second,
+		ReceiptQueryInterval:      50 * time.Millisecond,
+		NetworkTimeout:            2 * time.Second,
+		TxNotInMempoolTimeout:     2 * time.Minute,
+	}
+}
 
 func DefaultSystemConfig(t *testing.T) SystemConfig {
 	secrets, err := e2eutils.DefaultMnemonicConfig.Secrets()
@@ -52,7 +83,7 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 	deployConfig := &genesis.DeployConfig{
 		L1ChainID:   900,
 		L2ChainID:   901,
-		L2BlockTime: 2,
+		L2BlockTime: 1,
 
 		FinalizationPeriodSeconds: 60 * 60 * 24,
 		MaxSequencerDrift:         10,
@@ -71,9 +102,9 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 
 		L1BlockTime:                 2,
 		L1GenesisBlockNonce:         4660,
-		CliqueSignerAddress:         addresses.CliqueSigner,
+		CliqueSignerAddress:         common.Address{}, // op-e2e used to run Clique, but now uses fake Proof of Stake.
 		L1GenesisBlockTimestamp:     hexutil.Uint64(time.Now().Unix()),
-		L1GenesisBlockGasLimit:      8_000_000,
+		L1GenesisBlockGasLimit:      30_000_000,
 		L1GenesisBlockDifficulty:    uint642big(1),
 		L1GenesisBlockMixHash:       common.Hash{},
 		L1GenesisBlockCoinbase:      common.Address{},
@@ -83,7 +114,7 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 		L1GenesisBlockBaseFeePerGas: uint642big(7),
 
 		L2GenesisBlockNonce:         0,
-		L2GenesisBlockGasLimit:      8_000_000,
+		L2GenesisBlockGasLimit:      30_000_000,
 		L2GenesisBlockDifficulty:    uint642big(1),
 		L2GenesisBlockMixHash:       common.Hash{},
 		L2GenesisBlockNumber:        0,
@@ -94,9 +125,15 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 		GasPriceOracleOverhead: 2100,
 		GasPriceOracleScalar:   1_000_000,
 
-		SequencerFeeVaultRecipient: common.Address{19: 1},
-		BaseFeeVaultRecipient:      common.Address{19: 2},
-		L1FeeVaultRecipient:        common.Address{19: 3},
+		SequencerFeeVaultRecipient:               common.Address{19: 1},
+		BaseFeeVaultRecipient:                    common.Address{19: 2},
+		L1FeeVaultRecipient:                      common.Address{19: 3},
+		BaseFeeVaultMinimumWithdrawalAmount:      uint642big(1000_000_000), // 1 gwei
+		L1FeeVaultMinimumWithdrawalAmount:        uint642big(1000_000_000), // 1 gwei
+		SequencerFeeVaultMinimumWithdrawalAmount: uint642big(1000_000_000), // 1 gwei
+		BaseFeeVaultWithdrawalNetwork:            uint8(1),                 // L2 withdrawal network
+		L1FeeVaultWithdrawalNetwork:              uint8(1),                 // L2 withdrawal network
+		SequencerFeeVaultWithdrawalNetwork:       uint8(1),                 // L2 withdrawal network
 
 		DeploymentWaitConfirmations: 1,
 
@@ -133,6 +170,7 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 					EnableAdmin: true,
 				},
 				L1EpochPollInterval: time.Second * 4,
+				ConfigPersistence:   &rollupNode.DisabledConfigPersistence{},
 			},
 			"verifier": {
 				Driver: driver.Config{
@@ -141,6 +179,7 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 					SequencerEnabled:   false,
 				},
 				L1EpochPollInterval: time.Second * 4,
+				ConfigPersistence:   &rollupNode.DisabledConfigPersistence{},
 			},
 		},
 		Loggers: map[string]log.Logger{
@@ -149,9 +188,10 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 			"batcher":   testlog.Logger(t, log.LvlInfo).New("role", "batcher"),
 			"proposer":  testlog.Logger(t, log.LvlCrit).New("role", "proposer"),
 		},
-		GethOptions:           map[string][]GethOption{},
-		P2PTopology:           nil, // no P2P connectivity by default
-		NonFinalizedProposals: false,
+		GethOptions:                map[string][]GethOption{},
+		P2PTopology:                nil, // no P2P connectivity by default
+		NonFinalizedProposals:      false,
+		BatcherTargetL1TxSizeBytes: 100_000,
 	}
 }
 
@@ -190,14 +230,25 @@ type SystemConfig struct {
 	// Any node name not in the topology will not have p2p enabled.
 	P2PTopology map[string][]string
 
+	// Enables req-resp sync in the P2P nodes
+	P2PReqRespSync bool
+
 	// If the proposer can make proposals for L2 blocks derived from L1 blocks which are not finalized on L1 yet.
 	NonFinalizedProposals bool
+
+	// Explicitly disable batcher, for tests that rely on unsafe L2 payloads
+	DisableBatcher bool
+
+	// Target L1 tx size for the batcher transactions
+	BatcherTargetL1TxSizeBytes uint64
 }
 
 type System struct {
 	cfg SystemConfig
 
 	RollupConfig *rollup.Config
+
+	L2GenesisCfg *core.Genesis
 
 	// Connections to running nodes
 	Nodes             map[string]*node.Node
@@ -209,12 +260,18 @@ type System struct {
 	Mocknet           mocknet.Mocknet
 }
 
+func (sys *System) NodeEndpoint(name string) string {
+	return selectEndpoint(sys.Nodes[name])
+}
+
 func (sys *System) Close() {
 	if sys.L2OutputSubmitter != nil {
 		sys.L2OutputSubmitter.Stop()
 	}
 	if sys.BatchSubmitter != nil {
-		sys.BatchSubmitter.StopIfRunning()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		sys.BatchSubmitter.StopIfRunning(ctx)
 	}
 
 	for _, node := range sys.RollupNodes {
@@ -304,10 +361,11 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 	}
 
 	l1Block := l1Genesis.ToBlock()
-	l2Genesis, err := genesis.BuildL2DeveloperGenesis(cfg.DeployConfig, l1Block)
+	l2Genesis, err := genesis.BuildL2Genesis(cfg.DeployConfig, l1Block)
 	if err != nil {
 		return nil, err
 	}
+	sys.L2GenesisCfg = l2Genesis
 	for addr, amount := range cfg.Premine {
 		if existing, ok := l2Genesis.Alloc[addr]; ok {
 			l2Genesis.Alloc[addr] = core.GenesisAccount{
@@ -376,11 +434,6 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 		didErrAfterStart = true
 		return nil, err
 	}
-	err = l1Backend.StartMining(1)
-	if err != nil {
-		didErrAfterStart = true
-		return nil, err
-	}
 	for name, node := range sys.Nodes {
 		if name == "l1" {
 			continue
@@ -395,26 +448,13 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 	// Configure connections to L1 and L2 for rollup nodes.
 	// TODO: refactor testing to use in-process rpc connections instead of websockets.
 
-	l1EndpointConfig := l1Node.WSEndpoint()
-	useHTTP := os.Getenv("OP_E2E_USE_HTTP") == "true"
-	if useHTTP {
-		log.Info("using HTTP client")
-		l1EndpointConfig = l1Node.HTTPEndpoint()
-	}
-
 	for name, rollupCfg := range cfg.Nodes {
-		l2EndpointConfig := sys.Nodes[name].WSAuthEndpoint()
-		if useHTTP {
-			l2EndpointConfig = sys.Nodes[name].HTTPAuthEndpoint()
-		}
-		rollupCfg.L1 = &rollupNode.L1EndpointConfig{
-			L1NodeAddr: l1EndpointConfig,
-			L1TrustRPC: false,
-			L1RPCKind:  sources.RPCKindBasic,
-		}
-		rollupCfg.L2 = &rollupNode.L2EndpointConfig{
-			L2EngineAddr:      l2EndpointConfig,
-			L2EngineJWTSecret: cfg.JWTSecret,
+		configureL1(rollupCfg, l1Node)
+		configureL2(rollupCfg, sys.Nodes[name], cfg.JWTSecret)
+
+		rollupCfg.L2Sync = &rollupNode.PreparedL2SyncEndpoint{
+			Client:   nil,
+			TrustRPC: false,
 		}
 	}
 
@@ -451,7 +491,7 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 			if p, ok := p2pNodes[name]; ok {
 				return p, nil
 			}
-			h, err := sys.Mocknet.GenPeer()
+			h, err := sys.newMockNetPeer()
 			if err != nil {
 				return nil, fmt.Errorf("failed to init p2p host for node %s", name)
 			}
@@ -463,9 +503,10 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 			// TODO we can enable discv5 in the testnodes to test discovery of new peers.
 			// Would need to mock though, and the discv5 implementation does not provide nice mocks here.
 			p := &p2p.Prepared{
-				HostP2P:   h,
-				LocalNode: nil,
-				UDPv5:     nil,
+				HostP2P:           h,
+				LocalNode:         nil,
+				UDPv5:             nil,
+				EnableReqRespSync: cfg.P2PReqRespSync,
 			}
 			p2pNodes[name] = p
 			return p, nil
@@ -507,6 +548,9 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 		nodeConfig := cfg.Nodes[name]
 		c := *nodeConfig // copy
 		c.Rollup = makeRollupConfig()
+		if err := c.LoadPersisted(cfg.Loggers[name]); err != nil {
+			return nil, err
+		}
 
 		if p, ok := p2pNodes[name]; ok {
 			c.P2P = p
@@ -558,20 +602,17 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 
 	// L2Output Submitter
 	sys.L2OutputSubmitter, err = l2os.NewL2OutputSubmitterFromCLIConfig(l2os.CLIConfig{
-		L1EthRpc:                  sys.Nodes["l1"].WSEndpoint(),
-		RollupRpc:                 sys.RollupNodes["sequencer"].HTTPEndpoint(),
-		L2OOAddress:               predeploys.DevL2OutputOracleAddr.String(),
-		PollInterval:              50 * time.Millisecond,
-		NumConfirmations:          1,
-		ResubmissionTimeout:       3 * time.Second,
-		SafeAbortNonceTooLowCount: 3,
-		AllowNonFinalized:         cfg.NonFinalizedProposals,
+		L1EthRpc:          sys.Nodes["l1"].WSEndpoint(),
+		RollupRpc:         sys.RollupNodes["sequencer"].HTTPEndpoint(),
+		L2OOAddress:       predeploys.DevL2OutputOracleAddr.String(),
+		PollInterval:      50 * time.Millisecond,
+		TxMgrConfig:       newTxMgrConfig(sys.Nodes["l1"].WSEndpoint(), cfg.Secrets.Proposer),
+		AllowNonFinalized: cfg.NonFinalizedProposals,
 		LogConfig: oplog.CLIConfig{
 			Level:  "info",
 			Format: "text",
 		},
-		PrivateKey: hexPriv(cfg.Secrets.Proposer),
-	}, sys.cfg.Loggers["proposer"])
+	}, sys.cfg.Loggers["proposer"], proposermetrics.NoopMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("unable to setup l2 output submitter: %w", err)
 	}
@@ -582,34 +623,115 @@ func (cfg SystemConfig) Start(_opts ...SystemConfigOption) (*System, error) {
 
 	// Batch Submitter
 	sys.BatchSubmitter, err = bss.NewBatchSubmitterFromCLIConfig(bss.CLIConfig{
-		L1EthRpc:                  sys.Nodes["l1"].WSEndpoint(),
-		L2EthRpc:                  sys.Nodes["sequencer"].WSEndpoint(),
-		RollupRpc:                 sys.RollupNodes["sequencer"].HTTPEndpoint(),
-		MaxChannelDuration:        1,
-		MaxL1TxSize:               120_000,
-		TargetL1TxSize:            100_000,
-		TargetNumFrames:           1,
-		ApproxComprRatio:          0.4,
-		SubSafetyMargin:           4,
-		PollInterval:              50 * time.Millisecond,
-		NumConfirmations:          1,
-		ResubmissionTimeout:       5 * time.Second,
-		SafeAbortNonceTooLowCount: 3,
+		L1EthRpc:               sys.Nodes["l1"].WSEndpoint(),
+		L2EthRpc:               sys.Nodes["sequencer"].WSEndpoint(),
+		RollupRpc:              sys.RollupNodes["sequencer"].HTTPEndpoint(),
+		MaxPendingTransactions: 0,
+		MaxChannelDuration:     1,
+		MaxL1TxSize:            120_000,
+		CompressorConfig: compressor.CLIConfig{
+			TargetL1TxSizeBytes: cfg.BatcherTargetL1TxSizeBytes,
+			TargetNumFrames:     1,
+			ApproxComprRatio:    0.4,
+		},
+		SubSafetyMargin: 4,
+		PollInterval:    50 * time.Millisecond,
+		TxMgrConfig:     newTxMgrConfig(sys.Nodes["l1"].WSEndpoint(), cfg.Secrets.Batcher),
 		LogConfig: oplog.CLIConfig{
 			Level:  "info",
 			Format: "text",
 		},
-		PrivateKey: hexPriv(cfg.Secrets.Batcher),
-	}, sys.cfg.Loggers["batcher"])
+	}, sys.cfg.Loggers["batcher"], batchermetrics.NoopMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup batch submitter: %w", err)
 	}
 
-	if err := sys.BatchSubmitter.Start(); err != nil {
-		return nil, fmt.Errorf("unable to start batch submitter: %w", err)
+	// Batcher may be enabled later
+	if !sys.cfg.DisableBatcher {
+		if err := sys.BatchSubmitter.Start(); err != nil {
+			return nil, fmt.Errorf("unable to start batch submitter: %w", err)
+		}
 	}
 
 	return sys, nil
+}
+
+// IP6 range that gets blackholed (in case our traffic ever makes it out onto
+// the internet).
+var blackholeIP6 = net.ParseIP("100::")
+
+// mocknet doesn't allow us to add a peerstore without fully creating the peer ourselves
+func (sys *System) newMockNetPeer() (host.Host, error) {
+	sk, _, err := ic.GenerateECDSAKeyPair(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	id, err := peer.IDFromPrivateKey(sk)
+	if err != nil {
+		return nil, err
+	}
+	suffix := id
+	if len(id) > 8 {
+		suffix = id[len(id)-8:]
+	}
+	ip := append(net.IP{}, blackholeIP6...)
+	copy(ip[net.IPv6len-len(suffix):], suffix)
+	a, err := ma.NewMultiaddr(fmt.Sprintf("/ip6/%s/tcp/4242", ip))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create test multiaddr: %w", err)
+	}
+	p, err := peer.IDFromPublicKey(sk.GetPublic())
+	if err != nil {
+		return nil, err
+	}
+
+	ps, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return nil, err
+	}
+	ps.AddAddr(p, a, peerstore.PermanentAddrTTL)
+	_ = ps.AddPrivKey(p, sk)
+	_ = ps.AddPubKey(p, sk.GetPublic())
+
+	ds := sync.MutexWrap(ds.NewMapDatastore())
+	eps, err := store.NewExtendedPeerstore(context.Background(), log.Root(), clock.SystemClock, ps, ds, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	return sys.Mocknet.AddPeerWithPeerstore(p, eps)
+}
+
+func selectEndpoint(node *node.Node) string {
+	useHTTP := os.Getenv("OP_E2E_USE_HTTP") == "true"
+	if useHTTP {
+		log.Info("using HTTP client")
+		return node.HTTPEndpoint()
+	}
+	return node.WSEndpoint()
+}
+
+func configureL1(rollupNodeCfg *rollupNode.Config, l1Node *node.Node) {
+	l1EndpointConfig := selectEndpoint(l1Node)
+	rollupNodeCfg.L1 = &rollupNode.L1EndpointConfig{
+		L1NodeAddr:       l1EndpointConfig,
+		L1TrustRPC:       false,
+		L1RPCKind:        sources.RPCKindBasic,
+		RateLimit:        0,
+		BatchSize:        20,
+		HttpPollInterval: time.Millisecond * 100,
+	}
+}
+func configureL2(rollupNodeCfg *rollupNode.Config, l2Node *node.Node, jwtSecret [32]byte) {
+	useHTTP := os.Getenv("OP_E2E_USE_HTTP") == "true"
+	l2EndpointConfig := l2Node.WSAuthEndpoint()
+	if useHTTP {
+		l2EndpointConfig = l2Node.HTTPAuthEndpoint()
+	}
+
+	rollupNodeCfg.L2 = &rollupNode.L2EndpointConfig{
+		L2EngineAddr:      l2EndpointConfig,
+		L2EngineJWTSecret: jwtSecret,
+	}
 }
 
 func (cfg SystemConfig) L1ChainIDBig() *big.Int {

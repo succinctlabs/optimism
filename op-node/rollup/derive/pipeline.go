@@ -15,6 +15,7 @@ type Metrics interface {
 	RecordL1Ref(name string, ref eth.L1BlockRef)
 	RecordL2Ref(name string, ref eth.L2BlockRef)
 	RecordUnsafePayloadsBuffer(length uint64, memSize uint64, next eth.BlockID)
+	RecordChannelInputBytes(inputCompresedBytes int)
 }
 
 type L1Fetcher interface {
@@ -33,7 +34,7 @@ type ResettableEngineControl interface {
 	Reset()
 }
 
-type ResetableStage interface {
+type ResettableStage interface {
 	// Reset resets a pull stage. `base` refers to the L1 Block Reference to reset to, with corresponding configuration.
 	Reset(ctx context.Context, base eth.L1BlockRef, baseCfg eth.SystemConfig) error
 }
@@ -51,7 +52,7 @@ type EngineQueueStage interface {
 
 	Finalize(l1Origin eth.L1BlockRef)
 	AddUnsafePayload(payload *eth.ExecutionPayload)
-	GetUnsafeQueueGap(expectedNumber uint64) (uint64, uint64)
+	UnsafeL2SyncTarget() eth.L2BlockRef
 	Step(context.Context) error
 }
 
@@ -64,7 +65,7 @@ type DerivationPipeline struct {
 	// Index of the stage that is currently being reset.
 	// >= len(stages) if no additional resetting is required
 	resetting int
-	stages    []ResetableStage
+	stages    []ResettableStage
 
 	// Special stages to keep track of
 	traversal *L1Traversal
@@ -82,7 +83,7 @@ func NewDerivationPipeline(log log.Logger, cfg *rollup.Config, l1Fetcher L1Fetch
 	l1Src := NewL1Retrieval(log, dataSrc, l1Traversal)
 	frameQueue := NewFrameQueue(log, l1Src)
 	bank := NewChannelBank(log, cfg, frameQueue, l1Fetcher)
-	chInReader := NewChannelInReader(log, bank)
+	chInReader := NewChannelInReader(log, bank, metrics)
 	batchQueue := NewBatchQueue(log, cfg, chInReader)
 	attrBuilder := NewFetchingAttributesBuilder(cfg, l1Fetcher, engine)
 	attributesQueue := NewAttributesQueue(log, cfg, attrBuilder, batchQueue)
@@ -93,7 +94,7 @@ func NewDerivationPipeline(log log.Logger, cfg *rollup.Config, l1Fetcher L1Fetch
 	// Reset from engine queue then up from L1 Traversal. The stages do not talk to each other during
 	// the reset, but after the engine queue, this is the order in which the stages could talk to each other.
 	// Note: The engine queue stage is the only reset that can fail.
-	stages := []ResetableStage{eng, l1Traversal, l1Src, frameQueue, bank, chInReader, batchQueue, attributesQueue}
+	stages := []ResettableStage{eng, l1Traversal, l1Src, frameQueue, bank, chInReader, batchQueue, attributesQueue}
 
 	return &DerivationPipeline{
 		log:       log,
@@ -167,10 +168,9 @@ func (dp *DerivationPipeline) AddUnsafePayload(payload *eth.ExecutionPayload) {
 	dp.eng.AddUnsafePayload(payload)
 }
 
-// GetUnsafeQueueGap retrieves the current [start, end] range of the gap between the tip of the unsafe priority queue and the unsafe head.
-// If there is no gap, the start and end will be 0.
-func (dp *DerivationPipeline) GetUnsafeQueueGap(expectedNumber uint64) (uint64, uint64) {
-	return dp.eng.GetUnsafeQueueGap(expectedNumber)
+// UnsafeL2SyncTarget retrieves the first queued-up L2 unsafe payload, or a zeroed reference if there is none.
+func (dp *DerivationPipeline) UnsafeL2SyncTarget() eth.L2BlockRef {
+	return dp.eng.UnsafeL2SyncTarget()
 }
 
 // Step tries to progress the buffer.

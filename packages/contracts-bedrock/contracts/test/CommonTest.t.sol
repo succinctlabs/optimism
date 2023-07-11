@@ -15,6 +15,8 @@ import { OptimismMintableERC20 } from "../universal/OptimismMintableERC20.sol";
 import { OptimismPortal } from "../L1/OptimismPortal.sol";
 import { L1CrossDomainMessenger } from "../L1/L1CrossDomainMessenger.sol";
 import { L2CrossDomainMessenger } from "../L2/L2CrossDomainMessenger.sol";
+import { SequencerFeeVault } from "../L2/SequencerFeeVault.sol";
+import { FeeVault } from "../universal/FeeVault.sol";
 import { AddressAliasHelper } from "../vendor/AddressAliasHelper.sol";
 import { LegacyERC20ETH } from "../legacy/LegacyERC20ETH.sol";
 import { Predeploys } from "../libraries/Predeploys.sol";
@@ -28,6 +30,9 @@ import { L1ChugSplashProxy } from "../legacy/L1ChugSplashProxy.sol";
 import { IL1ChugSplashDeployer } from "../legacy/L1ChugSplashProxy.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { LegacyMintableERC20 } from "../legacy/LegacyMintableERC20.sol";
+import { SystemConfig } from "../L1/SystemConfig.sol";
+import { ResourceMetering } from "../L1/ResourceMetering.sol";
+import { Constants } from "../libraries/Constants.sol";
 
 contract CommonTest is Test {
     address alice = address(128);
@@ -119,6 +124,26 @@ contract L2OutputOracle_Initializer is CommonTest {
         vm.warp(oracle.computeL2Timestamp(_nextBlockNumber) + 1);
     }
 
+    /// @dev Helper function to propose an output.
+    function proposeAnotherOutput() public {
+        bytes32 proposedOutput2 = keccak256(abi.encode());
+        uint256 nextBlockNumber = oracle.nextBlockNumber();
+        uint256 nextOutputIndex = oracle.nextOutputIndex();
+        warpToProposeTime(nextBlockNumber);
+        uint256 proposedNumber = oracle.latestBlockNumber();
+
+        // Ensure the submissionInterval is enforced
+        assertEq(nextBlockNumber, proposedNumber + submissionInterval);
+
+        vm.roll(nextBlockNumber + 1);
+
+        vm.expectEmit(true, true, true, true);
+        emit OutputProposed(proposedOutput2, nextOutputIndex, nextBlockNumber, block.timestamp);
+
+        vm.prank(proposer);
+        oracle.proposeL2Output(proposedOutput2, nextBlockNumber, 0, 0);
+    }
+
     function setUp() public virtual override {
         super.setUp();
         guardian = makeAddr("guardian");
@@ -158,6 +183,7 @@ contract Portal_Initializer is L2OutputOracle_Initializer {
     // Test target
     OptimismPortal internal opImpl;
     OptimismPortal internal op;
+    SystemConfig systemConfig;
 
     event WithdrawalFinalized(bytes32 indexed withdrawalHash, bool success);
     event WithdrawalProven(
@@ -169,7 +195,25 @@ contract Portal_Initializer is L2OutputOracle_Initializer {
     function setUp() public virtual override {
         super.setUp();
 
-        opImpl = new OptimismPortal({ _l2Oracle: oracle, _guardian: guardian, _paused: true });
+        ResourceMetering.ResourceConfig memory config = Constants.DEFAULT_RESOURCE_CONFIG();
+
+        systemConfig = new SystemConfig({
+            _owner: address(1),
+            _overhead: 0,
+            _scalar: 10000,
+            _batcherHash: bytes32(0),
+            _gasLimit: 30_000_000,
+            _unsafeBlockSigner: address(0),
+            _config: config
+        });
+
+        opImpl = new OptimismPortal({
+            _l2Oracle: oracle,
+            _guardian: guardian,
+            _paused: true,
+            _config: systemConfig
+        });
+
         Proxy proxy = new Proxy(multisig);
         vm.prank(multisig);
         proxy.upgradeToAndCall(
@@ -464,6 +508,20 @@ contract ERC721Bridge_Initializer is Messenger_Initializer {
         vm.label(address(L1Bridge), "L1ERC721Bridge");
         vm.label(address(L2Bridge), "L2ERC721Bridge");
     }
+}
+
+contract FeeVault_Initializer is Bridge_Initializer {
+    SequencerFeeVault vault = SequencerFeeVault(payable(Predeploys.SEQUENCER_FEE_WALLET));
+    address constant recipient = address(1024);
+
+    event Withdrawal(uint256 value, address to, address from);
+
+    event Withdrawal(
+        uint256 value,
+        address to,
+        address from,
+        FeeVault.WithdrawalNetwork withdrawalNetwork
+    );
 }
 
 contract FFIInterface is Test {

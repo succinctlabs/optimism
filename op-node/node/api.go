@@ -9,7 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 
-	"github.com/ethereum-optimism/optimism/op-bindings/bindings"
 	"github.com/ethereum-optimism/optimism/op-bindings/predeploys"
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -29,6 +28,7 @@ type driverClient interface {
 	ResetDerivationPipeline(context.Context) error
 	StartSequencer(ctx context.Context, blockHash common.Hash) error
 	StopSequencer(context.Context) (common.Hash, error)
+	SequencerActive(context.Context) (bool, error)
 }
 
 type rpcMetrics interface {
@@ -64,6 +64,12 @@ func (n *adminAPI) StopSequencer(ctx context.Context) (common.Hash, error) {
 	recordDur := n.m.RecordRPCServerRequest("admin_stopSequencer")
 	defer recordDur()
 	return n.dr.StopSequencer(ctx)
+}
+
+func (n *adminAPI) SequencerActive(ctx context.Context) (bool, error) {
+	recordDur := n.m.RecordRPCServerRequest("admin_sequencerActive")
+	defer recordDur()
+	return n.dr.SequencerActive(ctx)
 }
 
 type nodeAPI struct {
@@ -115,12 +121,7 @@ func (n *nodeAPI) OutputAtBlock(ctx context.Context, number hexutil.Uint64) (*et
 	}
 
 	var l2OutputRootVersion eth.Bytes32 // it's zero for now
-	l2OutputRoot, err := rollup.ComputeL2OutputRoot(&bindings.TypesOutputRootProof{
-		Version:                  l2OutputRootVersion,
-		StateRoot:                head.Root(),
-		MessagePasserStorageRoot: proof.StorageHash,
-		LatestBlockhash:          head.Hash(),
-	})
+	l2OutputRoot, err := rollup.ComputeL2OutputRootV0(head, proof.StorageHash)
 	if err != nil {
 		n.log.Error("Error computing L2 output root, nil ptr passed to hashing function")
 		return nil, err

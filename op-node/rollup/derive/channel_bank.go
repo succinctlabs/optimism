@@ -39,7 +39,7 @@ type ChannelBank struct {
 	fetcher L1Fetcher
 }
 
-var _ ResetableStage = (*ChannelBank)(nil)
+var _ ResettableStage = (*ChannelBank)(nil)
 
 // NewChannelBank creates a ChannelBank, which should be Reset(origin) before use.
 func NewChannelBank(log log.Logger, cfg *rollup.Config, prev NextFrameProvider, fetcher L1Fetcher) *ChannelBank {
@@ -74,7 +74,7 @@ func (cb *ChannelBank) prune() {
 	}
 }
 
-// IngestData adds new L1 data to the channel bank.
+// IngestFrame adds new L1 data to the channel bank.
 // Read() should be called repeatedly first, until everything has been read, before adding new data.
 func (cb *ChannelBank) IngestFrame(f Frame) {
 	origin := cb.Origin()
@@ -124,6 +124,7 @@ func (cb *ChannelBank) Read() (data []byte, err error) {
 	if !ch.IsReady() {
 		return nil, io.EOF
 	}
+	cb.log.Info("Reading channel", "channel", first, "frames", len(ch.inputs))
 
 	delete(cb.channels, first)
 	cb.channelQueue = cb.channelQueue[1:]

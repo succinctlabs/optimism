@@ -115,7 +115,7 @@ func TestOutputAtBlock(t *testing.T) {
 	require.NoError(t, server.Start())
 	defer server.Stop()
 
-	client, err := rpcclient.DialRPCClientWithBackoff(context.Background(), log, "http://"+server.Addr().String())
+	client, err := rpcclient.NewRPC(context.Background(), log, "http://"+server.Addr().String(), rpcclient.WithDialBackoff(3))
 	require.NoError(t, err)
 
 	var out *eth.OutputResponse
@@ -147,7 +147,7 @@ func TestVersion(t *testing.T) {
 	assert.NoError(t, server.Start())
 	defer server.Stop()
 
-	client, err := rpcclient.DialRPCClientWithBackoff(context.Background(), log, "http://"+server.Addr().String())
+	client, err := rpcclient.NewRPC(context.Background(), log, "http://"+server.Addr().String(), rpcclient.WithDialBackoff(3))
 	assert.NoError(t, err)
 
 	var out string
@@ -166,6 +166,7 @@ func randomSyncStatus(rng *rand.Rand) *eth.SyncStatus {
 		UnsafeL2:           testutils.RandomL2BlockRef(rng),
 		SafeL2:             testutils.RandomL2BlockRef(rng),
 		FinalizedL2:        testutils.RandomL2BlockRef(rng),
+		UnsafeL2SyncTarget: testutils.RandomL2BlockRef(rng),
 	}
 }
 
@@ -189,7 +190,7 @@ func TestSyncStatus(t *testing.T) {
 	assert.NoError(t, server.Start())
 	defer server.Stop()
 
-	client, err := rpcclient.DialRPCClientWithBackoff(context.Background(), log, "http://"+server.Addr().String())
+	client, err := rpcclient.NewRPC(context.Background(), log, "http://"+server.Addr().String(), rpcclient.WithDialBackoff(3))
 	assert.NoError(t, err)
 
 	var out *eth.SyncStatus
@@ -225,4 +226,8 @@ func (c *mockDriverClient) StartSequencer(ctx context.Context, blockHash common.
 
 func (c *mockDriverClient) StopSequencer(ctx context.Context) (common.Hash, error) {
 	return c.Mock.MethodCalled("StopSequencer").Get(0).(common.Hash), nil
+}
+
+func (c *mockDriverClient) SequencerActive(ctx context.Context) (bool, error) {
+	return c.Mock.MethodCalled("SequencerActive").Get(0).(bool), nil
 }

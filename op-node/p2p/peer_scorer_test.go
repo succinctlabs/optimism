@@ -1,34 +1,35 @@
 package p2p_test
 
 import (
+	"math/big"
 	"testing"
 
-	p2p "github.com/ethereum-optimism/optimism/op-node/p2p"
-	p2pMocks "github.com/ethereum-optimism/optimism/op-node/p2p/mocks"
-	"github.com/ethereum-optimism/optimism/op-node/testlog"
-	log "github.com/ethereum/go-ethereum/log"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	suite "github.com/stretchr/testify/suite"
+
+	log "github.com/ethereum/go-ethereum/log"
+
+	p2p "github.com/ethereum-optimism/optimism/op-node/p2p"
+	p2pMocks "github.com/ethereum-optimism/optimism/op-node/p2p/mocks"
+	"github.com/ethereum-optimism/optimism/op-node/p2p/store"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
+	"github.com/ethereum-optimism/optimism/op-node/testlog"
 )
 
 // PeerScorerTestSuite tests peer parameterization.
 type PeerScorerTestSuite struct {
 	suite.Suite
 
-	// mockConnGater *p2pMocks.ConnectionGater
-	mockGater    *p2pMocks.PeerGater
 	mockStore    *p2pMocks.Peerstore
-	mockMetricer *p2pMocks.GossipMetricer
+	mockMetricer *p2pMocks.ScoreMetrics
 	logger       log.Logger
 }
 
 // SetupTest sets up the test suite.
 func (testSuite *PeerScorerTestSuite) SetupTest() {
-	testSuite.mockGater = &p2pMocks.PeerGater{}
-	// testSuite.mockConnGater = &p2pMocks.ConnectionGater{}
 	testSuite.mockStore = &p2pMocks.Peerstore{}
-	testSuite.mockMetricer = &p2pMocks.GossipMetricer{}
+	testSuite.mockMetricer = &p2pMocks.ScoreMetrics{}
 	testSuite.logger = testlog.Logger(testSuite.T(), log.LvlError)
 }
 
@@ -37,44 +38,23 @@ func TestPeerScorer(t *testing.T) {
 	suite.Run(t, new(PeerScorerTestSuite))
 }
 
-// TestPeerScorerOnConnect ensures we can call the OnConnect method on the peer scorer.
-func (testSuite *PeerScorerTestSuite) TestPeerScorerOnConnect() {
+// TestScorer_SnapshotHook tests running the snapshot hook on the peer scorer.
+func (testSuite *PeerScorerTestSuite) TestScorer_SnapshotHook() {
 	scorer := p2p.NewScorer(
-		testSuite.mockGater,
+		&rollup.Config{L2ChainID: big.NewInt(123)},
 		testSuite.mockStore,
 		testSuite.mockMetricer,
-		testSuite.logger,
-	)
-	scorer.OnConnect()
-}
-
-// TestPeerScorerOnDisconnect ensures we can call the OnDisconnect method on the peer scorer.
-func (testSuite *PeerScorerTestSuite) TestPeerScorerOnDisconnect() {
-	scorer := p2p.NewScorer(
-		testSuite.mockGater,
-		testSuite.mockStore,
-		testSuite.mockMetricer,
-		testSuite.logger,
-	)
-	scorer.OnDisconnect()
-}
-
-// TestSnapshotHook tests running the snapshot hook on the peer scorer.
-func (testSuite *PeerScorerTestSuite) TestSnapshotHook() {
-	scorer := p2p.NewScorer(
-		testSuite.mockGater,
-		testSuite.mockStore,
-		testSuite.mockMetricer,
+		&p2p.NoopApplicationScorer{},
 		testSuite.logger,
 	)
 	inspectFn := scorer.SnapshotHook()
 
-	// Mock the snapshot updates
-	// This doesn't return anything
-	testSuite.mockMetricer.On("RecordPeerScoring", peer.ID("peer1"), float64(-100)).Return(nil)
+	scores := store.PeerScores{Gossip: store.GossipScores{Total: 3}}
+	// Expect updating the peer store
+	testSuite.mockStore.On("SetScore", peer.ID("peer1"), &store.GossipScores{Total: float64(-100)}).Return(scores, nil).Once()
 
-	// Mock the peer gater call
-	testSuite.mockGater.On("Update", peer.ID("peer1"), float64(-100)).Return(nil)
+	// The metricer should then be called with the peer score band map
+	testSuite.mockMetricer.On("SetPeerScores", []store.PeerScores{scores}).Return(nil).Once()
 
 	// Apply the snapshot
 	snapshotMap := map[peer.ID]*pubsub.PeerScoreSnapshot{
@@ -83,30 +63,17 @@ func (testSuite *PeerScorerTestSuite) TestSnapshotHook() {
 		},
 	}
 	inspectFn(snapshotMap)
-}
 
-// TestSnapshotHookBlockPeer tests running the snapshot hook on the peer scorer with a peer score below the threshold.
-// This implies that the peer should be blocked.
-func (testSuite *PeerScorerTestSuite) TestSnapshotHookBlockPeer() {
-	scorer := p2p.NewScorer(
-		testSuite.mockGater,
-		testSuite.mockStore,
-		testSuite.mockMetricer,
-		testSuite.logger,
-	)
-	inspectFn := scorer.SnapshotHook()
+	// Expect updating the peer store
+	testSuite.mockStore.On("SetScore", peer.ID("peer1"), &store.GossipScores{Total: 0}).Return(scores, nil).Once()
 
-	// Mock the snapshot updates
-	// This doesn't return anything
-	testSuite.mockMetricer.On("RecordPeerScoring", peer.ID("peer1"), float64(-101)).Return(nil)
-
-	// Mock the peer gater call
-	testSuite.mockGater.On("Update", peer.ID("peer1"), float64(-101)).Return(nil)
+	// The metricer should then be called with the peer score band map
+	testSuite.mockMetricer.On("SetPeerScores", []store.PeerScores{scores}).Return(nil).Once()
 
 	// Apply the snapshot
-	snapshotMap := map[peer.ID]*pubsub.PeerScoreSnapshot{
+	snapshotMap = map[peer.ID]*pubsub.PeerScoreSnapshot{
 		peer.ID("peer1"): {
-			Score: -101,
+			Score: 0,
 		},
 	}
 	inspectFn(snapshotMap)

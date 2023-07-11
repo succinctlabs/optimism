@@ -107,7 +107,7 @@ To derive the L2 blocks in an epoch `E`, we need the following inputs:
   is the sequencing window size (note that this means that epochs are overlapping). In particular, we need:
   - The [batcher transactions][g-batcher-transaction] included in the sequencing window. These allow us to
       reconstruct [sequencer batches][g-sequencer-batch] containing the transactions to include in L2 blocks (each batch
-      maps to a single L2 block).
+      contains a list of L2 blocks).
     - Note that it is impossible to have a batcher transaction containing a batch relative to epoch `E` on L1 block
         `E`, as the batch must contain the hash of L1 block `E`.
   - The [deposits][g-deposits] made in L1 block `E` (in the form of events emitted by the [deposit
@@ -285,9 +285,7 @@ As for the comment on "security types", it explains the classification of blocks
 
 - [Unsafe L2 blocks][g-unsafe-l2-block]:
 - [Safe L2 blocks][g-safe-l2-block]:
-- Finalized L2 blocks: currently the same as the safe L2 block, but could be changed in the future to refer to block
-  that have been derived from [finalized][g-finalized-l2-head] L1 data, or alternatively, from L1 blacks that are older
-  than the [challenge period].
+- Finalized L2 blocks: refer to block that have been derived from [finalized][g-finalized-l2-head] L1 data.
 
 These security levels map to the `headBlockHash`, `safeBlockHash` and `finalizedBlockHash` values transmitted when
 interacting with the [execution-engine API][exec-engine].
@@ -540,6 +538,9 @@ Frame insertion conditions:
     pruned from the channel-bank) are dropped.
 
 If a frame is closing (`is_last == 1`) any existing higher-numbered frames are removed from the channel.
+
+Note that while this allows channel IDs to be reused once they have been pruned from the channel-bank, it is recommended
+that batcher implementations use unique channel IDs.
 
 ### Channel Reader (Batch Decoding)
 

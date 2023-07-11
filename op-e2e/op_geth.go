@@ -53,7 +53,7 @@ func NewOpGeth(t *testing.T, ctx context.Context, cfg *SystemConfig) (*OpGeth, e
 	require.Nil(t, err)
 	l1Block := l1Genesis.ToBlock()
 
-	l2Genesis, err := genesis.BuildL2DeveloperGenesis(cfg.DeployConfig, l1Block)
+	l2Genesis, err := genesis.BuildL2Genesis(cfg.DeployConfig, l1Block)
 	require.Nil(t, err)
 	l2GenesisBlock := l2Genesis.ToBlock()
 
@@ -75,7 +75,7 @@ func NewOpGeth(t *testing.T, ctx context.Context, cfg *SystemConfig) (*OpGeth, e
 	require.Nil(t, node.Start())
 
 	auth := rpc.WithHTTPAuth(gn.NewJWTAuth(cfg.JWTSecret))
-	l2Node, err := client.NewRPC(ctx, logger, node.WSAuthEndpoint(), auth)
+	l2Node, err := client.NewRPC(ctx, logger, node.WSAuthEndpoint(), client.WithGethRPCOptions(auth))
 	require.Nil(t, err)
 
 	// Finally create the engine client
@@ -100,7 +100,7 @@ func NewOpGeth(t *testing.T, ctx context.Context, cfg *SystemConfig) (*OpGeth, e
 		SystemConfig:  rollupGenesis.SystemConfig,
 		L1ChainConfig: l1Genesis.Config,
 		L2ChainConfig: l2Genesis.Config,
-		L1Head:        l1Block,
+		L1Head:        eth.BlockToInfo(l1Block),
 		L2Head:        genesisPayload,
 	}, nil
 }

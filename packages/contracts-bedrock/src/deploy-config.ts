@@ -111,6 +111,11 @@ interface RequiredDeployConfig {
   l2OutputOracleChallenger: string
 
   /**
+   * Whether to enable governance token predeploy.
+   */
+  enableGovernance: boolean
+
+  /**
    * ERC20 symbol used for the L2 GovernanceToken.
    */
   governanceTokenSymbol: string
@@ -129,6 +134,56 @@ interface RequiredDeployConfig {
    * Output finalization period in seconds.
    */
   finalizationPeriodSeconds: number
+
+  /**
+   * Owner of the ProxyAdmin contract.
+   */
+  proxyAdminOwner: string
+
+  /**
+   * L1 or higher (e.g. L2) address which receives the base fee for the L2 network.
+   */
+  baseFeeVaultRecipient: string
+
+  /**
+   * L1 or higher (e.g. L2) address which receives data fees for the L2 network.
+   */
+  l1FeeVaultRecipient: string
+
+  /**
+   * L1 or higher (e.g. L2) address which receives tip fees for the L2 network.
+   */
+  sequencerFeeVaultRecipient: string
+
+  /**
+   * Minimum withdrawal amount for the BaseFeeVault contract.
+   */
+  baseFeeVaultMinimumWithdrawalAmount: string
+
+  /**
+   * Minimum withdrawal amount for the L1FeeVault contract.
+   */
+  l1FeeVaultMinimumWithdrawalAmount: string
+
+  /**
+   * Minimum withdrawal amount for the SequencerFeeVault contract.
+   */
+  sequencerFeeVaultMinimumWithdrawalAmount: string
+
+  /**
+   * The network that BaseFeeVault contract withdrawals are sent to.
+   */
+  baseFeeVaultWithdrawalNetwork: number
+
+  /**
+   * The network that L1FeeVault contract withdrawals are sent to.
+   */
+  l1FeeVaultWithdrawalNetwork: number
+
+  /**
+   * The network that SequencerFeeVault contract withdrawals are sent to.
+   */
+  sequencerFeeVaultWithdrawalNetwork: number
 }
 
 /**
@@ -146,6 +201,8 @@ interface OptionalL1DeployConfig {
   l1GenesisBlockGasUsed: string
   l1GenesisBlockParentHash: string
   l1GenesisBlockBaseFeePerGas: string
+  faultGameAbsolutePrestate: number
+  faultGameMaxDepth: number
 }
 
 /**
@@ -160,6 +217,10 @@ interface OptionalL2DeployConfig {
   l2GenesisBlockGasUsed: string
   l2GenesisBlockParentHash: string
   l2GenesisBlockBaseFeePerGas: string
+  l2GenesisBlockCoinbase: string
+  l2GenesisRegolithTimeOffset: string
+  eip1559Denominator: number
+  eip1559Elasticity: number
   gasPriceOracleOverhead: number
   gasPriceOracleScalar: number
 }
@@ -242,6 +303,39 @@ export const deployConfigSpec: {
   finalizationPeriodSeconds: {
     type: 'number',
     default: 2,
+  },
+  proxyAdminOwner: {
+    type: 'address',
+  },
+  baseFeeVaultRecipient: {
+    type: 'address',
+  },
+  l1FeeVaultRecipient: {
+    type: 'address',
+  },
+  sequencerFeeVaultRecipient: {
+    type: 'address',
+  },
+  baseFeeVaultMinimumWithdrawalAmount: {
+    type: 'string',
+    default: '0x8ac7230489e80000', // 10 ether
+  },
+  l1FeeVaultMinimumWithdrawalAmount: {
+    type: 'string',
+    default: '0x8ac7230489e80000', // 10 ether
+  },
+  sequencerFeeVaultMinimumWithdrawalAmount: {
+    type: 'string',
+    default: '0x8ac7230489e80000', // 10 ether
+  },
+  baseFeeVaultWithdrawalNetwork: {
+    type: 'number',
+  },
+  l1FeeVaultWithdrawalNetwork: {
+    type: 'number',
+  },
+  sequencerFeeVaultWithdrawalNetwork: {
+    type: 'number',
   },
   cliqueSignerAddress: {
     type: 'address',
@@ -327,13 +421,15 @@ export const deployConfigSpec: {
     type: 'number',
     default: 1_000_000,
   },
+  enableGovernance: {
+    type: 'boolean',
+    default: false,
+  },
   governanceTokenSymbol: {
     type: 'string',
-    default: 'OP',
   },
   governanceTokenName: {
     type: 'string',
-    default: 'Optimism',
   },
   governanceTokenOwner: {
     type: 'string',

@@ -7,19 +7,18 @@ import (
 	"io"
 	"math"
 
+	"github.com/ethereum-optimism/optimism/op-batcher/compressor"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var (
-	ErrZeroMaxFrameSize      = errors.New("max frame size cannot be zero")
-	ErrSmallMaxFrameSize     = errors.New("max frame size cannot be less than 23")
 	ErrInvalidChannelTimeout = errors.New("channel timeout is less than the safety margin")
-	ErrInputTargetReached    = errors.New("target amount of input data reached")
 	ErrMaxFrameIndex         = errors.New("max frame index reached (uint16)")
 	ErrMaxDurationReached    = errors.New("max channel duration reached")
 	ErrChannelTimeoutClose   = errors.New("close to channel timeout")
 	ErrSeqWindowClose        = errors.New("close to sequencer window timeout")
+	ErrTerminated            = errors.New("channel terminated")
 )
 
 type ChannelFullError struct {
@@ -56,19 +55,9 @@ type ChannelConfig struct {
 	SubSafetyMargin uint64
 	// The maximum byte-size a frame can have.
 	MaxFrameSize uint64
-	// The target number of frames to create per channel. Note that if the
-	// realized compression ratio is worse than the approximate, more frames may
-	// actually be created. This also depends on how close TargetFrameSize is to
-	// MaxFrameSize.
-	TargetFrameSize uint64
-	// The target number of frames to create in this channel. If the realized
-	// compression ratio is worse than approxComprRatio, additional leftover
-	// frame(s) might get created.
-	TargetNumFrames int
-	// Approximated compression ratio to assume. Should be slightly smaller than
-	// average from experiments to avoid the chances of creating a small
-	// additional leftover frame.
-	ApproxComprRatio float64
+
+	// CompressorConfig contains the configuration for creating new compressors.
+	CompressorConfig compressor.Config
 }
 
 // Check validates the [ChannelConfig] parameters.
@@ -83,24 +72,18 @@ func (cc *ChannelConfig) Check() error {
 	// will infinitely loop when trying to create frames in the
 	// [channelBuilder.OutputFrames] function.
 	if cc.MaxFrameSize == 0 {
-		return ErrZeroMaxFrameSize
+		return errors.New("max frame size cannot be zero")
 	}
 
-	// If the [MaxFrameSize] is set to < 23, the channel out
-	// will underflow the maxSize variable in the [derive.ChannelOut].
+	// If the [MaxFrameSize] is less than [FrameV0OverHeadSize], the channel
+	// out will underflow the maxSize variable in the [derive.ChannelOut].
 	// Since it is of type uint64, it will wrap around to a very large
 	// number, making the frame size extremely large.
-	if cc.MaxFrameSize < 23 {
-		return ErrSmallMaxFrameSize
+	if cc.MaxFrameSize < derive.FrameV0OverHeadSize {
+		return fmt.Errorf("max frame size %d is less than the minimum 23", cc.MaxFrameSize)
 	}
 
 	return nil
-}
-
-// InputThreshold calculates the input data threshold in bytes from the given
-// parameters.
-func (c ChannelConfig) InputThreshold() uint64 {
-	return uint64(float64(c.TargetNumFrames) * float64(c.TargetFrameSize) / c.ApproxComprRatio)
 }
 
 type frameID struct {
@@ -136,12 +119,20 @@ type channelBuilder struct {
 	blocks []*types.Block
 	// frames data queue, to be send as txs
 	frames []frameData
+	// total frames counter
+	numFrames int
+	// total amount of output data of all frames created yet
+	outputBytes int
 }
 
 // newChannelBuilder creates a new channel builder or returns an error if the
 // channel out could not be created.
 func newChannelBuilder(cfg ChannelConfig) (*channelBuilder, error) {
-	co, err := derive.NewChannelOut()
+	c, err := cfg.CompressorConfig.NewCompressor()
+	if err != nil {
+		return nil, err
+	}
+	co, err := derive.NewChannelOut(c)
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +147,19 @@ func (c *channelBuilder) ID() derive.ChannelID {
 	return c.co.ID()
 }
 
-// InputBytes returns to total amount of input bytes added to the channel.
+// InputBytes returns the total amount of input bytes added to the channel.
 func (c *channelBuilder) InputBytes() int {
 	return c.co.InputBytes()
+}
+
+// ReadyBytes returns the amount of bytes ready in the compression pipeline to
+// output into a frame.
+func (c *channelBuilder) ReadyBytes() int {
+	return c.co.ReadyBytes()
+}
+
+func (c *channelBuilder) OutputBytes() int {
+	return c.outputBytes
 }
 
 // Blocks returns a backup list of all blocks that were added to the channel. It
@@ -178,38 +179,41 @@ func (c *channelBuilder) Reset() error {
 }
 
 // AddBlock adds a block to the channel compression pipeline. IsFull should be
-// called aftewards to test whether the channel is full. If full, a new channel
+// called afterwards to test whether the channel is full. If full, a new channel
 // must be started.
 //
 // AddBlock returns a ChannelFullError if called even though the channel is
 // already full. See description of FullErr for details.
 //
+// AddBlock also returns the L1BlockInfo that got extracted from the block's
+// first transaction for subsequent use by the caller.
+//
 // Call OutputFrames() afterwards to create frames.
-func (c *channelBuilder) AddBlock(block *types.Block) error {
+func (c *channelBuilder) AddBlock(block *types.Block) (derive.L1BlockInfo, error) {
 	if c.IsFull() {
-		return c.FullErr()
+		return derive.L1BlockInfo{}, c.FullErr()
 	}
 
-	batch, err := derive.BlockToBatch(block)
+	batch, l1info, err := derive.BlockToBatch(block)
 	if err != nil {
-		return fmt.Errorf("converting block to batch: %w", err)
+		return l1info, fmt.Errorf("converting block to batch: %w", err)
 	}
 
-	if _, err = c.co.AddBatch(batch); errors.Is(err, derive.ErrTooManyRLPBytes) {
+	if _, err = c.co.AddBatch(batch); errors.Is(err, derive.ErrTooManyRLPBytes) || errors.Is(err, derive.CompressorFullErr) {
 		c.setFullErr(err)
-		return c.FullErr()
+		return l1info, c.FullErr()
 	} else if err != nil {
-		return fmt.Errorf("adding block to channel out: %w", err)
+		return l1info, fmt.Errorf("adding block to channel out: %w", err)
 	}
 	c.blocks = append(c.blocks, block)
 	c.updateSwTimeout(batch)
 
-	if c.inputTargetReached() {
-		c.setFullErr(ErrInputTargetReached)
+	if err = c.co.FullErr(); err != nil {
+		c.setFullErr(err)
 		// Adding this block still worked, so don't return error, just mark as full
 	}
 
-	return nil
+	return l1info, nil
 }
 
 // Timeout management
@@ -279,12 +283,6 @@ func (c *channelBuilder) TimedOut(blockNum uint64) bool {
 	return c.timeout != 0 && blockNum >= c.timeout
 }
 
-// inputTargetReached says whether the target amount of input data has been
-// reached in this channel builder. No more blocks can be added afterwards.
-func (c *channelBuilder) inputTargetReached() bool {
-	return uint64(c.co.InputBytes()) >= c.cfg.InputThreshold()
-}
-
 // IsFull returns whether the channel is full.
 // FullErr returns the reason for the channel being full.
 func (c *channelBuilder) IsFull() bool {
@@ -294,16 +292,17 @@ func (c *channelBuilder) IsFull() bool {
 // FullErr returns the reason why the channel is full. If not full yet, it
 // returns nil.
 //
-// It returns a ChannelFullError wrapping one of six possible reasons for the
-// channel being full:
-//   - ErrInputTargetReached if the target amount of input data has been reached,
+// It returns a ChannelFullError wrapping one of the following possible reasons
+// for the channel being full:
+//   - derive.CompressorFullErr if the compressor target has been reached,
 //   - derive.MaxRLPBytesPerChannel if the general maximum amount of input data
 //     would have been exceeded by the latest AddBlock call,
 //   - ErrMaxFrameIndex if the maximum number of frames has been generated
 //     (uint16),
-//   - ErrMaxDurationReached if the max channel duration got reached.
-//   - ErrChannelTimeoutClose if the consensus channel timeout got too close.
-//   - ErrSeqWindowClose if the end of the sequencer window got too close.
+//   - ErrMaxDurationReached if the max channel duration got reached,
+//   - ErrChannelTimeoutClose if the consensus channel timeout got too close,
+//   - ErrSeqWindowClose if the end of the sequencer window got too close,
+//   - ErrTerminated if the channel was explicitly terminated.
 func (c *channelBuilder) FullErr() error {
 	return c.fullErr
 }
@@ -381,11 +380,27 @@ func (c *channelBuilder) outputFrame() error {
 	}
 
 	frame := frameData{
-		id:   txID{chID: c.co.ID(), frameNumber: fn},
+		id:   frameID{chID: c.co.ID(), frameNumber: fn},
 		data: buf.Bytes(),
 	}
 	c.frames = append(c.frames, frame)
+	c.numFrames++
+	c.outputBytes += len(frame.data)
 	return err // possibly io.EOF (last frame)
+}
+
+// Close immediately marks the channel as full with an ErrTerminated
+// if the channel is not already full.
+func (c *channelBuilder) Close() {
+	if !c.IsFull() {
+		c.setFullErr(ErrTerminated)
+	}
+}
+
+// TotalFrames returns the total number of frames that were created in this channel so far.
+// It does not decrease when the frames queue is being emptied.
+func (c *channelBuilder) TotalFrames() int {
+	return c.numFrames
 }
 
 // HasFrame returns whether there's any available frame. If true, it can be
@@ -397,7 +412,9 @@ func (c *channelBuilder) HasFrame() bool {
 	return len(c.frames) > 0
 }
 
-func (c *channelBuilder) NumFrames() int {
+// PendingFrames returns the number of pending frames in the frames queue.
+// It is larger zero iff HasFrames() returns true.
+func (c *channelBuilder) PendingFrames() int {
 	return len(c.frames)
 }
 
