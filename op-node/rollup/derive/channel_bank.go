@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum-optimism/optimism/op-node/eth"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -109,6 +110,13 @@ func (cb *ChannelBank) IngestFrame(f Frame) {
 // Read the raw data of the first channel, if it's timed-out or closed.
 // Read returns io.EOF if there is nothing new to read.
 func (cb *ChannelBank) Read() (data []byte, err error) {
+	if cb.cfg.IsUnnamedNextFork(cb.Origin().Time) {
+		return cb.readNew()
+	}
+	return cb.readOld()
+}
+
+func (cb *ChannelBank) readOld() (data []byte, err error) {
 	if len(cb.channelQueue) == 0 {
 		return nil, io.EOF
 	}
@@ -132,6 +140,34 @@ func (cb *ChannelBank) Read() (data []byte, err error) {
 	// Suppress error here. io.ReadAll does return nil instead of io.EOF though.
 	data, _ = io.ReadAll(r)
 	return data, nil
+}
+
+func (cb *ChannelBank) readNew() (data []byte, err error) {
+	if len(cb.channelQueue) == 0 {
+		return nil, io.EOF
+	}
+	for idx, chanID := range cb.channelQueue {
+		ch := cb.channels[chanID]
+		timedOut := ch.OpenBlockNumber()+cb.cfg.ChannelTimeout < cb.Origin().Number
+		if timedOut {
+			cb.log.Info("channel timed out", "channel", chanID, "frames", len(ch.inputs))
+			delete(cb.channels, chanID)
+			cb.channelQueue = slices.Delete(cb.channelQueue, idx, idx+1)
+			return nil, nil // multiple different channels may all be timed out
+		}
+		if !ch.IsReady() {
+			continue
+		}
+		cb.log.Info("Reading channel", "channel", chanID, "frames", len(ch.inputs))
+
+		delete(cb.channels, chanID)
+		cb.channelQueue = slices.Delete(cb.channelQueue, idx, idx+1)
+		r := ch.Reader()
+		// Suppress error here. io.ReadAll does return nil instead of io.EOF though.
+		data, _ = io.ReadAll(r)
+		return data, nil
+	}
+	return nil, io.EOF
 }
 
 // NextData pulls the next piece of data from the channel bank.

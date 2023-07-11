@@ -75,6 +75,8 @@ type Config struct {
 	// Active if RegolithTime != nil && L2 block timestamp >= *RegolithTime, inactive otherwise.
 	RegolithTime *uint64 `json:"regolith_time,omitempty"`
 
+	UnnamedNextForkTime *uint64
+
 	// Note: below addresses are part of the block-derivation process,
 	// and required to be the same network-wide to stay in consensus.
 
@@ -254,6 +256,11 @@ func (c *Config) L1Signer() types.Signer {
 // IsRegolith returns true if the Regolith hardfork is active at or past the given timestamp.
 func (c *Config) IsRegolith(timestamp uint64) bool {
 	return c.RegolithTime != nil && timestamp >= *c.RegolithTime
+}
+
+// IsUnnamedNextFork returns true if the unnamed next hardfork is active at or past the given timestamp.
+func (c *Config) IsUnnamedNextFork(timestamp uint64) bool {
+	return c.UnnamedNextForkTime != nil && timestamp >= *c.UnnamedNextForkTime
 }
 
 // Description outputs a banner describing the important parts of rollup configuration in a human-readable form.

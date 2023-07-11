@@ -167,10 +167,16 @@ func TestChannelBankInterleaved(t *testing.T) {
 	require.ErrorIs(t, err, NotEnoughData)
 	require.Equal(t, []byte(nil), out)
 
-	// Load b:0 & Channel b is complete, but channel a was opened first
+	// TODO: Create a version of this for before/after the unnamed fork activates
+	// Load b:0 & Channel b is complete. Channel a was opened first but isn't ready
 	out, err = cb.NextData(context.Background())
 	require.ErrorIs(t, err, NotEnoughData)
 	require.Equal(t, []byte(nil), out)
+
+	// Pull out the channel b because it's ready first.
+	out, err = cb.NextData(context.Background())
+	require.Nil(t, err)
+	require.Equal(t, "premieredeuxtrois", string(out))
 
 	// Load a:1
 	out, err = cb.NextData(context.Background())
@@ -181,11 +187,6 @@ func TestChannelBankInterleaved(t *testing.T) {
 	out, err = cb.NextData(context.Background())
 	require.Nil(t, err)
 	require.Equal(t, "firstsecondthird", string(out))
-
-	// Pull out the channel b
-	out, err = cb.NextData(context.Background())
-	require.Nil(t, err)
-	require.Equal(t, "premieredeuxtrois", string(out))
 
 	// No more data
 	out, err = cb.NextData(context.Background())
