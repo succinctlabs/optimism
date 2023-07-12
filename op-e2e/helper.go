@@ -17,9 +17,11 @@ var _ = func() bool {
 }()
 
 var verboseGethNodes bool
+var erigonL2Nodes bool
 
 func init() {
 	flag.BoolVar(&verboseGethNodes, "gethlogs", true, "Enable logs on geth nodes")
+	flag.BoolVar(&erigonL2Nodes, "erigon", false, "Enable tests with erigon")
 	flag.Parse()
 	if os.Getenv("OP_E2E_DISABLE_PARALLEL") == "true" {
 		enableParallelTesting = false

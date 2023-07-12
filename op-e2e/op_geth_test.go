@@ -44,9 +44,15 @@ func TestMissingGasLimit(t *testing.T) {
 // TestTxGasSameAsBlockGasLimit tests that op-geth rejects transactions that attempt to use the full block gas limit.
 // The L1 Info deposit always takes gas so the effective gas limit is lower than the full block gas limit.
 func TestTxGasSameAsBlockGasLimit(t *testing.T) {
+	if erigonL2Nodes {
+		// Erigon does not discard txes that exceed the block gas limit, and
+		// instead retains them to re-evaluate with the next block whose gas
+		// limit may have increased.
+		t.Skip("erigon does not discard txes which exceed the gas limit")
+	}
 	InitParallel(t)
 	cfg := DefaultSystemConfig(t)
-	sys, err := cfg.Start()
+	sys, err := cfg.Start(t)
 	require.Nil(t, err, "Error starting up system")
 	defer sys.Close()
 
