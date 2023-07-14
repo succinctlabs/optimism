@@ -46,7 +46,7 @@ func TestVerifyL2OutputRootEmptyBlockDetached(t *testing.T) {
 // - update the state root via a tx
 // - run program
 func testVerifyL2OutputRootEmptyBlock(t *testing.T, detached bool) {
-	if erigonL2Nodes {
+	if externalClientPath != "" {
 		t.Skip("Erigon does not support debug_dbGet which is required for this test")
 	}
 	InitParallel(t)
@@ -146,7 +146,7 @@ func testVerifyL2OutputRootEmptyBlock(t *testing.T, detached bool) {
 }
 
 func testVerifyL2OutputRoot(t *testing.T, detached bool) {
-	if erigonL2Nodes {
+	if externalClientPath != "" {
 		t.Skip("Erigon does not support debug_dbGet which is required for this test")
 	}
 	InitParallel(t)

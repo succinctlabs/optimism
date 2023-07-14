@@ -44,7 +44,7 @@ func TestMissingGasLimit(t *testing.T) {
 // TestTxGasSameAsBlockGasLimit tests that op-geth rejects transactions that attempt to use the full block gas limit.
 // The L1 Info deposit always takes gas so the effective gas limit is lower than the full block gas limit.
 func TestTxGasSameAsBlockGasLimit(t *testing.T) {
-	if erigonL2Nodes {
+	if externalClientPath != "" {
 		// Erigon does not discard txes that exceed the block gas limit, and
 		// instead retains them to re-evaluate with the next block whose gas
 		// limit may have increased.

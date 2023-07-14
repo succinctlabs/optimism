@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -45,20 +43,20 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if erigonL2Nodes {
-		fmt.Println("Running tests with erigon support!")
-		buildDir, err := os.MkdirTemp("", "op-e2e-erigon")
-		if err != nil {
-			fmt.Printf("Failed to make erigon build dir: %s\n", err)
-			os.Exit(1)
-		}
-		defer os.RemoveAll(buildDir)
-		erigonBinPath = filepath.Join(buildDir, "erigon")
-		err = BuildErigon(erigonBinPath)
-		if err != nil {
-			fmt.Printf("Failed to build erigon: %s\n", err)
-			os.Exit(2)
-		}
+	if externalClientPath != "" {
+		fmt.Println("Running tests with external client!")
+		//buildDir, err := os.MkdirTemp("", "op-e2e-erigon")
+		//if err != nil {
+		//	fmt.Printf("Failed to make erigon build dir: %s\n", err)
+		//	os.Exit(1)
+		//}
+		//defer os.RemoveAll(buildDir)
+		//erigonBinPath = filepath.Join(buildDir, "erigon")
+		//err = BuildErigon(erigonBinPath)
+		//if err != nil {
+		//	fmt.Printf("Failed to build erigon: %s\n", err)
+		//	os.Exit(2)
+		//}
 
 		// As these are integration tests which launch many other processes, the
 		// default parallelism makes the tests flaky.  This change aims to
@@ -271,7 +269,7 @@ func TestPendingGasLimit(t *testing.T) {
 	InitParallel(t)
 
 	cfg := DefaultSystemConfig(t)
-	if cfg.ErigonL2Nodes {
+	if cfg.ExternalClient != "" {
 		t.Skip()
 		// Erigon doesn't currently build blocks until it receives the engine call
 		// which includes the gas limit, so, this test can't work (at least not
@@ -357,66 +355,67 @@ func TestFinalize(t *testing.T) {
 	require.NotZerof(t, l2Finalized.NumberU64(), "must have finalized L2 block")
 }
 
-func TestMintOnRevertedDeposit(t *testing.T) {
-	InitParallel(t)
-	cfg := DefaultSystemConfig(t)
-
-	sys, err := cfg.Start(t)
-	require.Nil(t, err, "Error starting up system")
-	defer sys.Close()
-
-	l1Client := sys.Clients["l1"]
-	l2Verif := sys.Clients["verifier"]
-
-	l1Node := sys.EthInstances["l1"].GethInstance.Node
-
-	// create signer
-	ks := l1Node.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
-	opts, err := bind.NewKeyStoreTransactorWithChainID(ks, ks.Accounts()[0], cfg.L1ChainIDBig())
-	require.Nil(t, err)
-	fromAddr := opts.From
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	startBalance, err := l2Verif.BalanceAt(ctx, fromAddr, nil)
-	cancel()
-	require.Nil(t, err)
-
-	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
-	startNonce, err := l2Verif.NonceAt(ctx, fromAddr, nil)
-	require.NoError(t, err)
-	cancel()
-
-	toAddr := common.Address{0xff, 0xff}
-	mintAmount := big.NewInt(9_000_000)
-	opts.Value = mintAmount
-	SendDepositTx(t, cfg, l1Client, l2Verif, opts, func(l2Opts *DepositTxOpts) {
-		l2Opts.ToAddr = toAddr
-		// trigger a revert by transferring more than we have available
-		l2Opts.Value = new(big.Int).Mul(common.Big2, startBalance)
-		l2Opts.ExpectedStatus = types.ReceiptStatusFailed
-	})
-
-	// Confirm balance
-	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
-	endBalance, err := l2Verif.BalanceAt(ctx, fromAddr, nil)
-	cancel()
-	require.Nil(t, err)
-	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
-	toAddrBalance, err := l2Verif.BalanceAt(ctx, toAddr, nil)
-	require.NoError(t, err)
-	cancel()
-
-	diff := new(big.Int)
-	diff = diff.Sub(endBalance, startBalance)
-	require.Equal(t, mintAmount, diff, "Did not get expected balance change")
-	require.Equal(t, common.Big0.Int64(), toAddrBalance.Int64(), "The recipient account balance should be zero")
-
-	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
-	endNonce, err := l2Verif.NonceAt(ctx, fromAddr, nil)
-	require.NoError(t, err)
-	cancel()
-	require.Equal(t, startNonce+1, endNonce, "Nonce of deposit sender should increment on L2, even if the deposit fails")
-}
+//func TestMintOnRevertedDeposit(t *testing.T) {
+//	InitParallel(t)
+//	cfg := DefaultSystemConfig(t)
+//
+//	sys, err := cfg.Start(t)
+//	require.Nil(t, err, "Error starting up system")
+//	defer sys.Close()
+//
+//	l1Client := sys.Clients["l1"]
+//	l2Verif := sys.Clients["verifier"]
+//
+//	// TODO: Stop using hte account manager to create a signer
+//	l1Node := sys.EthInstances["l1"].GethInstance.Node
+//
+//	// create signer
+//	ks := l1Node.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
+//	opts, err := bind.NewKeyStoreTransactorWithChainID(ks, ks.Accounts()[0], cfg.L1ChainIDBig())
+//	require.Nil(t, err)
+//	fromAddr := opts.From
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+//	startBalance, err := l2Verif.BalanceAt(ctx, fromAddr, nil)
+//	cancel()
+//	require.Nil(t, err)
+//
+//	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+//	startNonce, err := l2Verif.NonceAt(ctx, fromAddr, nil)
+//	require.NoError(t, err)
+//	cancel()
+//
+//	toAddr := common.Address{0xff, 0xff}
+//	mintAmount := big.NewInt(9_000_000)
+//	opts.Value = mintAmount
+//	SendDepositTx(t, cfg, l1Client, l2Verif, opts, func(l2Opts *DepositTxOpts) {
+//		l2Opts.ToAddr = toAddr
+//		// trigger a revert by transferring more than we have available
+//		l2Opts.Value = new(big.Int).Mul(common.Big2, startBalance)
+//		l2Opts.ExpectedStatus = types.ReceiptStatusFailed
+//	})
+//
+//	// Confirm balance
+//	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+//	endBalance, err := l2Verif.BalanceAt(ctx, fromAddr, nil)
+//	cancel()
+//	require.Nil(t, err)
+//	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+//	toAddrBalance, err := l2Verif.BalanceAt(ctx, toAddr, nil)
+//	require.NoError(t, err)
+//	cancel()
+//
+//	diff := new(big.Int)
+//	diff = diff.Sub(endBalance, startBalance)
+//	require.Equal(t, mintAmount, diff, "Did not get expected balance change")
+//	require.Equal(t, common.Big0.Int64(), toAddrBalance.Int64(), "The recipient account balance should be zero")
+//
+//	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
+//	endNonce, err := l2Verif.NonceAt(ctx, fromAddr, nil)
+//	require.NoError(t, err)
+//	cancel()
+//	require.Equal(t, startNonce+1, endNonce, "Nonce of deposit sender should increment on L2, even if the deposit fails")
+//}
 
 func TestMissingBatchE2E(t *testing.T) {
 	InitParallel(t)

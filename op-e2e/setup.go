@@ -29,10 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
-	geth_eth "github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/stretchr/testify/require"
@@ -192,7 +190,7 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 		GethOptions:                map[string][]GethOption{},
 		P2PTopology:                nil, // no P2P connectivity by default
 		NonFinalizedProposals:      false,
-		ErigonL2Nodes:              erigonL2Nodes,
+		ExternalClient:             externalClientPath,
 		BatcherTargetL1TxSizeBytes: 100_000,
 	}
 }
@@ -227,7 +225,7 @@ type SystemConfig struct {
 	ProposerLogger log.Logger
 	BatcherLogger  log.Logger
 
-	ErigonL2Nodes bool
+	ExternalClient string
 
 	// map of outbound connections to other nodes. Node names prefixed with "~" are unconnected but linked.
 	// A nil map disables P2P completely.
@@ -247,55 +245,54 @@ type SystemConfig struct {
 	BatcherTargetL1TxSizeBytes uint64
 }
 
-type GethInstance struct {
-	Backend *geth_eth.Ethereum
-	Node    *node.Node
-}
-
 // EthInstance is either a Geth or an Erigon instance, exactly one of the fields
 // should always be non-nil.
-type EthInstance struct {
-	GethInstance   *GethInstance
-	ErigonInstance *ErigonInstance
+type EthInstance interface {
+	Run() error
+	Close()
+	WSEndpoint() string
+	HTTPEndpoint() string
+	WSAuthEndpoint() string
+	HTTPAuthEndpoint() string
 }
 
-func (ei *EthInstance) Close() {
-	if ei.GethInstance != nil {
-		ei.GethInstance.Node.Close()
-	}
-	if ei.ErigonInstance != nil {
-		ei.ErigonInstance.Shutdown()
-	}
-}
-
-func (ei *EthInstance) WSEndpoint() string {
-	if ei.GethInstance != nil {
-		return ei.GethInstance.Node.WSEndpoint()
-	}
-	// Erigon does HTTP and WS on the same port
-	return fmt.Sprintf("ws://127.0.0.1:%d", ei.ErigonInstance.HTTPPort)
-}
-
-func (ei *EthInstance) HTTPEndpoint() string {
-	if ei.GethInstance != nil {
-		return ei.GethInstance.Node.HTTPEndpoint()
-	}
-	return fmt.Sprintf("http://127.0.0.1:%d", ei.ErigonInstance.HTTPPort)
-}
-
-func (ei *EthInstance) WSAuthEndpoint() string {
-	if ei.GethInstance != nil {
-		return ei.GethInstance.Node.WSAuthEndpoint()
-	}
-	return fmt.Sprintf("ws://127.0.0.1:%d", ei.ErigonInstance.EnginePort)
-}
-
-func (ei *EthInstance) HTTPAuthEndpoint() string {
-	if ei.GethInstance != nil {
-		return ei.GethInstance.Node.HTTPAuthEndpoint()
-	}
-	return fmt.Sprintf("http://127.0.0.1:%d", ei.ErigonInstance.EnginePort)
-}
+//func (ei *EthInstance) Close() {
+//	if ei.GethInstance != nil {
+//		ei.GethInstance.Node.Close()
+//	}
+//	if ei.ErigonInstance != nil {
+//		ei.ErigonInstance.Shutdown()
+//	}
+//}
+//
+//func (ei *EthInstance) WSEndpoint() string {
+//	if ei.GethInstance != nil {
+//		return ei.GethInstance.Node.WSEndpoint()
+//	}
+//	// Erigon does HTTP and WS on the same port
+//	return fmt.Sprintf("ws://127.0.0.1:%d", ei.ErigonInstance.HTTPPort)
+//}
+//
+//func (ei *EthInstance) HTTPEndpoint() string {
+//	if ei.GethInstance != nil {
+//		return ei.GethInstance.Node.HTTPEndpoint()
+//	}
+//	return fmt.Sprintf("http://127.0.0.1:%d", ei.ErigonInstance.HTTPPort)
+//}
+//
+//func (ei *EthInstance) WSAuthEndpoint() string {
+//	if ei.GethInstance != nil {
+//		return ei.GethInstance.Node.WSAuthEndpoint()
+//	}
+//	return fmt.Sprintf("ws://127.0.0.1:%d", ei.ErigonInstance.EnginePort)
+//}
+//
+//func (ei *EthInstance) HTTPAuthEndpoint() string {
+//	if ei.GethInstance != nil {
+//		return ei.GethInstance.Node.HTTPAuthEndpoint()
+//	}
+//	return fmt.Sprintf("http://127.0.0.1:%d", ei.ErigonInstance.EnginePort)
+//}
 
 type System struct {
 	cfg SystemConfig
@@ -305,7 +302,7 @@ type System struct {
 	L2GenesisCfg *core.Genesis
 
 	// Connections to running nodes
-	EthInstances      map[string]*EthInstance
+	EthInstances      map[string]EthInstance
 	Clients           map[string]*ethclient.Client
 	RawClients        map[string]*rpc.Client
 	RollupNodes       map[string]*rollupNode.OpNode
@@ -376,7 +373,7 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 
 	sys := &System{
 		cfg:          cfg,
-		EthInstances: make(map[string]*EthInstance),
+		EthInstances: make(map[string]EthInstance),
 		Clients:      make(map[string]*ethclient.Client),
 		RawClients:   make(map[string]*rpc.Client),
 		RollupNodes:  make(map[string]*rollupNode.OpNode),
@@ -470,43 +467,36 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 	if err != nil {
 		return nil, err
 	}
-	sys.EthInstances["l1"] = &EthInstance{
-		GethInstance: &GethInstance{
-			Backend: l1Backend,
-			Node:    l1Node,
-		},
+	sys.EthInstances["l1"] = &GethInstance{
+		Backend: l1Backend,
+		Node:    l1Node,
 	}
 
 	for name := range cfg.Nodes {
-		var gethInstance *GethInstance
-		var erigonInstance *ErigonInstance
-		if !cfg.ErigonL2Nodes {
+		var ethInstance EthInstance
+		if cfg.ExternalClient == "" {
 			node, backend, err := initL2Geth(name, big.NewInt(int64(cfg.DeployConfig.L2ChainID)), l2Genesis, cfg.JWTFilePath, cfg.GethOptions[name]...)
 			if err != nil {
 				return nil, err
 			}
-			gethInstance = &GethInstance{
+			ethInstance = &GethInstance{
 				Backend: backend,
 				Node:    node,
 			}
 		} else {
 			if len(cfg.GethOptions[name]) > 0 {
-				t.Errorf("Erigon L2 nodes do not support configuration through GethOptions")
+				t.Errorf("External client L2 nodes do not support configuration through GethOptions")
 			}
-			ei := (&ErigonRunner{
-				Name:     name,
-				BinPath:  erigonBinPath,
-				ChainID:  cfg.DeployConfig.L2ChainID,
-				Genesis:  l2Genesis,
-				JWTPath:  cfg.JWTFilePath,
-				GasPrice: 1_000_000_000,
-			}).Run(t)
-			erigonInstance = &ei
+			ethInstance = &ExternalClient{
+				Name:    name,
+				BinPath: cfg.ExternalClient,
+				DataDir: t.TempDir(),
+				JWTPath: cfg.JWTFilePath,
+				ChainID: cfg.DeployConfig.L2ChainID,
+				Genesis: l2Genesis,
+			}
 		}
-		sys.EthInstances[name] = &EthInstance{
-			GethInstance:   gethInstance,
-			ErigonInstance: erigonInstance,
-		}
+		sys.EthInstances[name] = ethInstance
 	}
 
 	// Start
@@ -519,12 +509,10 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 		if name == "l1" {
 			continue
 		}
-		if gethInst := ethInst.GethInstance; gethInst != nil {
-			err = gethInst.Node.Start()
-			if err != nil {
-				didErrAfterStart = true
-				return nil, err
-			}
+		err = ethInst.Run()
+		if err != nil {
+			didErrAfterStart = true
+			return nil, err
 		}
 	}
 
@@ -789,7 +777,7 @@ func (sys *System) newMockNetPeer() (host.Host, error) {
 	return sys.Mocknet.AddPeerWithPeerstore(p, eps)
 }
 
-func selectEndpoint(node *EthInstance) string {
+func selectEndpoint(node EthInstance) string {
 	useHTTP := os.Getenv("OP_E2E_USE_HTTP") == "true"
 	if useHTTP {
 		log.Info("using HTTP client")
@@ -798,7 +786,7 @@ func selectEndpoint(node *EthInstance) string {
 	return node.WSEndpoint()
 }
 
-func configureL1(rollupNodeCfg *rollupNode.Config, l1Node *EthInstance) {
+func configureL1(rollupNodeCfg *rollupNode.Config, l1Node EthInstance) {
 	l1EndpointConfig := selectEndpoint(l1Node)
 	rollupNodeCfg.L1 = &rollupNode.L1EndpointConfig{
 		L1NodeAddr:       l1EndpointConfig,

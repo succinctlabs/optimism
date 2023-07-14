@@ -261,6 +261,37 @@ func defaultNodeConfig(name string, jwtPath string) *node.Config {
 
 type GethOption func(ethCfg *ethconfig.Config, nodeCfg *node.Config) error
 
+type GethInstance struct {
+	Backend *eth.Ethereum
+	Node    *node.Node
+}
+
+func (g GethInstance) Run() error {
+	return g.Node.Start()
+}
+
+func (g GethInstance) Close() {
+	g.Node.Close()
+}
+
+func (g GethInstance) WSEndpoint() string {
+	return g.Node.WSEndpoint()
+}
+
+func (g GethInstance) HTTPEndpoint() string {
+	return g.Node.HTTPEndpoint()
+}
+
+func (g GethInstance) WSAuthEndpoint() string {
+	return g.Node.WSAuthEndpoint()
+}
+
+func (g GethInstance) HTTPAuthEndpoint() string {
+	return g.Node.HTTPAuthEndpoint()
+}
+
+var _ EthInstance = (*GethInstance)(nil)
+
 // init a geth node.
 func initL2Geth(name string, l2ChainID *big.Int, genesis *core.Genesis, jwtPath string, opts ...GethOption) (*node.Node, *eth.Ethereum, error) {
 	ethConfig := &ethconfig.Config{
