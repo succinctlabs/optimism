@@ -139,6 +139,7 @@ func (h *FactoryHelper) StartCannonGame(ctx context.Context, rootClaim common.Ha
 	game, err := bindings.NewFaultDisputeGame(createdEvent.DisputeProxy, h.client)
 	h.require.NoError(err)
 
+	h.t.Logf("Created dispute game at %v", createdEvent.DisputeProxy)
 	return &CannonGameHelper{
 		FaultGameHelper: FaultGameHelper{
 			t:       h.t,
