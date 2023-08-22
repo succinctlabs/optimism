@@ -551,18 +551,18 @@ func (eq *EngineQueue) tryNextSafeAttributes(ctx context.Context) error {
 	}
 	// validate the safe attributes before processing them. The engine may have completed processing them through other means.
 	if eq.safeHead != eq.safeAttributes.parent {
-		// Previously the attribute's parent was the safe head. If the safe head advances so safe head's parent is the same as the
-		// attribute's parent then we need to cancel the attributes.
-		if eq.safeHead.ParentHash == eq.safeAttributes.parent.Hash {
-			eq.log.Warn("queued safe attributes are stale, safehead progressed",
-				"safe_head", eq.safeHead, "safe_head_parent", eq.safeHead.ParentID(), "attributes_parent", eq.safeAttributes.parent)
-			eq.safeAttributes = nil
-			return nil
-		}
-		// If something other than a simple advance occurred, perform a full reset
-		return NewResetError(fmt.Errorf("safe head changed to %s with parent %s, conflicting with queued safe attributes on top of %s",
-			eq.safeHead, eq.safeHead.ParentID(), eq.safeAttributes.parent))
-
+		return NewCriticalError(fmt.Errorf("safe head %s does not match attributes parent %s", eq.safeHead, eq.safeAttributes.parent))
+		//// Previously the attribute's parent was the safe head. If the safe head advances so safe head's parent is the same as the
+		//// attribute's parent then we need to cancel the attributes.
+		//if eq.safeHead.ParentHash == eq.safeAttributes.parent.Hash {
+		//	eq.log.Warn("queued safe attributes are stale, safehead progressed",
+		//		"safe_head", eq.safeHead, "safe_head_parent", eq.safeHead.ParentID(), "attributes_parent", eq.safeAttributes.parent)
+		//	eq.safeAttributes = nil
+		//	return nil
+		//}
+		//// If something other than a simple advance occurred, perform a full reset
+		//return NewResetError(fmt.Errorf("safe head changed to %s with parent %s, conflicting with queued safe attributes on top of %s",
+		//	eq.safeHead, eq.safeHead.ParentID(), eq.safeAttributes.parent))
 	}
 	if eq.safeHead.Number < eq.unsafeHead.Number {
 		return eq.consolidateNextSafeAttributes(ctx)
@@ -596,8 +596,10 @@ func (eq *EngineQueue) consolidateNextSafeAttributes(ctx context.Context) error 
 	}
 	if err := AttributesMatchBlock(eq.safeAttributes.attributes, eq.safeHead.Hash, payload, eq.log); err != nil {
 		eq.log.Warn("L2 reorg: existing unsafe block does not match derived attributes from L1", "err", err, "unsafe", eq.unsafeHead, "safe", eq.safeHead)
-		// geth cannot wind back a chain without reorging to a new, previously non-canonical, block
-		return eq.forceNextSafeAttributes(ctx)
+		// op-reth debug diff: don't reorg out the L2 chain when it does not match, just halt.
+		return NewCriticalError(fmt.Errorf("stopping op-node derivation to inspect divergence between batch and L2: %w", err))
+		//geth cannot wind back a chain without reorging to a new, previously non-canonical, block
+		//return eq.forceNextSafeAttributes(ctx)
 	}
 	ref, err := PayloadToBlockRef(payload, &eq.cfg.Genesis)
 	if err != nil {
