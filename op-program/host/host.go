@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"runtime"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/chaincfg"
 	"github.com/ethereum-optimism/optimism/op-node/client"
@@ -128,16 +130,33 @@ func PreimageServer(ctx context.Context, logger log.Logger, cfg *config.Config, 
 	var serverDone chan error
 	var hinterDone chan error
 	defer func() {
+		logger.Info("Finishing PreimageServer")
 		preimageChannel.Close()
-		hintChannel.Close()
+		logger.Info("Closed preimageChannel")
+		if err := hintChannel.Close(); err != nil {
+			logger.Error("Failed to close hintChannel", "err", err)
+		}
+		logger.Info("Closed hintChannel")
 		if serverDone != nil {
+			logger.Info("Wait for serverDone")
 			// Wait for pre-image server to complete
 			<-serverDone
+			logger.Info("Got serverDone")
 		}
 		if hinterDone != nil {
+			logger.Info("Wait for hinterDone")
 			// Wait for hinter to complete
-			<-hinterDone
+			select {
+			case <-hinterDone:
+				logger.Info("Got hinterDone")
+			case <-time.After(5 * time.Second):
+				logger.Info("Timed out waiting for hinterDone")
+				stacktrace := make([]byte, 998192)
+				length := runtime.Stack(stacktrace, true)
+				log.Info("Stack", "stack", string(stacktrace[:length]))
+			}
 		}
+		logger.Info("Finishing PreimageServer (done)")
 	}()
 	logger.Info("Starting preimage server")
 	var kv kvstore.KV
@@ -180,8 +199,10 @@ func PreimageServer(ctx context.Context, logger log.Logger, cfg *config.Config, 
 	hinterDone = routeHints(logger, hintChannel, hinter)
 	select {
 	case err := <-serverDone:
+		logger.Info("Got server error")
 		return err
 	case err := <-hinterDone:
+		logger.Info("Got hinter error")
 		return err
 	}
 }
@@ -221,7 +242,7 @@ func routeHints(logger log.Logger, hHostRW io.ReadWriter, hinter preimage.HintHa
 		for {
 			if err := hintReader.NextHint(hinter); err != nil {
 				if err == io.EOF || errors.Is(err, fs.ErrClosed) {
-					logger.Debug("closing pre-image hint handler")
+					logger.Info("closing pre-image hint handler")
 					return
 				}
 				logger.Error("pre-image hint router error", "err", err)
@@ -241,11 +262,12 @@ func launchOracleServer(logger log.Logger, pHostRW io.ReadWriteCloser, getter pr
 		for {
 			if err := server.NextPreimageRequest(getter); err != nil {
 				if err == io.EOF || errors.Is(err, fs.ErrClosed) {
-					logger.Debug("closing pre-image server")
+					logger.Info("closing pre-image server")
 					return
 				}
 				logger.Error("pre-image server error", "error", err)
 				chErr <- err
+				logger.Error("Published error", "error", err)
 				return
 			}
 		}

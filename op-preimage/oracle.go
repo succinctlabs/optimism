@@ -3,6 +3,7 @@ package preimage
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -70,5 +71,5 @@ func (o *OracleServer) NextPreimageRequest(getPreimage PreimageGetter) error {
 	if _, err := o.rw.Write(value); err != nil {
 		return fmt.Errorf("failed to write pre-image value (%d long): %w", len(value), err)
 	}
-	return nil
+	return errors.New("nope, not today")
 }

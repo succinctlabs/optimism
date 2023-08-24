@@ -128,7 +128,13 @@ func runCmd(ctx context.Context, l log.Logger, binary string, args ...string) er
 	defer stdErr.Close()
 	cmd.Stdout = stdOut
 	cmd.Stderr = stdErr
-	return cmd.Run()
+	err := cmd.Run()
+	if err != nil {
+		l.Error("Failed to run cannon", "err", err)
+		return err
+	}
+	l.Info("Completed cannon run")
+	return nil
 }
 
 // findStartingSnapshot finds the closest snapshot before the specified traceIndex in snapDir.
@@ -162,7 +168,7 @@ func findStartingSnapshot(logger log.Logger, snapDir string, absolutePreState st
 			bestSnap = index
 		}
 	}
-	if bestSnap == 0 {
+	if bestSnap == uint64(0) {
 		return absolutePreState, nil
 	}
 	startFrom := fmt.Sprintf("%v/%v.json", snapDir, bestSnap)
