@@ -790,7 +790,7 @@ contract Deploy is Deployer {
         address protocolVersionsProxy = mustGetAddress("ProtocolVersionsProxy");
         address protocolVersions = mustGetAddress("ProtocolVersions");
 
-        address finalSystemOwner = cfg.finalSystemOwner();
+        address owner = vm.envOr("INIT_OWNER", cfg.finalSystemOwner());
         uint256 requiredProtocolVersion = cfg.requiredProtocolVersion();
         uint256 recommendedProtocolVersion = cfg.recommendedProtocolVersion();
 
@@ -800,7 +800,7 @@ contract Deploy is Deployer {
             _data: abi.encodeCall(
                 ProtocolVersions.initialize,
                 (
-                    finalSystemOwner,
+                    owner,
                     ProtocolVersion.wrap(requiredProtocolVersion),
                     ProtocolVersion.wrap(recommendedProtocolVersion)
                 )
@@ -810,8 +810,9 @@ contract Deploy is Deployer {
         ProtocolVersions versions = ProtocolVersions(protocolVersionsProxy);
         string memory version = versions.version();
         console.log("ProtocolVersions version: %s", version);
+        console.log("ProtocolVersions owner: %s", owner);
 
-        require(versions.owner() == finalSystemOwner);
+        require(versions.owner() == owner);
         require(ProtocolVersion.unwrap(versions.required()) == requiredProtocolVersion);
         require(ProtocolVersion.unwrap(versions.recommended()) == recommendedProtocolVersion);
     }
