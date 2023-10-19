@@ -26,19 +26,6 @@ interface IFaultDisputeGame is IDisputeGame {
         Hash outputRoot;
     }
 
-    /// @notice A container for two consecutive `OutputProposal`s, used to store the starting
-    ///         and disputed output proposals for a given dispute game. The starting output
-    ///         proposal will be used to determine where the off chain agents should begin
-    ///         running their fault proof program, and the disputed output proposal will be
-    ///         fed into the program and treated as disputed state. The program's exit code
-    ///         expresses its opinion on the validity of the state transition from the starting,
-    ///         trusted output proposal to the disputed output proposal, and ultimately resolves
-    ///         the dispute.
-    struct OutputProposals {
-        OutputProposal starting;
-        OutputProposal disputed;
-    }
-
     /// @notice Emitted when a new claim is added to the DAG by `claimant`
     /// @param parentIndex The index within the `claimData` array of the parent claim
     /// @param claim The claim being added
@@ -70,10 +57,9 @@ interface IFaultDisputeGame is IDisputeGame {
 
     /// @notice Posts the requested local data to the VM's `PreimageOralce`.
     /// @param _ident The local identifier of the data to post.
-    /// @param _l2BlockNumber The L2 block number being disputed. This serves as the local context for the
-    ///                       `PreimageOracle` key.
+    /// @param _execLeafIdx The index of the leaf claim in an execution subgame that requires the local data for a step.
     /// @param _partOffset The offset of the data to post.
-    function addLocalData(uint256 _ident, uint256 _l2BlockNumber, uint256 _partOffset) external;
+    function addLocalData(uint256 _ident, uint256 _execLeafIdx, uint256 _partOffset) external;
 
     /// @notice Resolves the subgame rooted at the given claim index.
     /// @dev This function must be called bottom-up in the DAG
@@ -91,7 +77,4 @@ interface IFaultDisputeGame is IDisputeGame {
 
     /// @notice The l2BlockNumber of the disputed output root in the `L2OutputOracle`.
     function l2BlockNumber() external view returns (uint256 l2BlockNumber_);
-
-    /// @notice The l1BlockNumber that Cannon was ran from to generate the root claim.
-    function l1BlockNumber() external view returns (uint256 l1BlockNumber_);
 }

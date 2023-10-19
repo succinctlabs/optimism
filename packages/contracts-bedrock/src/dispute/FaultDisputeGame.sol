@@ -33,18 +33,15 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
     /// @notice The max depth of the game.
     uint256 public immutable MAX_GAME_DEPTH;
 
+    /// @notice The max depth of the output bisection portion of the position tree. Immediately beneath
+    ///         this depth, execution trace bisection begins.
+    uint256 public immutable SPLIT_DEPTH;
+
     /// @notice The duration of the game.
     Duration public immutable GAME_DURATION;
 
     /// @notice An onchain VM that performs single instruction steps on a fault proof program trace.
     IBigStepper public immutable VM;
-
-    /// @notice The trusted L2OutputOracle contract.
-    L2OutputOracle public immutable L2_OUTPUT_ORACLE;
-
-    /// @notice The block hash oracle, used for loading block hashes further back
-    ///         than the `BLOCKHASH` opcode allows as well as their child's timestamp.
-    BlockOracle public immutable BLOCK_ORACLE;
 
     /// @notice The game type ID
     GameType internal immutable GAME_TYPE;
@@ -67,11 +64,6 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
     /// @notice An append-only array of all claims made during the dispute game.
     ClaimData[] public claimData;
 
-    /// @notice The starting and disputed output proposal for the game. Includes information about
-    ///         the output indexes in the `L2OutputOracle` and the output roots at the time of
-    ///         game creation.
-    OutputProposals public proposals;
-
     /// @notice An internal mapping to allow for constant-time lookups of existing claims.
     mapping(ClaimHash => bool) internal claims;
 
@@ -88,29 +80,26 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
     /// @param _gameType The type ID of the game.
     /// @param _absolutePrestate The absolute prestate of the instruction trace.
     /// @param _maxGameDepth The maximum depth of bisection.
+    /// @param _splitDepth The final depth of the output bisection portion of the game.
     /// @param _gameDuration The duration of the game.
     /// @param _vm An onchain VM that performs single instruction steps on a fault proof program
     ///            trace.
-    /// @param _l2oo The trusted L2OutputOracle contract.
-    /// @param _blockOracle The block oracle, used for loading block hashes further back
-    ///                     than the `BLOCKHASH` opcode allows as well as their estimated
-    ///                     timestamps.
     constructor(
         GameType _gameType,
         Claim _absolutePrestate,
         uint256 _maxGameDepth,
+        uint256 _splitDepth,
         Duration _gameDuration,
-        IBigStepper _vm,
-        L2OutputOracle _l2oo,
-        BlockOracle _blockOracle
+        IBigStepper _vm
     ) {
+        if (_splitDepth >= _maxGameDepth) revert InvalidSplitDepth();
+
         GAME_TYPE = _gameType;
         ABSOLUTE_PRESTATE = _absolutePrestate;
         MAX_GAME_DEPTH = _maxGameDepth;
+        SPLIT_DEPTH = _splitDepth;
         GAME_DURATION = _gameDuration;
         VM = _vm;
-        L2_OUTPUT_ORACLE = _l2oo;
-        BLOCK_ORACLE = _blockOracle;
     }
 
     ////////////////////////////////////////////////////////////////
@@ -162,6 +151,10 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
             revert InvalidPrestate();
         }
 
+        // TODO(clabby): Can we include less context?
+        (ClaimData storage starting, ClaimData storage disputed) = findStartingAndDisputedOutputs(_claimIndex);
+        uint256 uuid = uint256(keccak256(abi.encode(starting.claim, starting.parentIndex, disputed.claim, disputed.parentIndex)));
+
         // INVARIANT: If a step is an attack, the poststate is valid if the step produces
         //            the same poststate hash as the parent claim's value.
         //            If a step is a defense:
@@ -174,10 +167,7 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
         // SAFETY:    While the `attack` path does not need an extra check for the post
         //            state's depth in relation to the parent, we don't need another
         //            branch because (n - n) % 2 == 0.
-        // TODO(client-pod#94): Once output bisection is implemented, the local context will no longer
-        //                      be constant. We will need to pass it in here based off of the ancestor
-        //                      disputed output root's L2 block number.
-        bool validStep = VM.step(_stateData, _proof, 0) == Claim.unwrap(postState.claim);
+        bool validStep = VM.step(_stateData, _proof, uuid) == Claim.unwrap(postState.claim);
         bool parentPostAgree = (parentPos.depth() - postState.position.depth()) % 2 == 0;
         if (parentPostAgree == validStep) revert ValidStep();
 
@@ -212,6 +202,10 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
         //            the `step` function to prove that the state transition produces an unexpected
         //            post-state.
         if (nextPosition.depth() > MAX_GAME_DEPTH) revert GameDepthExceeded();
+
+        // If this move marks the root claim of an execution sub-game, we need to perform some extra
+        // verification on the claim hash provided.
+        if (nextPosition.depth() == SPLIT_DEPTH + 1) verifyExecBisectionRoot(_claim, _challengeIndex);
 
         // Fetch the grandparent clock, if it exists.
         // The grandparent clock should always exist unless the parent is the root claim.
@@ -281,73 +275,41 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
     }
 
     /// @inheritdoc IFaultDisputeGame
-    function addLocalData(uint256 _ident, uint256 _l2BlockNumber, uint256 _partOffset) external {
+    function addLocalData(uint256 _ident, uint256 _execLeafIdx, uint256 _partOffset) external {
         // INVARIANT: Local data can only be added if the game is currently in progress.
         if (status != GameStatus.IN_PROGRESS) revert GameNotInProgress();
 
-        IPreimageOracle oracle = VM.oracle();
-        bytes4 loadLocalDataSelector = IPreimageOracle.loadLocalData.selector;
-        assembly {
-            // Store the `loadLocalData(uint256,bytes32,uint256,uint256)` selector
-            mstore(0x1C, loadLocalDataSelector)
-            // Store the `_ident` argument
-            mstore(0x20, _ident)
-            // Store the `_localContext` argument
-            mstore(0x40, _l2BlockNumber)
-            // Store the data to load
-            let data
-            switch _ident
-            case 1 {
-                // Load the L1 head hash
-                data := sload(l1Head.slot)
-            }
-            case 2 {
-                // Load the starting proposal's output root.
-                data := sload(add(proposals.slot, 0x01))
-            }
-            case 3 {
-                // Load the disputed proposal's output root
-                data := sload(add(proposals.slot, 0x03))
-            }
-            case 4 {
-                // Load the starting proposal's L2 block number as a big-endian uint64 in the
-                // high order 8 bytes of the word.
-                data := shl(0xC0, shr(0x80, sload(proposals.slot)))
-            }
-            case 5 {
-                // Load the chain ID as a big-endian uint64 in the high order 8 bytes of the word.
-                data := shl(0xC0, chainid())
-            }
-            default {
-                // Store the `InvalidLocalIdent()` selector.
-                mstore(0x00, 0xff137e65)
-                // Revert with  `InvalidLocalIdent()`
-                revert(0x1C, 0x04)
-            }
-            mstore(0x60, data)
-            // Store the size of the data to load
-            // _ident > 3 ? 8 : 32
-            mstore(0x80, shl(sub(0x05, shl(0x01, gt(_ident, 0x03))), 0x01))
-            // Store the part offset of the data
-            mstore(0xA0, _partOffset)
+        // TODO(clabby): Can we include less context?
+        (ClaimData storage starting, ClaimData storage disputed) = findStartingAndDisputedOutputs(_execLeafIdx);
+        uint256 uuid = uint256(keccak256(abi.encode(starting.claim, starting.parentIndex, disputed.claim, disputed.parentIndex)));
 
-            // Attempt to add the local data to the preimage oracle and bubble up the revert
-            // if it fails.
-            if iszero(call(gas(), oracle, 0x00, 0x1C, 0xA4, 0x00, 0x00)) {
-                returndatacopy(0x00, 0x00, returndatasize())
-                revert(0x00, returndatasize())
-            }
+        IPreimageOracle oracle = VM.oracle();
+        if (_ident == 1) {
+            // Load the L1 head hash
+            oracle.loadLocalData(_ident, uuid, Hash.unwrap(l1Head), 32, _partOffset);
+        } else if (_ident == 2) {
+            // Load the starting proposal's output root.
+            oracle.loadLocalData(_ident, uuid, Claim.unwrap(starting.claim), 32, _partOffset);
+        } else if (_ident == 3) {
+            // Load the disputed proposal's output root
+            oracle.loadLocalData(_ident, uuid, Claim.unwrap(disputed.claim), 32, _partOffset);
+        } else if (_ident == 4) {
+            // Load the starting proposal's L2 block number as a big-endian uint64 in the
+            // high order 8 bytes of the word.
+            // TODO(clabby): This needs to be fixed for output bisection. We need to find the L2 block number
+            //       of the starting output by it's position.
+            oracle.loadLocalData(_ident, uuid, bytes32(0), 8, _partOffset);
+        } else if (_ident == 5) {
+            // Load the chain ID as a big-endian uint64 in the high order 8 bytes of the word.
+            oracle.loadLocalData(_ident, uuid, bytes32(uint256(block.chainid << 0xC0)), 8, _partOffset);
+        } else {
+            revert InvalidLocalIdent();
         }
     }
 
     /// @inheritdoc IFaultDisputeGame
     function l2BlockNumber() public pure returns (uint256 l2BlockNumber_) {
         l2BlockNumber_ = _getArgUint256(0x20);
-    }
-
-    /// @inheritdoc IFaultDisputeGame
-    function l1BlockNumber() public pure returns (uint256 l1BlockNumber_) {
-        l1BlockNumber_ = _getArgUint256(0x40);
     }
 
     ////////////////////////////////////////////////////////////////
@@ -455,14 +417,6 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
         // Implicit assumptions:
         // - The `gameStatus` state variable defaults to 0, which is `GameStatus.IN_PROGRESS`
 
-        // The VMStatus must indicate (1) 'invalid', to argue that disputed thing is invalid.
-        // Games that agree with the existing outcome are not allowed.
-        // NOTE(clabby): This assumption will change in Alpha Chad.
-        uint8 vmStatus = uint8(Claim.unwrap(rootClaim())[0]);
-        if (!(vmStatus == VMStatus.unwrap(VMStatuses.INVALID) || vmStatus == VMStatus.unwrap(VMStatuses.PANIC))) {
-            revert UnexpectedRootClaim(rootClaim());
-        }
-
         // Set the game's starting timestamp
         createdAt = Timestamp.wrap(uint64(block.timestamp));
 
@@ -477,58 +431,12 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
             })
         );
 
-        // Grab the index of the output proposal that commits to the starting L2 head.
-        // All outputs after this one are disputed.
-        // TODO(clabby): This is 2 calls too many for the information we need. Maybe
-        //               add a function to the L2OO?
-        // TODO(clabby): The block hash bisection game will allow us to dispute the first output
-        //               root by using genesis as the starting point. For now, it is critical that
-        //               the first proposed output root of an OP stack chain is done so by an
-        //               honest party.
-        uint256 proposalIdx = L2_OUTPUT_ORACLE.getL2OutputIndexAfter(l2BlockNumber());
-        Types.OutputProposal memory starting = L2_OUTPUT_ORACLE.getL2Output(proposalIdx - 1);
-        Types.OutputProposal memory disputed = L2_OUTPUT_ORACLE.getL2Output(proposalIdx);
-
-        // SAFETY: This call can revert if the block hash oracle does not have information
-        // about the block number provided to it.
-        BlockOracle.BlockInfo memory blockInfo = BLOCK_ORACLE.load(l1BlockNumber());
-
-        // INVARIANT: The L1 head must contain the disputed output root. If it does not,
-        //            the game cannot be played.
-        // SAFETY: The block timestamp in the oracle records the timestamp of the
-        //         block *after* the hash stored. This means that the timestamp
-        //         is off by 1 block. This is known, and covered as follows:
-        //         - The timestamp will always be less than the disputed timestamp
-        //           if the checkpoint was made before the proposal. We must revert here.
-        //         - The timestamp will be equal to the disputed timestamp if the
-        //           checkpoint was made in the same block as the proposal, and the
-        //           hash will be the parent block, which does not contain the proposal.
-        //           We must revert here.
-        //         - The timestamp will always be greater than the disputed timestamp
-        //           if the checkpoint was made any block after the proposal. This is
-        //           the only case where we can continue, since we must have the L1
-        //           head contain the disputed output root to play the game.
-        if (Timestamp.unwrap(blockInfo.childTimestamp) <= disputed.timestamp) revert L1HeadTooOld();
-
-        // Persist the output proposals fetched from the oracle. These outputs will be referenced
-        // for loading local data into the preimage oracle as well as to authenticate the game's
-        // resolution. If the disputed output has changed in the oracle, the game cannot be
-        // resolved.
-        proposals = OutputProposals({
-            starting: OutputProposal({
-                index: uint128(proposalIdx - 1),
-                l2BlockNumber: starting.l2BlockNumber,
-                outputRoot: Hash.wrap(starting.outputRoot)
-            }),
-            disputed: OutputProposal({
-                index: uint128(proposalIdx),
-                l2BlockNumber: disputed.l2BlockNumber,
-                outputRoot: Hash.wrap(disputed.outputRoot)
-            })
-        });
-
         // Persist the L1 head hash of the L1 block number provided.
-        l1Head = blockInfo.hash;
+        // TODO(clabby): The current block's hash cannot be fetched here because it is not yet
+        //               sealed. This may be an issue, and we will still need to load in the L1
+        //               head hash in a block that is > than that which the game is created, since
+        //               the creation of a game *is* an output proposal.
+        l1Head = Hash.wrap(blockhash(block.number - 1));
     }
 
     /// @notice Returns the length of the `claimData` array.
@@ -540,12 +448,26 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
     //                          HELPERS                           //
     ////////////////////////////////////////////////////////////////
 
+    /// @notice Verifies the integrity of an execution bisection subgame's root claim. Reverts if the claim
+    ///         is invalid.
+    /// @param _rootClaim The root claim of the execution bisection subgame.
+    function verifyExecBisectionRoot(Claim _rootClaim, uint256 /* _parentIndex */ ) internal pure {
+        // The VMStatus must indicate (1) 'invalid', to argue that disputed thing is invalid.
+        // Games that agree with the existing outcome are not allowed.
+        // TODO(clabby): This assumption will change in Alpha Chad, and also depending on the split depth! Be careful
+        //               about what we go with here.
+        uint8 vmStatus = uint8(Claim.unwrap(_rootClaim)[0]);
+        if (!(vmStatus == VMStatus.unwrap(VMStatuses.INVALID) || vmStatus == VMStatus.unwrap(VMStatuses.PANIC))) {
+            revert UnexpectedRootClaim(rootClaim());
+        }
+
+        // TODO(clabby): Other verification steps.
+    }
+
     /// @notice Finds the trace ancestor of a given position within the DAG.
     /// @param _pos The position to find the trace ancestor claim of.
     /// @param _start The index to start searching from.
     /// @return ancestor_ The ancestor claim that commits to the same trace index as `_pos`.
-    // TODO(clabby): Can we form a relationship between the trace path and the position to avoid
-    //               looping?
     function findTraceAncestor(Position _pos, uint256 _start) internal view returns (ClaimData storage ancestor_) {
         // Grab the trace ancestor's expected position.
         Position preStateTraceAncestor = _pos.traceAncestor();
@@ -555,6 +477,63 @@ contract FaultDisputeGame is IFaultDisputeGame, Clone, ISemver {
         ancestor_ = claimData[_start];
         while (Position.unwrap(ancestor_.position) != Position.unwrap(preStateTraceAncestor)) {
             ancestor_ = claimData[ancestor_.parentIndex];
+        }
+    }
+
+    /// @notice Finds the starting and disputed output root for a given `ClaimData` within the DAG. This
+    ///         `ClaimData` must be below the `SPLIT_DEPTH`.
+    /// @param _start The index within `claimData` of the claim to start searching from.
+    /// @return starting_ The starting, agreed upon output root claim.
+    /// @return disputed_ The disputed output root claim.
+    function findStartingAndDisputedOutputs(uint256 _start)
+        internal
+        view
+        returns (ClaimData storage starting_, ClaimData storage disputed_)
+    {
+        // Fatch the starting claim.
+        uint256 claimIdx = _start;
+        ClaimData storage claim = claimData[claimIdx];
+
+        // If the starting claim's depth is less than or equal to the split depth, we revert as this is UB.
+        if (claim.position.depth() <= SPLIT_DEPTH) revert ClaimAboveSplit();
+
+        // We want to:
+        // 1. Find the first claim at the split depth.
+        // 2. Determine whether it was the starting or disputed output for the exec game.
+        // 3. Find the complimentary claim depending on the info from #2 (pre or post).
+
+        // Walk up the DAG until the ancestor's depth is equal to the split depth.
+        uint256 currentDepth;
+        ClaimData storage execRootClaim = claim;
+        while ((currentDepth = claim.position.depth()) != SPLIT_DEPTH) {
+            uint256 parentIndex = claim.parentIndex;
+
+            // If we're currently at the split depth + 1, we're at the root of the execution sub-game.
+            // We need to keep track of the root claim here to determine whether the execution sub-game was
+            // started with an attack or defense against the output leaf claim.
+            if (currentDepth == SPLIT_DEPTH + 1) execRootClaim = claim;
+
+            claim = claimData[parentIndex];
+            claimIdx = parentIndex;
+        }
+
+        // Determine whether the start of the execution sub-game was an attack or defense to the output root
+        // above. This is important because it determines which claim is the starting output root and which
+        // is the disputed output root.
+        (Position execRootPos, Position outputPos) = (execRootClaim.position, claim.position);
+        bool wasAttack = Position.unwrap(execRootPos.parent()) == Position.unwrap(outputPos);
+
+        // Determine the starting and disputed output root indices.
+        // 1. If it was an attack, the disputed output root is `claim`, and the starting output root is
+        //    elsewhere in the dag (it must commit to the block # index at depth of `outputPos - 1`).
+        // 2. If it was a defense, the starting output root is `claim`, and the disputed output root is
+        //    elsewhere in the dag (it must commit to the block # index at depth of `outputPos + 1`).
+        if (wasAttack) {
+            starting_ = findTraceAncestor(Position.wrap(Position.unwrap(outputPos) - 1), claimIdx);
+            disputed_ = claimData[claimIdx];
+        } else {
+            starting_ = claimData[claimIdx];
+            disputed_ = findTraceAncestor(Position.wrap(Position.unwrap(outputPos) + 1), claimIdx);
         }
     }
 }
