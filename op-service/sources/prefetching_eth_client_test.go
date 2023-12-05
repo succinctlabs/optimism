@@ -62,6 +62,7 @@ func runTest(t *testing.T, name string, testFunc testFunction, prefetchingRange 
 	ctx := context.Background()
 	mockEthClient := new(testutils.MockEthClient)
 	client, err := NewPrefetchingEthClient(mockEthClient, prefetchingRange, 30*time.Second)
+	defer client.Close()
 	client.wg = new(sync.WaitGroup) // Initialize the WaitGroup for testing
 	require.NoError(t, err)
 
