@@ -62,9 +62,9 @@ func runTest(t *testing.T, name string, testFunc testFunction, prefetchingRange 
 	ctx := context.Background()
 	mockEthClient := new(testutils.MockEthClient)
 	client, err := NewPrefetchingEthClient(mockEthClient, prefetchingRange, 30*time.Second)
+	require.NoError(t, err)
 	defer client.Close()
 	client.wg = new(sync.WaitGroup) // Initialize the WaitGroup for testing
-	require.NoError(t, err)
 
 	testFunc(t, ctx, client, mockEthClient)
 	client.wg.Wait()            // Wait for all goroutines to complete before asserting expectations
