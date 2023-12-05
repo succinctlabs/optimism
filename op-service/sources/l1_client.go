@@ -21,6 +21,7 @@ type L1ClientConfig struct {
 
 	L1BlockRefsCacheSize int
 	PrefetchingWindow    uint64
+	PrefetchingTimeout   time.Duration
 }
 
 func L1ClientDefaultConfig(config *rollup.Config, trustRPC bool, kind RPCProviderKind) *L1ClientConfig {
@@ -46,7 +47,8 @@ func L1ClientDefaultConfig(config *rollup.Config, trustRPC bool, kind RPCProvide
 		},
 		// Not bounded by span, to cover find-sync-start range fully for speedy recovery after errors.
 		L1BlockRefsCacheSize: fullSpan,
-		PrefetchingWindow:    0, // no prefetching
+		PrefetchingWindow:    0, // no prefetching by default
+		PrefetchingTimeout:   0, // no prefetching by default
 	}
 }
 
@@ -67,7 +69,12 @@ func NewL1Client(client client.RPC, log log.Logger, metrics caching.Metrics, con
 	if err != nil {
 		return nil, err
 	}
-	prefetchingEthClient, err := NewPrefetchingEthClient(ethClient, config.PrefetchingWindow, 30*time.Second) // needs to be a config item
+	prefetchingWindow := config.PrefetchingWindow
+	if config.PrefetchingTimeout <= 0 {
+		// disable prefetching if a window was provided but no timeout
+		prefetchingWindow = 0
+	}
+	prefetchingEthClient, err := NewPrefetchingEthClient(ethClient, prefetchingWindow, config.PrefetchingTimeout)
 	if err != nil {
 		return nil, err
 	}
