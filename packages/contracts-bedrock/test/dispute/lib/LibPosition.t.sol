@@ -104,7 +104,7 @@ contract LibPosition_Test is Test {
         Position loopAncestor = position;
 
         // Stop at 1 below the split depth.
-        while (loopAncestor.parent().traceIndex(MAX_DEPTH) == position.traceIndex(MAX_DEPTH) && loopAncestor.depth() != SPLIT_DEPTH) {
+        while (loopAncestor.parent().traceIndex(MAX_DEPTH) == position.traceIndex(MAX_DEPTH) && loopAncestor.depth() != SPLIT_DEPTH + 1) {
             loopAncestor = loopAncestor.parent();
         }
 

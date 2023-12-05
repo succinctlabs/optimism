@@ -146,7 +146,8 @@ library LibPosition {
     function traceAncestorExec(Position _position, uint256 _splitDepth) internal pure returns (Position ancestor_) {
         // This function only works for positions that are below the split depth (i.e., commit to state hashes
         // of the fault proof program rather than output roots)
-        if (_position.depth() <= _splitDepth) revert ClaimAboveSplit();
+        uint256 posDepth = _position.depth();
+        if (posDepth <= _splitDepth) revert ClaimAboveSplit();
 
         // Create a field with only the lowest unset bit of `_position` set.
         Position lsb;
@@ -154,25 +155,18 @@ library LibPosition {
             lsb := and(not(_position), add(_position, 1))
         }
         // Find the index of the lowest unset bit within the field.
-        uint256 msb = depth(lsb);
+        uint256 msb = lsb.depth();
         assembly {
-            switch gt(msb, _splitDepth)
-            case true {
-                // The highest ancestor, below `_splitDepth`, that commits to the same trace index is the
-                // original position shifted right by the index of the lowest unset bit >> split depth + 1.
-                let a := shr(sub(msb, add(sub(msb, _splitDepth), 1)), _position)
-                // Bound the ancestor to the minimum gindex, 1.
-                ancestor_ := or(a, iszero(a))
-            }
-            default {
-                // The highest ancestor, below `_splitDepth`, that commits to the same trace index is the
-                // original position shifted right by the index of the lowest unset bit. Because the
-                // ancestor position is already below the split depth, we don't need to account for
-                // the split depth in the shift.
-                let a := shr(msb, _position)
-                // Bound the ancestor to the minimum gindex, 1.
-                ancestor_ := or(a, iszero(a))
-            }
+            let a := shr(msb, _position)
+            // Bound the ancestor to the minimum gindex, 1.
+            ancestor_ := or(a, iszero(a))
+        }
+
+        // If the ancestor is above or at the split depth, shift it to below the split depth.
+        // This should be a special case that only covers positions that commit to the final trace
+        // index in an execution trace subtree.
+        if (ancestor_.depth() <= _splitDepth) {
+            ancestor_ = ancestor_.rightIndex(_splitDepth + 1);
         }
     }
 
