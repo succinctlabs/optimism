@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-service/testutils"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -41,6 +42,7 @@ var testCases = []struct {
 			for i := uint64(rhdr.Number) + 1; i <= windowEnd; i++ {
 				// set up different info per iteration
 				fillerBlock, fillerReceipts := randomRpcBlockAndReceipts(randomness, 2)
+				fillerBlock.rpcHeader.Number = hexutil.Uint64(i)
 				fillerInfo, err := fillerBlock.rpcHeader.Info(true, false)
 				require.NoError(t, err)
 				mock.ExpectInfoAndTxsByNumber(i, fillerInfo, fillerBlock.Transactions, nil)
