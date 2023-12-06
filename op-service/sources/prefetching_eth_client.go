@@ -3,7 +3,6 @@ package sources
 import (
 	"context"
 	"math/big"
-	"sync"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -31,6 +30,8 @@ type EthClientInterface interface {
 	Close()
 }
 
+type windowTuple [2]uint64
+
 type PrefetchingEthClient struct {
 	inner                 EthClientInterface
 	PrefetchingRange      uint64
@@ -38,8 +39,9 @@ type PrefetchingEthClient struct {
 	runningCtx            context.Context
 	runningCancel         context.CancelFunc
 	highestHeadRequesting uint64
-	highestHeadLock       sync.Mutex
-	wg                    *sync.WaitGroup // used for testing
+	windowCh              chan windowTuple
+	closed                chan struct{}
+	drain                 bool
 }
 
 // NewPrefetchingEthClient creates a new [PrefetchingEthClient] with the given underlying [EthClient]
@@ -47,20 +49,42 @@ type PrefetchingEthClient struct {
 func NewPrefetchingEthClient(inner EthClientInterface, prefetchingRange uint64, timeout time.Duration) (*PrefetchingEthClient, error) {
 	// Create a new context for the prefetching goroutines
 	runningCtx, runningCancel := context.WithCancel(context.Background())
-	return &PrefetchingEthClient{
+	pc := &PrefetchingEthClient{
 		inner:                 inner,
 		PrefetchingRange:      prefetchingRange,
 		PrefetchingTimeout:    timeout,
 		runningCtx:            runningCtx,
 		runningCancel:         runningCancel,
+		windowCh:              make(chan windowTuple, 10),
+		closed:                make(chan struct{}),
 		highestHeadRequesting: 0,
-	}, nil
+	}
+	go pc.start()
+
+	return pc, nil
+}
+
+func (p *PrefetchingEthClient) start() {
+	for {
+		select {
+		case <-p.runningCtx.Done():
+			if p.drain {
+				for len(p.windowCh) > 0 {
+					window := <-p.windowCh
+					p.doFetchWindow(window[0], window[1])
+				}
+			}
+
+			close(p.closed)
+			return
+		case window := <-p.windowCh:
+			p.doFetchWindow(window[0], window[1])
+		}
+	}
 }
 
 func (p *PrefetchingEthClient) updateRequestingHead(start, end uint64) (newStart uint64, shouldFetch bool) {
 	// Acquire lock before reading/updating highestHeadRequesting
-	p.highestHeadLock.Lock()
-	defer p.highestHeadLock.Unlock()
 	if start <= p.highestHeadRequesting {
 		start = p.highestHeadRequesting + 1
 	}
@@ -70,12 +94,17 @@ func (p *PrefetchingEthClient) updateRequestingHead(start, end uint64) (newStart
 	return start, start <= end
 }
 
-func (p *PrefetchingEthClient) FetchWindow(start, end uint64) {
-	if p.wg != nil {
-		p.wg.Add(1)
-		defer p.wg.Done()
+func (p *PrefetchingEthClient) fetchWindow(start, end uint64) {
+	// Use non-blocking send
+	select {
+	case p.windowCh <- windowTuple{start, end}:
+		return
+	default:
+		return
 	}
+}
 
+func (p *PrefetchingEthClient) doFetchWindow(start, end uint64) {
 	start, shouldFetch := p.updateRequestingHead(start, end)
 	if !shouldFetch {
 		return
@@ -114,14 +143,14 @@ func (p *PrefetchingEthClient) InfoByHash(ctx context.Context, hash common.Hash)
 	}
 
 	// Prefetch the next n blocks and their receipts starting from the block number of the fetched block
-	go p.FetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
+	p.fetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
 
 	return blockInfo, nil
 }
 
 func (p *PrefetchingEthClient) InfoByNumber(ctx context.Context, number uint64) (eth.BlockInfo, error) {
 	// Trigger prefetching in the background
-	go p.FetchWindow(number+1, number+p.PrefetchingRange)
+	p.fetchWindow(number+1, number+p.PrefetchingRange)
 
 	// Fetch the requested block
 	return p.inner.InfoByNumber(ctx, number)
@@ -135,7 +164,7 @@ func (p *PrefetchingEthClient) InfoByLabel(ctx context.Context, label eth.BlockL
 	}
 
 	// Prefetch the next n blocks and their receipts starting from the block number of the fetched block
-	go p.FetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
+	p.fetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
 
 	return blockInfo, nil
 }
@@ -148,7 +177,7 @@ func (p *PrefetchingEthClient) InfoAndTxsByHash(ctx context.Context, hash common
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
+	p.fetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
 
 	return blockInfo, txs, nil
 }
@@ -161,7 +190,7 @@ func (p *PrefetchingEthClient) InfoAndTxsByNumber(ctx context.Context, number ui
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(number+1, number+p.PrefetchingRange)
+	p.fetchWindow(number+1, number+p.PrefetchingRange)
 
 	return blockInfo, txs, nil
 }
@@ -174,7 +203,7 @@ func (p *PrefetchingEthClient) InfoAndTxsByLabel(ctx context.Context, label eth.
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
+	p.fetchWindow(blockInfo.NumberU64()+1, blockInfo.NumberU64()+p.PrefetchingRange)
 
 	return blockInfo, txs, nil
 }
@@ -187,7 +216,7 @@ func (p *PrefetchingEthClient) PayloadByHash(ctx context.Context, hash common.Ha
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(uint64(payload.BlockNumber)+1, uint64(payload.BlockNumber)+p.PrefetchingRange)
+	p.fetchWindow(uint64(payload.BlockNumber)+1, uint64(payload.BlockNumber)+p.PrefetchingRange)
 
 	return payload, nil
 }
@@ -200,7 +229,7 @@ func (p *PrefetchingEthClient) PayloadByNumber(ctx context.Context, number uint6
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(number+1, number+p.PrefetchingRange)
+	p.fetchWindow(number+1, number+p.PrefetchingRange)
 
 	return payload, nil
 }
@@ -213,7 +242,7 @@ func (p *PrefetchingEthClient) PayloadByLabel(ctx context.Context, label eth.Blo
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(uint64(payload.BlockNumber)+1, uint64(payload.BlockNumber)+p.PrefetchingRange)
+	p.fetchWindow(uint64(payload.BlockNumber)+1, uint64(payload.BlockNumber)+p.PrefetchingRange)
 
 	return payload, nil
 }
@@ -226,7 +255,7 @@ func (p *PrefetchingEthClient) FetchReceipts(ctx context.Context, blockHash comm
 	}
 
 	// Prefetch the next n blocks and their receipts
-	go p.FetchWindow(blockInfo.NumberU64(), blockInfo.NumberU64()+p.PrefetchingRange)
+	p.fetchWindow(blockInfo.NumberU64(), blockInfo.NumberU64()+p.PrefetchingRange)
 
 	return blockInfo, receipts, nil
 }
@@ -246,4 +275,5 @@ func (p *PrefetchingEthClient) ReadStorageAt(ctx context.Context, address common
 func (p *PrefetchingEthClient) Close() {
 	p.runningCancel()
 	p.inner.Close()
+	<-p.closed
 }

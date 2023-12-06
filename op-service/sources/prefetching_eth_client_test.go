@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/rand"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -48,7 +47,6 @@ var testCases = []struct {
 				mock.ExpectInfoAndTxsByNumber(i, fillerInfo, fillerBlock.Transactions, nil)
 				mock.ExpectFetchReceipts(fillerBlock.Hash, fillerInfo, fillerReceipts, nil)
 			}
-
 			info, txs, err := client.InfoAndTxsByNumber(ctx, uint64(rhdr.Number))
 			require.NoError(t, err)
 			require.Equal(t, info, expectedInfo)
@@ -63,12 +61,10 @@ func runTest(t *testing.T, name string, testFunc testFunction, prefetchingRange 
 	mockEthClient := new(testutils.MockEthClient)
 	client, err := NewPrefetchingEthClient(mockEthClient, prefetchingRange, 30*time.Second)
 	require.NoError(t, err)
-	defer client.Close()
-	client.wg = new(sync.WaitGroup) // Initialize the WaitGroup for testing
-
+	client.drain = true
 	testFunc(t, ctx, client, mockEthClient)
-	client.wg.Wait()            // Wait for all goroutines to complete before asserting expectations
-	time.Sleep(2 * time.Second) // with this, tests pass; without it, they fail. Why? the waitgroup should be enough
+	client.Close()
+	//time.Sleep(2 * time.Second) // with this, tests pass; without it, they fail. Why? the waitgroup should be enough
 	mockEthClient.AssertExpectations(t)
 }
 
