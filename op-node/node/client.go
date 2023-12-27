@@ -29,6 +29,11 @@ type L1EndpointSetup interface {
 	Check() error
 }
 
+type L1BeaconEndpointSetup interface {
+	Setup(ctx context.Context, log log.Logger) (cl client.HTTP, err error)
+	Check() error
+}
+
 type L2EndpointConfig struct {
 	L2EngineAddr string // Address of L2 Engine JSON-RPC endpoint to use (engine and eth namespace required)
 
@@ -162,5 +167,22 @@ func (cfg *PreparedL1Endpoint) Check() error {
 		return errors.New("rpc client cannot be nil")
 	}
 
+	return nil
+}
+
+type L1BeaconEndpointConfig struct {
+	BeaconAddr string // Address of L1 User Beacon-API endpoint to use (beacon namespace required)
+}
+
+var _ L1BeaconEndpointSetup = (*L1BeaconEndpointConfig)(nil)
+
+func (cfg *L1BeaconEndpointConfig) Setup(ctx context.Context, log log.Logger) (cl client.HTTP, err error) {
+	return client.NewBasicHTTPClient(cfg.BeaconAddr, log), nil
+}
+
+func (cfg *L1BeaconEndpointConfig) Check() error {
+	if cfg.BeaconAddr == "" {
+		return errors.New("expected beacon address, but got none")
+	}
 	return nil
 }
