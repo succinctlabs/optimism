@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/ethereum-optimism/optimism/op-challenger/game/types"
 
@@ -24,9 +25,10 @@ type CoordinatorMetricer interface {
 }
 
 type gameState struct {
-	player   GamePlayer
-	inflight bool
-	status   types.GameStatus
+	player                GamePlayer
+	inflight              bool
+	lastProcessedBlockNum uint64
+	status                types.GameStatus
 }
 
 // coordinator manages the set of current games, queues games to be played (on separate worker threads) and
@@ -45,10 +47,7 @@ type coordinator struct {
 	states       map[common.Address]*gameState
 	disk         DiskManager
 
-	// blockUpdates maps a block number to the number of jobs that should be scheduled
-	// for that block. This helps us keep track of in-flight jobs and the highest block
-	// that the challenger has fully acted upon (all jobs are complete).
-	blockUpdates map[uint64]uint64
+	lastProcessedBlockNum uint64
 }
 
 // schedule takes the current list of games to attempt to progress, filters out games that have previous
@@ -57,13 +56,20 @@ type coordinator struct {
 // Returns an error if a game couldn't be scheduled because of an error. It will continue attempting to progress
 // all games even if an error occurs with one game.
 func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, blockNumber uint64) error {
+	lowestProcessedBlockNum := uint64(math.MaxUint64)
 	// First remove any game states we no longer require
 	for addr, state := range c.states {
 		if !state.inflight && !slices.ContainsFunc(games, func(candidate types.GameMetadata) bool {
 			return candidate.Proxy == addr
 		}) {
 			delete(c.states, addr)
+			continue
 		}
+		lowestProcessedBlockNum = min(lowestProcessedBlockNum, state.lastProcessedBlockNum)
+	}
+	if len(c.states) == 0 {
+		// Deleted all existing states so we can't have any inflight updates from the previous block.
+		lowestProcessedBlockNum = c.lastProcessedBlockNum
 	}
 
 	var gamesInProgress int
@@ -96,13 +102,18 @@ func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, 
 		}
 	}
 	c.m.RecordGamesStatus(gamesInProgress, gamesDefenderWon, gamesChallengerWon)
+	if len(c.states) == 0 {
+		// No games being tracked so can mark this block as fully processed.
+		lowestProcessedBlockNum = blockNumber
+	}
+	c.m.RecordActedL1Block(lowestProcessedBlockNum)
+	c.lastProcessedBlockNum = blockNumber
 
 	// Finally, enqueue the jobs
 	for _, j := range jobs {
 		if err := c.enqueueJob(ctx, j); err != nil {
 			errs = append(errs, fmt.Errorf("failed to enqueue job for game %v: %w", j.addr, err))
 		}
-		c.blockUpdates[j.block]++
 	}
 	return errors.Join(errs...)
 }
@@ -112,7 +123,7 @@ func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, 
 func (c *coordinator) createJob(ctx context.Context, game types.GameMetadata, blockNumber uint64) (*job, error) {
 	state, ok := c.states[game.Proxy]
 	if !ok {
-		state = &gameState{}
+		state = &gameState{lastProcessedBlockNum: c.lastProcessedBlockNum}
 		c.states[game.Proxy] = state
 	}
 	if state.inflight {
@@ -161,13 +172,9 @@ func (c *coordinator) processResult(j job) error {
 	}
 	state.inflight = false
 	state.status = j.status
+	state.lastProcessedBlockNum = j.block
 	c.deleteResolvedGameFiles()
 	c.m.RecordGameUpdateCompleted()
-	c.blockUpdates[j.block]--
-	if c.blockUpdates[j.block] == 0 {
-		delete(c.blockUpdates, j.block)
-		c.m.RecordActedL1Block(j.block)
-	}
 	return nil
 }
 
@@ -192,6 +199,5 @@ func newCoordinator(logger log.Logger, m CoordinatorMetricer, jobQueue chan<- jo
 		createPlayer: createPlayer,
 		disk:         disk,
 		states:       make(map[common.Address]*gameState),
-		blockUpdates: make(map[uint64]uint64),
 	}
 }
