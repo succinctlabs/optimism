@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/ethereum-optimism/optimism/op-challenger/game/types"
 
@@ -56,7 +55,6 @@ type coordinator struct {
 // Returns an error if a game couldn't be scheduled because of an error. It will continue attempting to progress
 // all games even if an error occurs with one game.
 func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, blockNumber uint64) error {
-	lowestProcessedBlockNum := uint64(math.MaxUint64)
 	// First remove any game states we no longer require
 	for addr, state := range c.states {
 		if !state.inflight && !slices.ContainsFunc(games, func(candidate types.GameMetadata) bool {
@@ -65,11 +63,6 @@ func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, 
 			delete(c.states, addr)
 			continue
 		}
-		lowestProcessedBlockNum = min(lowestProcessedBlockNum, state.lastProcessedBlockNum)
-	}
-	if len(c.states) == 0 {
-		// Deleted all existing states so we can't have any inflight updates from the previous block.
-		lowestProcessedBlockNum = c.lastProcessedBlockNum
 	}
 
 	var gamesInProgress int
@@ -102,9 +95,10 @@ func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, 
 		}
 	}
 	c.m.RecordGamesStatus(gamesInProgress, gamesDefenderWon, gamesChallengerWon)
-	if len(c.states) == 0 {
-		// No games being tracked so can mark this block as fully processed.
-		lowestProcessedBlockNum = blockNumber
+
+	lowestProcessedBlockNum := blockNumber
+	for _, state := range c.states {
+		lowestProcessedBlockNum = min(lowestProcessedBlockNum, state.lastProcessedBlockNum)
 	}
 	c.m.RecordActedL1Block(lowestProcessedBlockNum)
 	c.lastProcessedBlockNum = blockNumber
@@ -123,6 +117,8 @@ func (c *coordinator) schedule(ctx context.Context, games []types.GameMetadata, 
 func (c *coordinator) createJob(ctx context.Context, game types.GameMetadata, blockNumber uint64) (*job, error) {
 	state, ok := c.states[game.Proxy]
 	if !ok {
+		// This is the first time we're seeing this game, so its last processed block is the last block
+		// the coordinator processed (where it didn't exist).
 		state = &gameState{lastProcessedBlockNum: c.lastProcessedBlockNum}
 		c.states[game.Proxy] = state
 	}
