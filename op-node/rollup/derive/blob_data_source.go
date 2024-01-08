@@ -14,16 +14,43 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
 
-type blobOrCalldata struct {
-	// union type. exactly one of calldata or blob should be non-nil
-	blob     *eth.Blob
-	calldata *eth.Data
+type dataItem interface {
+	Data() (eth.Data, error)
+}
+
+type calldataItem struct {
+	calldata eth.Data
+}
+
+func (i calldataItem) Data() (eth.Data, error) {
+	return i.calldata, nil
+}
+
+type blobItem struct {
+	blobRef eth.IndexedBlobHash
+	blob    *eth.Blob
+}
+
+func (i blobItem) Data() (eth.Data, error) {
+	return i.blob.ToData()
+}
+
+func (i *blobItem) SetBlob(blobs []*eth.Blob) error {
+	idx := int(i.blobRef.Index)
+	if len(blobs) <= idx {
+		return fmt.Errorf("blob out of range, len(blobs): %d, idx: %d", len(blobs), idx)
+	}
+	i.blob = blobs[idx]
+	if i.blob == nil {
+		return fmt.Errorf("nil blob for idx: %d", idx)
+	}
+	return nil
 }
 
 // BlobDataSource fetches blobs or calldata as appropriate and transforms them into usable rollup
 // data.
 type BlobDataSource struct {
-	data         []blobOrCalldata
+	data         []dataItem
 	ref          eth.L1BlockRef
 	batcherAddr  common.Address
 	dsCfg        DataSourceConfig
@@ -61,13 +88,10 @@ func (ds *BlobDataSource) Next(ctx context.Context) (eth.Data, error) {
 
 	next := ds.data[0]
 	ds.data = ds.data[1:]
-	if next.calldata != nil {
-		return *next.calldata, nil
-	}
 
-	data, err := next.blob.ToData()
+	data, err := next.Data()
 	if err != nil {
-		ds.log.Error("ignoring blob due to parse failure", "err", err)
+		ds.log.Error("ignoring data item due to error", "err", err)
 		return ds.Next(ctx)
 	}
 	return data, nil
@@ -76,7 +100,7 @@ func (ds *BlobDataSource) Next(ctx context.Context) (eth.Data, error) {
 // open fetches and returns the blob or calldata (as appropriate) from all valid batcher
 // transactions in the referenced block. Returns an empty (non-nil) array if no batcher
 // transactions are found. Returns nil array whenever an error is returned.
-func (ds *BlobDataSource) open(ctx context.Context) ([]blobOrCalldata, error) {
+func (ds *BlobDataSource) open(ctx context.Context) ([]dataItem, error) {
 	_, txs, err := ds.fetcher.InfoAndTxsByHash(ctx, ds.ref.Hash)
 	if err != nil {
 		if errors.Is(err, ethereum.NotFound) {
@@ -114,8 +138,8 @@ func (ds *BlobDataSource) open(ctx context.Context) ([]blobOrCalldata, error) {
 // dataAndHashesFromTxs extracts calldata and datahashes from the input transactions and returns them. It
 // creates a placeholder blobOrCalldata element for each returned blob hash that must be populated
 // by fillBlobPointers after blob bodies are retrieved.
-func dataAndHashesFromTxs(txs types.Transactions, config *DataSourceConfig, batcherAddr common.Address) ([]blobOrCalldata, []eth.IndexedBlobHash) {
-	data := []blobOrCalldata{}
+func dataAndHashesFromTxs(txs types.Transactions, config *DataSourceConfig, batcherAddr common.Address) ([]dataItem, []eth.IndexedBlobHash) {
+	data := make([]dataItem, 0, len(txs))
 	var hashes []eth.IndexedBlobHash
 	blobIndex := 0 // index of each blob in the block's blob sidecar
 	for _, tx := range txs {
@@ -127,7 +151,7 @@ func dataAndHashesFromTxs(txs types.Transactions, config *DataSourceConfig, batc
 		// handle non-blob batcher transactions by extracting their calldata
 		if tx.Type() != types.BlobTxType {
 			calldata := eth.Data(tx.Data())
-			data = append(data, blobOrCalldata{nil, &calldata})
+			data = append(data, &calldataItem{calldata: calldata})
 			continue
 		}
 		// handle blob batcher transactions by extracting their blob hashes, ignoring any calldata.
@@ -140,8 +164,8 @@ func dataAndHashesFromTxs(txs types.Transactions, config *DataSourceConfig, batc
 				Hash:  h,
 			}
 			hashes = append(hashes, idh)
-			data = append(data, blobOrCalldata{nil, nil}) // will fill in blob pointers after we download them below
-			blobIndex += 1
+			data = append(data, &blobItem{blobRef: idh}) // will fill in blob pointers after we download them below
+			blobIndex++
 		}
 	}
 	return data, hashes
@@ -150,23 +174,18 @@ func dataAndHashesFromTxs(txs types.Transactions, config *DataSourceConfig, batc
 // fillBlobPointers goes back through the data array and fills in the pointers to the fetched blob
 // bodies. There should be exactly one placeholder blobOrCalldata element for each blob, otherwise
 // error is returned.
-func fillBlobPointers(data []blobOrCalldata, blobs []*eth.Blob) error {
-	blobIndex := 0
-	for i := range data {
-		if data[i].calldata != nil {
-			continue
+func fillBlobPointers(data []dataItem, blobs []*eth.Blob) error {
+	var blobCount int
+	for _, di := range data {
+		if bi, ok := di.(*blobItem); ok {
+			blobCount++
+			if err := bi.SetBlob(blobs); err != nil {
+				return err
+			}
 		}
-		if blobIndex >= len(blobs) {
-			return fmt.Errorf("didn't get enough blobs")
-		}
-		if blobs[blobIndex] == nil {
-			return fmt.Errorf("found a nil blob")
-		}
-		data[i].blob = blobs[blobIndex]
-		blobIndex++
 	}
-	if blobIndex != len(blobs) {
-		return fmt.Errorf("got too many blobs")
+	if blobCount != len(blobs) {
+		return fmt.Errorf("too many blobs, %d != %d", len(blobs), blobCount)
 	}
 	return nil
 }
