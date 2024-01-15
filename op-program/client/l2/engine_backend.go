@@ -40,7 +40,7 @@ type OracleBackedL2Chain struct {
 
 var _ engineapi.EngineBackend = (*OracleBackedL2Chain)(nil)
 
-func NewOracleBackedL2Chain(logger log.Logger, oracle Oracle, chainCfg *params.ChainConfig, l2OutputRoot common.Hash) (*OracleBackedL2Chain, error) {
+func NewOracleBackedL2Chain(logger log.Logger, oracle L2Oracle, chainCfg *params.ChainConfig, l2OutputRoot common.Hash) (*OracleBackedL2Chain, error) {
 	output := oracle.OutputByRoot(l2OutputRoot)
 	outputV0, ok := output.(*eth.OutputV0)
 	if !ok {
@@ -48,6 +48,10 @@ func NewOracleBackedL2Chain(logger log.Logger, oracle Oracle, chainCfg *params.C
 	}
 	head := oracle.BlockByHash(outputV0.BlockHash)
 	logger.Info("Loaded L2 head", "hash", head.Hash(), "number", head.Number())
+	return NewOracleBackedChain(logger, oracle, chainCfg, head.Header())
+}
+
+func NewOracleBackedChain(logger log.Logger, oracle Oracle, chainCfg *params.ChainConfig, head *types.Header) (*OracleBackedL2Chain, error) {
 	return &OracleBackedL2Chain{
 		log:      logger,
 		oracle:   oracle,
@@ -55,15 +59,15 @@ func NewOracleBackedL2Chain(logger log.Logger, oracle Oracle, chainCfg *params.C
 		engine:   beacon.New(nil),
 
 		hashByNum: map[uint64]common.Hash{
-			head.NumberU64(): head.Hash(),
+			head.Number.Uint64(): head.Hash(),
 		},
-		earliestIndexedBlock: head.Header(),
+		earliestIndexedBlock: head,
 
 		// Treat the agreed starting head as finalized - nothing before it can be disputed
-		head:       head.Header(),
-		safe:       head.Header(),
-		finalized:  head.Header(),
-		oracleHead: head.Header(),
+		head:       head,
+		safe:       head,
+		finalized:  head,
+		oracleHead: head,
 		blocks:     make(map[common.Hash]*types.Block),
 		db:         NewOracleBackedDB(oracle),
 	}, nil
@@ -181,7 +185,7 @@ func (o *OracleBackedL2Chain) InsertBlockWithoutSetHead(block *types.Block) erro
 			return fmt.Errorf("invalid transaction (%d): %w", i, err)
 		}
 	}
-	expected, err := processor.Assemble()
+	expected, _, err := processor.Assemble()
 	if err != nil {
 		return fmt.Errorf("invalid block: %w", err)
 	}

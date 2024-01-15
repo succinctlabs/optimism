@@ -1,15 +1,15 @@
 package l1
 
 import (
-	"github.com/ethereum/go-ethereum/common"
-
 	preimage "github.com/ethereum-optimism/optimism/op-preimage"
+	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
-	HintL1BlockHeader  = "l1-block-header"
-	HintL1Transactions = "l1-transactions"
-	HintL1Receipts     = "l1-receipts"
+	HintL1BlockHeader        = "l1-block-header"
+	HintL1BeaconTransactions = "l1-beacon-transactions"
+	HintL1Receipts           = "l1-receipts"
 )
 
 type BlockHeaderHint common.Hash
@@ -20,12 +20,12 @@ func (l BlockHeaderHint) Hint() string {
 	return HintL1BlockHeader + " " + (common.Hash)(l).String()
 }
 
-type TransactionsHint common.Hash
+type BeaconTransactionsHint eth.Bytes32
 
-var _ preimage.Hint = TransactionsHint{}
+var _ preimage.Hint = BeaconTransactionsHint{}
 
-func (l TransactionsHint) Hint() string {
-	return HintL1Transactions + " " + (common.Hash)(l).String()
+func (l BeaconTransactionsHint) Hint() string {
+	return HintL1BeaconTransactions + " " + (eth.Bytes32)(l).String()
 }
 
 type ReceiptsHint common.Hash

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/trie"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -72,12 +72,48 @@ func (o *OracleL1Client) InfoByHash(ctx context.Context, hash common.Hash) (eth.
 	return o.oracle.HeaderByBlockHash(hash), nil
 }
 
+// FetchReceipts fetches receipts of the given L1 block. The block must be canonical.
 func (o *OracleL1Client) FetchReceipts(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Receipts, error) {
-	info, rcpts := o.oracle.ReceiptsByBlockHash(blockHash)
-	return info, rcpts, nil
+	info, err := o.InfoByHash(ctx, blockHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	receipts := o.oracle.ReceiptsByBlockNum(info.NumberU64())
+	expectedRoot := info.ReceiptHash()
+	computedRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+	if expectedRoot != computedRoot {
+		panic("loaded receipts don't match expected receipts")
+	}
+	return info, receipts, nil
+}
+
+type DencunL1Info interface {
+	eth.BlockInfo
+	ParentBeaconRoot() eth.Bytes32
+}
+
+type ExtendedInfo interface {
+	TransactionsHash() common.Hash // TODO we should add the MPT txs root attribute to the block-info so we can sanity-check tx lists
 }
 
 func (o *OracleL1Client) InfoAndTxsByHash(ctx context.Context, hash common.Hash) (eth.BlockInfo, types.Transactions, error) {
-	info, txs := o.oracle.TransactionsByBlockHash(hash)
+	info := o.oracle.HeaderByBlockHash(hash)
+	// We need the next block, to access the parent-beacon-block-root
+	next, err := o.L1BlockRefByNumber(ctx, info.NumberU64()+1)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get ")
+	}
+	if hash != next.ParentHash {
+		panic("cannot retrieve non-canonical txs")
+	}
+	nextInfo, err := o.InfoByHash(ctx, next.Hash)
+	beaconRoot := nextInfo.(DencunL1Info).ParentBeaconRoot() // TODO: need Dencun branch merged for this to actually eb there
+	txs := o.oracle.TransactionsByBeaconBlockRoot(beaconRoot)
+	// sanity check the txs are what we expected
+	expectedRoot := info.(ExtendedInfo).TransactionsHash()
+	computedRoot := types.DeriveSha(txs, trie.NewStackTrie(nil))
+	if expectedRoot != computedRoot {
+		panic("loaded txs don't match expected txs")
+	}
 	return info, txs, nil
 }

@@ -16,14 +16,14 @@ const cacheSize = 2000
 type CachingOracle struct {
 	oracle Oracle
 	blocks *simplelru.LRU[common.Hash, eth.BlockInfo]
-	txs    *simplelru.LRU[common.Hash, types.Transactions]
-	rcpts  *simplelru.LRU[common.Hash, types.Receipts]
+	txs    *simplelru.LRU[eth.Bytes32, types.Transactions]
+	rcpts  *simplelru.LRU[uint64, types.Receipts]
 }
 
 func NewCachingOracle(oracle Oracle) *CachingOracle {
 	blockLRU, _ := simplelru.NewLRU[common.Hash, eth.BlockInfo](cacheSize, nil)
-	txsLRU, _ := simplelru.NewLRU[common.Hash, types.Transactions](cacheSize, nil)
-	rcptsLRU, _ := simplelru.NewLRU[common.Hash, types.Receipts](cacheSize, nil)
+	txsLRU, _ := simplelru.NewLRU[eth.Bytes32, types.Transactions](cacheSize, nil)
+	rcptsLRU, _ := simplelru.NewLRU[uint64, types.Receipts](cacheSize, nil)
 	return &CachingOracle{
 		oracle: oracle,
 		blocks: blockLRU,
@@ -42,24 +42,22 @@ func (o *CachingOracle) HeaderByBlockHash(blockHash common.Hash) eth.BlockInfo {
 	return block
 }
 
-func (o *CachingOracle) TransactionsByBlockHash(blockHash common.Hash) (eth.BlockInfo, types.Transactions) {
-	txs, ok := o.txs.Get(blockHash)
+func (o *CachingOracle) TransactionsByBeaconBlockRoot(blockRoot eth.Bytes32) types.Transactions {
+	txs, ok := o.txs.Get(blockRoot)
 	if ok {
-		return o.HeaderByBlockHash(blockHash), txs
+		return txs
 	}
-	block, txs := o.oracle.TransactionsByBlockHash(blockHash)
-	o.blocks.Add(blockHash, block)
-	o.txs.Add(blockHash, txs)
-	return block, txs
+	txs = o.oracle.TransactionsByBeaconBlockRoot(blockRoot)
+	o.txs.Add(blockRoot, txs)
+	return txs
 }
 
-func (o *CachingOracle) ReceiptsByBlockHash(blockHash common.Hash) (eth.BlockInfo, types.Receipts) {
-	rcpts, ok := o.rcpts.Get(blockHash)
+func (o *CachingOracle) ReceiptsByBlockNum(blockNumber uint64) types.Receipts {
+	rcpts, ok := o.rcpts.Get(blockNumber)
 	if ok {
-		return o.HeaderByBlockHash(blockHash), rcpts
+		return rcpts
 	}
-	block, rcpts := o.oracle.ReceiptsByBlockHash(blockHash)
-	o.blocks.Add(blockHash, block)
-	o.rcpts.Add(blockHash, rcpts)
-	return block, rcpts
+	rcpts := o.oracle.ReceiptsByBlockNum(blockNumber)
+	o.rcpts.Add(blockNumber, rcpts)
+	return rcpts
 }

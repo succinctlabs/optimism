@@ -33,7 +33,10 @@ const (
 	// LocalKeyType is for input-type pre-images, specific to the local program instance.
 	LocalKeyType KeyType = 1
 	// Keccak256KeyType is for keccak256 pre-images, for any global shared pre-images.
-	Keccak256KeyType KeyType = 2
+	Keccak256KeyType           KeyType = 2
+	GenericKeyType             KeyType = 3 // TODO in specs, but not implemented. Important for alt-DA proving
+	Sha256KeyType              KeyType = 4
+	BlobPointEvaluationKeyType         = 5 // TODO support 4844
 )
 
 // LocalIndexKey is a key local to the program, indexing a special program input.
@@ -59,6 +62,23 @@ func (k Keccak256Key) String() string {
 }
 
 func (k Keccak256Key) TerminalString() string {
+	return "0x" + hex.EncodeToString(k[:])
+}
+
+// Sha256Key wraps a SHA2-256 hash to use it as a typed pre-image key.
+type Sha256Key [32]byte
+
+func (k Sha256Key) PreimageKey() (out [32]byte) {
+	out = k                      // copy the keccak hash
+	out[0] = byte(Sha256KeyType) // apply prefix
+	return
+}
+
+func (k Sha256Key) String() string {
+	return "0x" + hex.EncodeToString(k[:])
+}
+
+func (k Sha256Key) TerminalString() string {
 	return "0x" + hex.EncodeToString(k[:])
 }
 

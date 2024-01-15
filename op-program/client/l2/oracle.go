@@ -32,7 +32,10 @@ type Oracle interface {
 
 	// BlockByHash retrieves the block with the given hash.
 	BlockByHash(blockHash common.Hash) *types.Block
+}
 
+type L2Oracle interface {
+	Oracle
 	OutputByRoot(root common.Hash) eth.Output
 }
 
@@ -93,7 +96,12 @@ func (p *PreimageOracle) CodeByHash(codeHash common.Hash) []byte {
 	return p.oracle.Get(preimage.Keccak256Key(codeHash))
 }
 
-func (p *PreimageOracle) OutputByRoot(l2OutputRoot common.Hash) eth.Output {
+// L2PreimageOracle adds the L2 specific things to the preimage oracle
+type L2PreimageOracle struct {
+	PreimageOracle
+}
+
+func (p *L2PreimageOracle) OutputByRoot(l2OutputRoot common.Hash) eth.Output {
 	p.hint.Hint(L2OutputHint(l2OutputRoot))
 	data := p.oracle.Get(preimage.Keccak256Key(l2OutputRoot))
 	output, err := eth.UnmarshalOutput(data)

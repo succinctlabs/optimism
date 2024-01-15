@@ -170,7 +170,7 @@ func (ea *L2EngineAPI) endBlock() (*types.Block, error) {
 	processor := ea.blockProcessor
 	ea.blockProcessor = nil
 
-	block, err := processor.Assemble()
+	block, _, err := processor.Assemble()
 	if err != nil {
 		return nil, fmt.Errorf("assemble block: %w", err)
 	}

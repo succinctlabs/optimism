@@ -14,8 +14,8 @@ type StubOracle struct {
 	// Blocks maps block hash to eth.BlockInfo
 	Blocks map[common.Hash]eth.BlockInfo
 
-	// Txs maps block hash to transactions
-	Txs map[common.Hash]types.Transactions
+	// Txs maps beacon block root to transactions
+	Txs map[eth.Bytes32]types.Transactions
 
 	// Rcpts maps Block hash to receipts
 	Rcpts map[common.Hash]types.Receipts
@@ -25,7 +25,7 @@ func NewStubOracle(t *testing.T) *StubOracle {
 	return &StubOracle{
 		t:      t,
 		Blocks: make(map[common.Hash]eth.BlockInfo),
-		Txs:    make(map[common.Hash]types.Transactions),
+		Txs:    make(map[eth.Bytes32]types.Transactions),
 		Rcpts:  make(map[common.Hash]types.Receipts),
 	}
 }
@@ -37,12 +37,12 @@ func (o StubOracle) HeaderByBlockHash(blockHash common.Hash) eth.BlockInfo {
 	return info
 }
 
-func (o StubOracle) TransactionsByBlockHash(blockHash common.Hash) (eth.BlockInfo, types.Transactions) {
-	txs, ok := o.Txs[blockHash]
+func (o StubOracle) TransactionsByBeaconBlockRoot(blockRoot eth.Bytes32) types.Transactions {
+	txs, ok := o.Txs[blockRoot]
 	if !ok {
-		o.t.Fatalf("unknown txs %s", blockHash)
+		o.t.Fatalf("unknown txs %s", blockRoot)
 	}
-	return o.HeaderByBlockHash(blockHash), txs
+	return txs
 }
 
 func (o StubOracle) ReceiptsByBlockHash(blockHash common.Hash) (eth.BlockInfo, types.Receipts) {
