@@ -243,7 +243,7 @@ contract Deploy is Deployer {
     }
 
     /// @notice Deploy all of the L1 contracts necessary for a full Superchain with a single Op Chain.
-    function run() public {
+    function run() public virtual {
         console.log("Deploying a fresh OP Stack including SuperchainConfig");
         _run();
     }
@@ -1099,5 +1099,56 @@ contract Deploy is Deployer {
             gameTypeString,
             vm.toString(rawGameType)
         );
+    }
+}
+
+contract DeployExtendedPauseUpgrade is Deploy {
+    // taken from SuperchainConfig.sol
+    bytes32 public constant PAUSED_SLOT = bytes32(uint256(keccak256("superchainConfig.paused")) - 1);
+    bytes32 public constant GUARDIAN_SLOT = bytes32(uint256(keccak256("superchainConfig.guardian")) - 1);
+
+    function run() public override {
+        // Taken from:
+        // https://github.com/ethereum-optimism/superchain-registry/blob/8dbdcf965b5fd5a92c57757d4b1389242d02e8d6/superchain/extra/addresses/mainnet/op.json#L2
+        save("SystemOwnerSafe", 0x9BA6e03D8B90dE867373Db8cF1A58d2F7F006b3A);
+        save("ProxyAdmin", 0x543bA4AADBAb8f9025686Bd03993043599c6fB04);
+
+        console.log("Deploying from address: %s", msg.sender);
+
+        console.log("Deploy a new SuperchainConfigProxy");
+        deployERC1967ProxyWithOwner("SuperchainConfigProxy", msg.sender);
+        require(msg.sender == EIP1967Helper.getAdmin(mustGetAddress("SuperchainConfigProxy")), "Not admin");
+
+        console.log("Deploy a new SuperchainConfig impl");
+        deploySuperchainConfig();
+        require(loadInitializedSlot("SuperchainConfig") == 1, "SuperchainConfigProxy is not initialized");
+
+        console.log("Initializing the new SuperchainConfigProxy");
+        address payable superchainConfigProxy = mustGetAddress("SuperchainConfigProxy");
+
+        vm.startBroadcast();
+        Proxy(payable(mustGetAddress("SuperchainConfigProxy"))).upgradeToAndCall(
+            address(mustGetAddress("SuperchainConfig")),
+            abi.encodeWithSelector(SuperchainConfig.initialize.selector, cfg.superchainConfigGuardian(), false)
+        );
+
+        console.log("validate the new SuperchainConfigProxy state");
+        require(loadInitializedSlot("SuperchainConfigProxy") == 1, "SuperchainConfigProxy is not initialized");
+        require(vm.load(superchainConfigProxy, PAUSED_SLOT) == bytes32(uint256(0)), "SuperchainConfigProxy is paused");
+        require(SuperchainConfig(superchainConfigProxy).paused() == false);
+        require(
+            vm.load(superchainConfigProxy, GUARDIAN_SLOT) == bytes32(uint256(uint160(cfg.superchainConfigGuardian()))),
+            "SuperchainConfigProxy is not initialized"
+        );
+        require(mustGetAddress("SystemOwnerSafe") == SuperchainConfig(superchainConfigProxy).guardian());
+        vm.stopBroadcast();
+
+        console.log("Transfer Ownership to ProxyAdmin");
+        transferProxyToProxyAdmin("SuperchainConfigProxy");
+        require(
+            mustGetAddress("ProxyAdmin") == EIP1967Helper.getAdmin(mustGetAddress("SuperchainConfigProxy")), "Not admin"
+        );
+
+        deployImplementations();
     }
 }
