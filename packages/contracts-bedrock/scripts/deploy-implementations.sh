@@ -8,6 +8,8 @@ if [ -n "${DEPLOY_VERIFY:-}" ]; then
   verify_flag="--verify"
 fi
 
+export IMPL_SALT="supa dupa chain"
+
 SENDER=$(cast wallet address --keystore "$DEPLOY_PRIVATE_KEY")
 echo "Sender: $SENDER"
 

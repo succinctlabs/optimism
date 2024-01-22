@@ -1131,13 +1131,15 @@ contract DeployExtendedPauseUpgrade is Deploy {
         require(loadInitializedSlot("SuperchainConfig") == 1, "SuperchainConfigProxy is not initialized");
 
         console.log("Initializing the new SuperchainConfigProxy");
+        // Need to do this manually because we can't use the `initializeSuperchainConfig` function which makes the call
+        // from the Safe
         address payable superchainConfigProxy = mustGetAddress("SuperchainConfigProxy");
-
         vm.startBroadcast();
         Proxy(payable(mustGetAddress("SuperchainConfigProxy"))).upgradeToAndCall(
             address(mustGetAddress("SuperchainConfig")),
             abi.encodeWithSelector(SuperchainConfig.initialize.selector, cfg.superchainConfigGuardian(), false)
         );
+        vm.stopBroadcast();
 
         console.log("validate the new SuperchainConfigProxy state");
         require(loadInitializedSlot("SuperchainConfigProxy") == 1, "SuperchainConfigProxy is not initialized");
@@ -1145,17 +1147,17 @@ contract DeployExtendedPauseUpgrade is Deploy {
         require(SuperchainConfig(superchainConfigProxy).paused() == false);
         require(
             vm.load(superchainConfigProxy, GUARDIAN_SLOT) == bytes32(uint256(uint160(cfg.superchainConfigGuardian()))),
-            "SuperchainConfigProxy is not initialized"
+            "Guardian is wrong"
         );
         require(mustGetAddress("SystemOwnerSafe") == SuperchainConfig(superchainConfigProxy).guardian());
-        vm.stopBroadcast();
 
         console.log("Transfer Ownership to ProxyAdmin");
         transferProxyToProxyAdmin("SuperchainConfigProxy");
         require(
-            mustGetAddress("ProxyAdmin") == EIP1967Helper.getAdmin(mustGetAddress("SuperchainConfigProxy")), "Not admin"
+            mustGetAddress("ProxyAdmin") == EIP1967Helper.getAdmin(mustGetAddress("SuperchainConfigProxy")),
+            "ProxyAdmin is not the SuperchainConfigProxy admin"
         );
 
-        deployImplementations();
+        // deployImplementations();
     }
 }
