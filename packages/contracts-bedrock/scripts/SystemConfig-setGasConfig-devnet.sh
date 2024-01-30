@@ -2,11 +2,11 @@
 set -euo pipefail
 
 if [ -z "${DEVNET_ADMIN}" ]; then
-    echo "Error: Set DEVNET_ADMIN to secret key of 0x858F0751ef8B4067f0d2668C076BDB50a8549fbF."
+    echo "Error: Set DEVNET_ADMIN to secret key of 0x8c20c40180751d93E939DDDee3517AE0d1EBeAd2."
     exit 1
 fi
 if [ -z "${ETH_RPC_URL}" ]; then
-    echo "Error: Set ETH_RPC_URL to Goerli L1 rpc endpoint."
+    echo "Error: Set ETH_RPC_URL to Sepolia L1 rpc endpoint."
     exit 1
 fi
 
