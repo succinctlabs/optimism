@@ -8,10 +8,10 @@ import { SystemConfig } from "src/L1/SystemConfig.sol";
 
 contract SystemConfig_SetGasConfig is Script, StdAssertions {
     /// @notice Devnet system config.
-    SystemConfig internal constant SYS_CFG = SystemConfig(0x78c9876A3621b97cC9B3C13ad0F35091dB49E8E3);
+    SystemConfig internal constant SYS_CFG = SystemConfig(0xa6b72407e2dc9EBF84b839B69A24C88929cf20F7);
 
-    uint256 internal constant EXPECTED_SCALAR_CURRENT = 1_000_000;
-    uint256 internal constant EXPECTED_OVERHEAD_CURRENT = 2_100;
+    uint256 internal constant EXPECTED_SCALAR_CURRENT = 684_000;
+    uint256 internal constant EXPECTED_OVERHEAD_CURRENT = 188;
 
     uint256 internal constant DEVNET_ECOTONE_GAS_CONFIG = 0x010000000000000000000000000000000000000000000000000d273000001db0;
 
