@@ -12,15 +12,9 @@ import {
   sleep,
   toRpcHexString,
 } from '@eth-optimism/core-utils'
-import { config } from 'dotenv'
-import {
-  CONTRACT_ADDRESSES,
-  CrossChainMessenger,
-  getOEContract,
-  L2ChainID,
-  OEL1ContractsLike,
-} from '@eth-optimism/sdk'
+import { getOEContract, DEFAULT_L2_CONTRACT_ADDRESSES } from '@eth-optimism/sdk'
 import { Provider } from '@ethersproject/abstract-provider'
+import { config } from 'dotenv'
 import { Contract, ethers } from 'ethers'
 import dateformat from 'dateformat'
 
@@ -31,7 +25,8 @@ type Options = {
   l1RpcProvider: Provider
   l2RpcProvider: Provider
   startOutputIndex: number
-  optimismPortalAddress?: string
+  optimismPortalAddress: string
+  l2OutputOracleAddress: string
 }
 
 type Metrics = {
@@ -42,8 +37,9 @@ type Metrics = {
 
 type State = {
   faultProofWindow: number
-  outputOracle: Contract
-  messenger: CrossChainMessenger
+  optimismPortal: Contract
+  optimismPortal2: Contract
+  l2OutputOracle: Contract
   currentOutputIndex: number
   diverged: boolean
 }
@@ -75,8 +71,14 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
         },
         optimismPortalAddress: {
           validator: validators.str,
-          default: ethers.constants.AddressZero,
-          desc: '[Custom OP Chains] Deployed OptimismPortal contract address. Used to retrieve necessary info for output verification ',
+          default: null,
+          desc: 'Address of the OptimismPortal proxy contract on L1',
+          public: true,
+        },
+        l2OutputOracleAddress: {
+          validator: validators.str,
+          default: null,
+          desc: 'Address of the L2OutputOracle proxy contract on L1',
           public: true,
         },
       },
@@ -99,66 +101,6 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
     })
   }
 
-  /**
-   * Provides the required set of addresses used by the fault detector. For recognized op-chains, this
-   * will fallback to the pre-defined set of addresses from options, otherwise aborting if unset.
-   *
-   * Required Contracts
-   * - OptimismPortal (used to also fetch L2OutputOracle address variable). This is the preferred address
-   * since in early versions of bedrock, OptimismPortal holds the FINALIZATION_WINDOW variable instead of L2OutputOracle.
-   * The retrieved L2OutputOracle address from OptimismPortal is used to query for output roots.
-   *
-   * @param l2ChainId op chain id
-   * @returns OEL1ContractsLike set of L1 contracts with only the required addresses set
-   */
-  async getOEL1Contracts(l2ChainId: number): Promise<OEL1ContractsLike> {
-    // CrossChainMessenger requires all address to be defined. Default to `AddressZero` to ignore unused contracts
-    let contracts: OEL1ContractsLike = {
-      OptimismPortal: ethers.constants.AddressZero,
-      L2OutputOracle: ethers.constants.AddressZero,
-      // Unused contracts
-      AddressManager: ethers.constants.AddressZero,
-      BondManager: ethers.constants.AddressZero,
-      CanonicalTransactionChain: ethers.constants.AddressZero,
-      L1CrossDomainMessenger: ethers.constants.AddressZero,
-      L1StandardBridge: ethers.constants.AddressZero,
-      StateCommitmentChain: ethers.constants.AddressZero,
-    }
-
-    const knownChainId = L2ChainID[l2ChainId] !== undefined
-    if (knownChainId) {
-      this.logger.info(`Recognized L2 chain id ${L2ChainID[l2ChainId]}`)
-
-      // fallback to the predefined defaults for this chain id
-      contracts = CONTRACT_ADDRESSES[l2ChainId].l1
-    }
-
-    this.logger.info('checking contract address options...')
-    const portalAddress = this.options.optimismPortalAddress
-    if (!knownChainId && portalAddress === ethers.constants.AddressZero) {
-      this.logger.error('OptimismPortal contract unspecified')
-      throw new Error(
-        '--optimismportalcontractaddress needs to set for custom op chains'
-      )
-    }
-
-    if (portalAddress !== ethers.constants.AddressZero) {
-      this.logger.info('set OptimismPortal contract override')
-      contracts.OptimismPortal = portalAddress
-
-      this.logger.info('fetching L2OutputOracle contract from OptimismPortal')
-      const portalContract = getOEContract('OptimismPortal', l2ChainId, {
-        address: portalAddress,
-        signerOrProvider: this.options.l1RpcProvider,
-      })
-      contracts.L2OutputOracle = await portalContract.L2_ORACLE()
-    }
-
-    // ... for a known chain ids without an override, the L2OutputOracle will already
-    // be set via the hardcoded default
-    return contracts
-  }
-
   async init(): Promise<void> {
     // Connect to L1.
     await waitForProvider(this.options.l1RpcProvider, {
@@ -172,47 +114,44 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
       name: 'L2',
     })
 
-    const l1ChainId = await getChainId(this.options.l1RpcProvider)
+    // Need L2 chain ID to resolve contract addresses.
     const l2ChainId = await getChainId(this.options.l2RpcProvider)
-    this.state.messenger = new CrossChainMessenger({
-      l1SignerOrProvider: this.options.l1RpcProvider,
-      l2SignerOrProvider: this.options.l2RpcProvider,
-      l1ChainId,
-      l2ChainId,
-      bedrock: true,
-      contracts: { l1: await this.getOEL1Contracts(l2ChainId) },
+
+    this.state.optimismPortal = getOEContract('OptimismPortal', l2ChainId, {
+      signerOrProvider: this.options.l1RpcProvider,
+      address: this.options.optimismPortalAddress,
     })
 
-    // Not diverged by default.
-    this.state.diverged = false
+    this.state.optimismPortal2 = getOEContract('OptimismPortal2', l2ChainId, {
+      signerOrProvider: this.options.l1RpcProvider,
+      address: this.state.optimismPortal.address,
+    })
+
+    this.state.l2OutputOracle = getOEContract('L2OutputOracle', l2ChainId, {
+      signerOrProvider: this.options.l1RpcProvider,
+      address: this.options.l2OutputOracleAddress,
+    })
 
     // We use this a lot, a bit cleaner to pull out to the top level of the state object.
     this.state.faultProofWindow =
-      await this.state.messenger.getChallengePeriodSeconds()
-    this.logger.info(
-      `fault proof window is ${this.state.faultProofWindow} seconds`
-    )
-
-    this.state.outputOracle = this.state.messenger.contracts.l1.L2OutputOracle
+      this.state.l2OutputOracle.FINALIZATION_PERIOD_SECONDS()
 
     // Figure out where to start syncing from.
     if (this.options.startOutputIndex === -1) {
       this.logger.info('finding appropriate starting unfinalized output')
       const firstUnfinalized = await findFirstUnfinalizedOutputIndex(
-        this.state.outputOracle,
+        this.state.l2OutputOracle,
         this.state.faultProofWindow,
         this.logger
       )
 
       // We may not have an unfinalized outputs in the case where no outputs have been submitted
-      // for the entire duration of the FAULTPROOFWINDOW. We generally do not expect this to happen on mainnet,
-      // but it happens often on testnets because the FAULTPROOFWINDOW is very short.
+      // for the entire duration of the FAULT_PROOF_WINDOW. We generally do not expect this to
+      // happen on mainnet, but it happens on testnets because the FAULT_PROOF_WINDOW is short.
       if (firstUnfinalized === undefined) {
-        this.logger.info(
-          'no unfinalized outputes found. skipping all outputes.'
-        )
-        const totalOutputes = await this.state.outputOracle.nextOutputIndex()
-        this.state.currentOutputIndex = totalOutputes.toNumber() - 1
+        this.logger.info('no unfinalized outputs found, skipping all outputs')
+        const totalOutputs = await this.state.l2OutputOracle.nextOutputIndex()
+        this.state.currentOutputIndex = totalOutputs.toNumber() - 1
       } else {
         this.state.currentOutputIndex = firstUnfinalized
       }
@@ -220,12 +159,15 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
       this.state.currentOutputIndex = this.options.startOutputIndex
     }
 
-    this.logger.info('starting output', {
+    // Not diverged by default.
+    this.state.diverged = false
+    this.metrics.isCurrentlyMismatched.set(0)
+
+    // Log the initial state.
+    this.logger.info('initial state', {
+      faultProofWindow: this.state.faultProofWindow,
       outputIndex: this.state.currentOutputIndex,
     })
-
-    // Set the initial metrics.
-    this.metrics.isCurrentlyMismatched.set(0)
   }
 
   async routes(router: ExpressRouter): Promise<void> {
@@ -241,10 +183,10 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
 
     let latestOutputIndex: number
     try {
-      const totalOutputes = await this.state.outputOracle.nextOutputIndex()
-      latestOutputIndex = totalOutputes.toNumber() - 1
+      const totalOutputs = await this.state.l2OutputOracle.nextOutputIndex()
+      latestOutputIndex = totalOutputs.toNumber() - 1
     } catch (err) {
-      this.logger.error('failed to query total # of outputes', {
+      this.logger.error('failed to query total # of outputs', {
         error: err,
         node: 'l1',
         section: 'nextOutputIndex',
@@ -275,7 +217,7 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
     let outputData: BedrockOutputData
     try {
       outputData = await findOutputForIndex(
-        this.state.outputOracle,
+        this.state.l2OutputOracle,
         this.state.currentOutputIndex,
         this.logger
       )
@@ -345,7 +287,7 @@ export class FaultDetector extends BaseServiceV2<Options, Metrics, State> {
       messagePasserProofResponse = await (
         this.options.l2RpcProvider as ethers.providers.JsonRpcProvider
       ).send('eth_getProof', [
-        this.state.messenger.contracts.l2.BedrockMessagePasser.address,
+        DEFAULT_L2_CONTRACT_ADDRESSES.BedrockMessagePasser,
         [],
         toRpcHexString(outputBlockNumber),
       ])
