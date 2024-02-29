@@ -3463,6 +3463,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-rlp",
  "anyhow",
+ "once_cell",
  "reth-blockchain-tree",
  "reth-db",
  "reth-primitives",

@@ -20,6 +20,7 @@ reth-blockchain-tree = { git = "https://github.com/paradigmxyz/reth.git", rev = 
 serde = "1.0.197"
 serde_json = "1.0.114"
 anyhow = "1.0.80"
+once_cell = "1.19.0"
 
 [dev-dependencies]
 reth-revm = { git = "https://github.com/paradigmxyz/reth.git", rev = "e0c220e" }

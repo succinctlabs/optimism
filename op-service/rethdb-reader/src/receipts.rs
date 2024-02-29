@@ -2,8 +2,9 @@
 //! [reth] database.
 
 use anyhow::{anyhow, Result};
+use once_cell::sync::OnceCell;
 use reth_blockchain_tree::noop::NoopBlockchainTree;
-use reth_db::{mdbx::DatabaseArguments, open_db_read_only};
+use reth_db::{mdbx::DatabaseArguments, open_db_read_only, DatabaseEnv};
 use reth_primitives::{
     BlockHashOrNumber, Receipt, TransactionKind, TransactionMeta, TransactionSigned, MAINNET, U128,
     U256, U64,
@@ -11,6 +12,8 @@ use reth_primitives::{
 use reth_provider::{providers::BlockchainProvider, BlockReader, ProviderFactory, ReceiptProvider};
 use reth_rpc_types::{Log, TransactionReceipt};
 use std::{ffi::c_char, path::Path};
+
+static DB_INSTANCE: OnceCell<DatabaseEnv> = OnceCell::new();
 
 /// A [ReceiptsResult] is a wrapper around a JSON string containing serialized [TransactionReceipt]s
 /// as well as an error status that is compatible with FFI.
@@ -66,8 +69,10 @@ pub(crate) unsafe fn read_receipts_inner(
     }
     .to_str()?;
 
-    let db = open_db_read_only(Path::new(db_path_str), DatabaseArguments::default())
-        .map_err(|e| anyhow!(e))?;
+    let db = DB_INSTANCE.get_or_try_init(|| {
+        open_db_read_only(Path::new(db_path_str), DatabaseArguments::default())
+            .map_err(|e| anyhow!(e))
+    })?;
     let factory = ProviderFactory::new(db, MAINNET.clone());
 
     // Create a read-only BlockChainProvider
