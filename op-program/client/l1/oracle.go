@@ -51,9 +51,11 @@ func NewPreimageOracle(raw preimage.Oracle, hint preimage.Hinter) *PreimageOracl
 func (p *PreimageOracle) headerByBlockHash(blockHash common.Hash) *types.Header {
 	p.hint.Hint(BlockHeaderHint(blockHash))
 	headerRlp := p.oracle.Get(preimage.Keccak256Key(blockHash))
+	fmt.Printf("Got header for block %v of length %v: %x\n", blockHash, len(headerRlp), headerRlp)
+
 	var header types.Header
 	if err := rlp.DecodeBytes(headerRlp, &header); err != nil {
-		panic(fmt.Errorf("invalid block header %s, %x: %w", blockHash, headerRlp, err))
+		panic(fmt.Errorf("invalid block header %s len: %v data: %x -  %w", blockHash, len(headerRlp), headerRlp, err))
 	}
 	return &header
 }
