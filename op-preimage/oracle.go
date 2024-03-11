@@ -34,6 +34,7 @@ func (o *OracleClient) Get(key Key) []byte {
 		panic(fmt.Errorf("failed to read pre-image payload (length %d) of key %s (%T) from pre-image oracle: %w", length, key, key, err))
 	}
 
+	fmt.Printf("Read preimage for key %x of length %v: %x\n", h, length, payload)
 	return payload
 }
 
