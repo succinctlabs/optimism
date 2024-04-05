@@ -28,6 +28,9 @@ We also have the following custom tags:
 
 #### Errors
 
+Prefer reverting with a solidity custom error rather than an error string.
+
+Earlier contracts used the following conventions for error strings, and may not have been updated yet:
 - Use `require` statements when making simple assertions.
 - Use `revert(string)` if throwing an error where an assertion is not being made (no custom errors).
   See [here](https://github.com/ethereum-optimism/optimism/blob/861ae315a6db698a8c0adb1f8eab8311fd96be4c/packages/contracts-bedrock/contracts/L2/OVM_ETH.sol#L31)
