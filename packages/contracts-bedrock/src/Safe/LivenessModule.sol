@@ -6,6 +6,7 @@ import { Enum } from "safe-contracts/common/Enum.sol";
 import { OwnerManager } from "safe-contracts/base/OwnerManager.sol";
 import { LivenessGuard } from "src/Safe/LivenessGuard.sol";
 import { ISemver } from "src/universal/ISemver.sol";
+import "src/libraries/SafeModuleErrors.sol";
 
 /// @title LivenessModule
 /// @notice This module is intended to be used in conjunction with the LivenessGuard. In the event
@@ -61,7 +62,10 @@ contract LivenessModule is ISemver {
         FALLBACK_OWNER = _fallbackOwner;
         MIN_OWNERS = _minOwners;
         address[] memory owners = _safe.getOwners();
-        require(_minOwners <= owners.length, "LivenessModule: minOwners must be less than the number of owners");
+        // require(_minOwners <= owners.length, "LivenessModule: minOwners must be less than the number of owners");
+        if (owners.length < _minOwners) {
+            revert InsufficientOwners();
+        }
         require(
             _safe.getThreshold() >= get75PercentThreshold(owners.length),
             "LivenessModule: Safe must have a threshold of at least 75% of the number of owners"

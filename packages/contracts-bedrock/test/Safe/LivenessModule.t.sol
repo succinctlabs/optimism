@@ -11,6 +11,7 @@ import "test/safe-tools/SafeTestTools.sol";
 
 import { LivenessModule } from "src/Safe/LivenessModule.sol";
 import { LivenessGuard } from "src/Safe/LivenessGuard.sol";
+import "src/libraries/SafeModuleErrors.sol";
 
 contract LivenessModule_TestInit is Test, SafeTestTools {
     using SafeTestLib for SafeInstance;
@@ -70,7 +71,8 @@ contract LivenessModule_TestInit is Test, SafeTestTools {
 contract LivenessModule_Constructor_TestFail is LivenessModule_TestInit {
     /// @dev Tests that the constructor fails if the minOwners is greater than the number of owners
     function test_constructor_minOwnersGreaterThanOwners_reverts() external {
-        vm.expectRevert("LivenessModule: minOwners must be less than the number of owners");
+        // vm.expectRevert("LivenessModule: minOwners must be less than the number of owners");
+        vm.expectRevert(InsufficientOwners.selector);
         new LivenessModule({
             _safe: safeInstance.safe,
             _livenessGuard: livenessGuard,
