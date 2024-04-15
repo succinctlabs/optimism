@@ -1,11 +1,13 @@
 package upgrades
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"os"
 	"strconv"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 
@@ -569,13 +571,41 @@ func OptimismPortal(batch *safe.Batch, implementations superchain.Implementation
 	if err != nil {
 		return err
 	}
+
 	l2OutputOracle, err := optimismPortal.L2Oracle(&bind.CallOpts{})
 	if err != nil {
-		return err
+		// Handle legacy `L2_ORACLE()(address)` getter
+		addr := common.Address(list.OptimismPortalProxy)
+		msg := ethereum.CallMsg{
+			To:   &addr,
+			Data: common.FromHex("0x001c2ff6"),
+		}
+		data, err := backend.CallContract(context.Background(), msg, nil)
+		if err != nil {
+			return err
+		}
+		if len(data) != 32 {
+			return fmt.Errorf("unexpected result length: %d", len(data))
+		}
+		l2OutputOracle = common.BytesToAddress(data[12:])
 	}
+
 	systemConfig, err := optimismPortal.SystemConfig(&bind.CallOpts{})
 	if err != nil {
-		return err
+		// Handle legacy `SYSTEM_CONFIG()(address)` getter
+		addr := common.Address(list.OptimismPortalProxy)
+		msg := ethereum.CallMsg{
+			To:   &addr,
+			Data: common.FromHex("0xf0498750"),
+		}
+		data, err := backend.CallContract(context.Background(), msg, nil)
+		if err != nil {
+			return err
+		}
+		if len(data) != 32 {
+			return fmt.Errorf("unexpected result length: %d", len(data))
+		}
+		systemConfig = common.BytesToAddress(data[12:])
 	}
 
 	if l2OutputOracle != common.Address(list.L2OutputOracleProxy) {
