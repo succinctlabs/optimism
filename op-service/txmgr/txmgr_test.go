@@ -305,7 +305,7 @@ func (*mockBackend) ChainID(ctx context.Context) (*big.Int, error) {
 
 // TransactionReceipt queries the mockBackend for a mined txHash. If none is found, nil is returned
 // for both return values. Otherwise, it returns a receipt containing the txHash, the gasFeeCap
-// used in GasUsed, and the blobFeeCap in CumuluativeGasUsed to make the values accessible from our
+// used in GasUsed, and the blobFeeCap in CumulativeGasUsed to make the values accessible from our
 // test framework.
 func (b *mockBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	b.mu.RLock()
@@ -366,7 +366,7 @@ func TestTxMgrConfirmAtMinGasPrice(t *testing.T) {
 }
 
 // TestTxMgrNeverConfirmCancel asserts that a Send can be canceled even if no
-// transaction is mined. This is done to ensure the the tx mgr can properly
+// transaction is mined. This is done to ensure the tx mgr can properly
 // abort on shutdown, even if a txn is in the process of being published.
 func TestTxMgrNeverConfirmCancel(t *testing.T) {
 	t.Parallel()
