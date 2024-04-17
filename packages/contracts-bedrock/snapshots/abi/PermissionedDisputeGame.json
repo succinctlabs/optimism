@@ -784,11 +784,6 @@
   },
   {
     "inputs": [],
-    "name": "MaxDepthTooLarge",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "NoCreditToClaim",
     "type": "error"
   },
