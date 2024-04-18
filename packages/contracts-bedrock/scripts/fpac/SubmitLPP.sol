@@ -36,8 +36,10 @@ contract SubmitLPP is Script, StdAssertions {
         // Assign last mock state commitment to all bits set.
         mockStateCommitmentsLast[mockStateCommitmentsLast.length - 1] = bytes32(type(uint256).max);
 
+        uint256 bond = oracle.MIN_BOND_SIZE();
+
         vm.broadcast();
-        oracle.initLPP({ _uuid: TEST_UUID, _partOffset: 0, _claimedSize: uint32(BYTES_TO_SUBMIT) });
+        oracle.initLPP{ value: bond }({ _uuid: TEST_UUID, _partOffset: 0, _claimedSize: uint32(BYTES_TO_SUBMIT) });
 
         // Submit LPP in 500 * 136 byte chunks.
         for (uint256 i = 0; i < BYTES_TO_SUBMIT; i += CHUNK_SIZE) {

@@ -552,6 +552,13 @@ contract PreimageOracle is IPreimageOracle, ISemver {
         proposalBlocks[msg.sender][_uuid].push(uint64(block.number));
         // Persist the updated metadata to storage.
         proposalMetadata[msg.sender][_uuid] = metaData;
+
+        // Clobber memory and `log0` all calldata. This is safe because there is no execution afterwards within
+        // this callframe.
+        assembly {
+            calldatacopy(0x00, 0x00, calldatasize())
+            log0(0x00, calldatasize())
+        }
     }
 
     /// @notice Challenge a keccak256 block that was committed to in the merkle tree.
