@@ -41,6 +41,13 @@ type DataSource interface {
 func ChallengeFromSource(dataSource DataSource) (types.Challenge, error) {
 	commitments := dataSource.StateCommitments()
 	data := dataSource.Reader()
+	full, err := io.ReadAll(data)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Read data: %v\n", len(full))
+
+	data = dataSource.Reader()
 	s := NewStateMatrix()
 	lastValidState := s.StateSnapshot()
 	var lastValidLeaf types.Leaf

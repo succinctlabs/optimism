@@ -27,8 +27,23 @@ var (
 )
 
 type MagicBlobThang struct {
-	leafCount uint64
-	blobs     []*eth.Blob
+	leafCount   uint64
+	claimedSize uint64
+	blobs       []*eth.Blob
+}
+
+func EncodeData(data []byte, commitments []common.Hash) []*eth.Blob {
+	leaves := make([]types.Leaf, len(commitments))
+	for i, commitment := range commitments {
+		var input [types.BlockSize]byte
+		copy(input[:], data[i*types.BlockSize:])
+		leaves[i] = types.Leaf{
+			Input:           input,
+			Index:           uint64(i),
+			StateCommitment: commitment,
+		}
+	}
+	return Encode(leaves)
 }
 
 func Encode(leaves []types.Leaf) []*eth.Blob {
@@ -64,17 +79,18 @@ func encodeToBlob(leaves []types.Leaf) *eth.Blob {
 
 func NewMagicBlobThang(metadata types.LargePreimageMetaData, blobs []*eth.Blob) (*MagicBlobThang, error) {
 	size := metadata.ClaimedSize
-	leafCount := uint64(size / types.BlockSize)
-	if size%types.BlockSize == 0 {
-		// The input data fully fills the leaves so padding gets added as an additional leaf
-		leafCount++
-	}
+	leafCount := uint64(size/types.BlockSize) + 1
+	//if size%types.BlockSize == 0 {
+	//	The input data fully fills the leaves so padding gets added as an additional leaf
+	//leafCount++
+	//}
 	if uint64(len(blobs)) != leafCount/leavesPerBlob+1 {
 		return nil, fmt.Errorf("%w expeted %v but was %v", ErrInvalidBlobCount, leafCount/leavesPerBlob+1, len(blobs))
 	}
 	return &MagicBlobThang{
-		leafCount: leafCount,
-		blobs:     blobs,
+		leafCount:   leafCount,
+		claimedSize: uint64(size),
+		blobs:       blobs,
 	}, nil
 }
 
@@ -91,12 +107,18 @@ func (b *MagicBlobThang) Reader() io.Reader {
 	readers := make([]io.Reader, b.leafCount)
 	for leafIdx := range readers {
 		input, _ := b.readLeaf(uint64(leafIdx))
-		readers[leafIdx] = bytes.NewReader(input[:])
+		if uint64(leafIdx)+1 == b.leafCount {
+			// Skip trailing data in the last leaf
+			length := b.claimedSize % types.BlockSize
+			readers[leafIdx] = bytes.NewReader(input[:length])
+		} else {
+			readers[leafIdx] = bytes.NewReader(input[:])
+		}
 	}
 	return io.MultiReader(readers...)
 }
 
-func (b *MagicBlobThang) DataForLeaf(idx uint64) types.LeafProofData {
+func (b *MagicBlobThang) ProofForLeaf(idx uint64) types.LeafProofData {
 	startBlobIdx, startElementIdx, _ := LeafStart(idx)
 	endBlobIdx, endElementIdx, _ := LeafEnd(idx)
 	if startBlobIdx != endBlobIdx {

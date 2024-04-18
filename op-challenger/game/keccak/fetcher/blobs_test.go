@@ -1,9 +1,12 @@
 package fetcher
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"testing"
 
+	"github.com/ethereum-optimism/optimism/op-challenger/game/keccak/matrix"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/keccak/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/trie/testutil"
@@ -106,4 +109,30 @@ func TestLeaf(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expected, actual)
 	}
+}
+
+func TestChallenge(t *testing.T) {
+	image := testutil.RandBytes(8192)
+	valid := matrix.NewStateMatrix()
+	data, err := valid.AbsorbUpTo(bytes.NewReader(image), types.BlockSize*1000000)
+	require.ErrorIs(t, err, io.EOF)
+
+	t.Run("Valid", func(t *testing.T) {
+		blobs := EncodeData(data.Input, data.Commitments)
+		blobThang, err := NewMagicBlobThang(types.LargePreimageMetaData{ClaimedSize: uint32(len(image))}, blobs)
+		require.NoError(t, err)
+		_, err = matrix.ChallengeFromSource(blobThang)
+		require.ErrorIs(t, err, matrix.ErrValid)
+	})
+
+	t.Run("Invalid", func(t *testing.T) {
+		commitments := make([]common.Hash, len(data.Commitments))
+		copy(commitments, data.Commitments)
+		commitments[5] = common.Hash{0xaa}
+		blobs := EncodeData(data.Input, commitments)
+		blobThang, err := NewMagicBlobThang(types.LargePreimageMetaData{ClaimedSize: uint32(len(image))}, blobs)
+		require.NoError(t, err)
+		_, err = matrix.ChallengeFromSource(blobThang)
+		require.NoError(t, err)
+	})
 }
