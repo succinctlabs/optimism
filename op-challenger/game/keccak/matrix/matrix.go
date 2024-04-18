@@ -32,6 +32,67 @@ var (
 	ErrValid                    = errors.New("state commitments are valid")
 )
 
+type DataSource interface {
+	StateCommitments() []common.Hash
+	Reader() io.Reader
+	ProofForLeaf(leafIdx uint64) types.LeafProofData
+}
+
+func ChallengeFromSource(dataSource DataSource) (types.Challenge, error) {
+	commitments := dataSource.StateCommitments()
+	data := dataSource.Reader()
+	s := NewStateMatrix()
+	lastValidState := s.StateSnapshot()
+	var lastValidLeaf types.Leaf
+	var firstInvalidLeaf types.Leaf
+	for i := 0; ; i++ {
+		if i >= len(commitments) {
+			// There should have been more commitments.
+			// The contracts should prevent this so it can't be challenged, return an error
+			return types.Challenge{}, ErrIncorrectCommitmentCount
+		}
+		claimedCommitment := commitments[i]
+		_, err := s.absorbNextLeafInput(data, func() common.Hash { return claimedCommitment })
+		isEOF := errors.Is(err, io.EOF)
+		if err != nil && !isEOF {
+			return types.Challenge{}, fmt.Errorf("failed to verify inputs: %w", err)
+		}
+		validCommitment := s.StateCommitment()
+
+		if firstInvalidLeaf == (types.Leaf{}) {
+			if validCommitment != claimedCommitment {
+				lastValidLeaf = s.prestateLeaf
+				firstInvalidLeaf = s.poststateLeaf
+			} else {
+				lastValidState = s.StateSnapshot()
+			}
+		}
+		if isEOF {
+			if i < len(commitments)-1 {
+				// We got too many commitments
+				// The contracts should prevent this so it can't be challenged, return an error
+				return types.Challenge{}, ErrIncorrectCommitmentCount
+			}
+			break
+		}
+	}
+	if firstInvalidLeaf != (types.Leaf{}) {
+		var prestateProof types.LeafProofData
+		if lastValidLeaf != (types.Leaf{}) {
+			prestateProof = dataSource.ProofForLeaf(lastValidLeaf.Index)
+		}
+		poststateProof := dataSource.ProofForLeaf(firstInvalidLeaf.Index)
+		return types.Challenge{
+			StateMatrix:        lastValidState,
+			Prestate:           lastValidLeaf,
+			PrestateLeafProof:  prestateProof,
+			Poststate:          firstInvalidLeaf,
+			PoststateLeafProof: poststateProof,
+		}, nil
+	}
+	return types.Challenge{}, ErrValid
+}
+
 // Challenge creates a [types.Challenge] to invalidate the provided preimage data if possible.
 // [ErrValid] is returned if the provided inputs are valid and no challenge can be created.
 func Challenge(data io.Reader, commitments []common.Hash) (types.Challenge, error) {

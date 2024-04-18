@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
 // BlockSize is the size in bytes required for leaf data.
@@ -83,17 +84,26 @@ func (s StateSnapshot) Pack() []byte {
 	return buf
 }
 
+type LeafProofData struct {
+	Commitment kzg4844.Commitment
+	Points     []kzg4844.Point
+	Proofs     []kzg4844.Proof
+	Claims     []kzg4844.Claim
+}
+
 type Challenge struct {
 	// StateMatrix is the packed state matrix preimage of the StateCommitment in Prestate
 	StateMatrix StateSnapshot
 
 	// Prestate is the valid leaf immediately prior to the first invalid leaf
-	Prestate      Leaf
-	PrestateProof merkle.Proof
+	Prestate          Leaf
+	PrestateProof     merkle.Proof // TODO: Remove
+	PrestateLeafProof LeafProofData
 
 	// Poststate is the first invalid leaf in the preimage. The challenge claims that this leaf is invalid.
-	Poststate      Leaf
-	PoststateProof merkle.Proof
+	Poststate          Leaf
+	PoststateProof     merkle.Proof // TODO: Remove
+	PoststateLeafProof LeafProofData
 }
 
 type LargePreimageOracle interface {

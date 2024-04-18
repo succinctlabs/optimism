@@ -1,12 +1,16 @@
 package fetcher
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"math/big"
 
 	"github.com/ethereum-optimism/optimism/op-challenger/game/keccak/types"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 )
 
 const (
@@ -25,8 +29,6 @@ var (
 type MagicBlobThang struct {
 	leafCount uint64
 	blobs     []*eth.Blob
-
-	nextLeafIdx uint32
 }
 
 func Encode(leaves []types.Leaf) []*eth.Blob {
@@ -76,21 +78,78 @@ func NewMagicBlobThang(metadata types.LargePreimageMetaData, blobs []*eth.Blob) 
 	}, nil
 }
 
+func (b *MagicBlobThang) StateCommitments() []common.Hash {
+	commitments := make([]common.Hash, b.leafCount)
+	for leafIdx := range commitments {
+		_, commitment := b.readLeaf(uint64(leafIdx))
+		commitments[leafIdx] = commitment
+	}
+	return commitments
+}
+
+func (b *MagicBlobThang) Reader() io.Reader {
+	readers := make([]io.Reader, b.leafCount)
+	for leafIdx := range readers {
+		input, _ := b.readLeaf(uint64(leafIdx))
+		readers[leafIdx] = bytes.NewReader(input[:])
+	}
+	return io.MultiReader(readers...)
+}
+
+func (b *MagicBlobThang) DataForLeaf(idx uint64) types.LeafProofData {
+	startBlobIdx, startElementIdx, _ := LeafStart(idx)
+	endBlobIdx, endElementIdx, _ := LeafEnd(idx)
+	if startBlobIdx != endBlobIdx {
+		panic("leafs should not span multiple blobs")
+	}
+	commitment, err := b.blobs[startBlobIdx].ComputeKZGCommitment()
+	if err != nil {
+		panic(err)
+	}
+	blob := b.blobs[startBlobIdx].KZGBlob()
+	points := make([]kzg4844.Point, b.leafCount)
+	proofs := make([]kzg4844.Proof, b.leafCount)
+	claims := make([]kzg4844.Claim, b.leafCount)
+	for elementIdx := startElementIdx; elementIdx <= endElementIdx; elementIdx++ {
+		var point kzg4844.Point
+		new(big.Int).SetUint64(elementIdx).FillBytes(point[:])
+		kzgProof, claim, err := kzg4844.ComputeProof(*blob, point)
+		if err != nil {
+			panic(err)
+		}
+		points[elementIdx] = point
+		proofs[elementIdx] = kzgProof
+		claims[elementIdx] = claim
+	}
+	return types.LeafProofData{
+		Commitment: commitment,
+		Points:     points,
+		Proofs:     proofs,
+		Claims:     claims,
+	}
+}
+
 func (b *MagicBlobThang) Leaf(idx uint64) (types.Leaf, error) {
 	if idx > b.leafCount {
 		return types.Leaf{}, ErrInvalidLeafIndex
 	}
-	blobIdx, elementIdx, offset := LeafStart(idx)
+	input, commitment := b.readLeaf(idx)
+	return types.Leaf{
+		Input:           input,
+		Index:           idx,
+		StateCommitment: commitment,
+	}, nil
+}
+
+func (b *MagicBlobThang) readLeaf(leafIdx uint64) ([types.BlockSize]byte, common.Hash) {
+	blobIdx, elementIdx, offset := LeafStart(leafIdx)
 	leafData := b.ReadFrom(blobIdx, elementIdx, offset, leafSize)
 	if uint64(len(leafData)) != leafSize {
 		panic(fmt.Errorf("read incorrect leaf data length expected %v but was %v", leafSize, len(leafData)))
 	}
 	input := [types.BlockSize]byte(leafData)
-	return types.Leaf{
-		Input:           input,
-		Index:           idx,
-		StateCommitment: common.BytesToHash(leafData[types.BlockSize:]),
-	}, nil
+	commitment := common.BytesToHash(leafData[types.BlockSize:])
+	return input, commitment
 }
 
 func (b *MagicBlobThang) ReadFrom(blobIdx uint64, elementIdx uint64, offset uint64, length uint64) []byte {
