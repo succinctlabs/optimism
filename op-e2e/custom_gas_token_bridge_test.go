@@ -83,7 +83,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 
 	addresses.GasPayingToken = cgtAddress
 
-	newSystemConfigAddr, tx, _, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
+	newSystemConfigAddr, tx, newSystemConfig, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
 
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
@@ -91,7 +91,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 
 	sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
 	require.NoError(t, err)
-	encodedInitializeCall, err := sysCfgABI.Pack("initialize",
+	_, err = sysCfgABI.Pack("initialize",
 		owner,
 		overhead,
 		scalar,
@@ -110,14 +110,29 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 
 	proxyAdminABI, err := abi.JSON(strings.NewReader(bindings.ProxyAdminABI))
 	require.NoError(t, err)
-	encodedUpgradeAndCallCall, err := proxyAdminABI.Pack("upgradeAndCall",
-		cfg.L1Deployments.SystemConfig, newSystemConfigAddr, encodedInitializeCall)
+	encodedUpgradeCall, err := proxyAdminABI.Pack("upgrade",
+		cfg.L1Deployments.SystemConfigProxy, newSystemConfigAddr)
 	require.NoError(t, err)
 
 	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
-	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeAndCallCall)
+	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
+
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	tx, err = newSystemConfig.Initialize(cliqueSignerOpts, owner,
+		overhead,
+		scalar,
+		batcherHash,
+		gasLimit,
+		unsafeBlockSigner,
+		resourceConfig,
+		batchInbox,
+		addresses)
+
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
 	require.NoError(t, err)
