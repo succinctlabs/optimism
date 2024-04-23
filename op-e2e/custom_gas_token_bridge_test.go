@@ -61,7 +61,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	require.NoError(t, err)
 	batcherHash, err := systemConfig.BatcherHash(&bind.CallOpts{})
 	require.NoError(t, err)
-	// gasLimit, err := systemConfig.GasLimit(&bind.CallOpts{})
+	gasLimit, err := systemConfig.GasLimit(&bind.CallOpts{})
 	require.NoError(t, err)
 	unsafeBlockSigner, err := systemConfig.UnsafeBlockSigner(&bind.CallOpts{})
 	require.NoError(t, err)
@@ -83,7 +83,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	addresses.OptimismMintableERC20Factory, err = systemConfig.OptimismMintableERC20Factory(&bind.CallOpts{})
 	require.NoError(t, err)
 
-	minGasLimit, err := systemConfig.MinimumGasLimit(&bind.CallOpts{})
+	// minGasLimit, err := systemConfig.MinimumGasLimit(&bind.CallOpts{})
 	require.NoError(t, err)
 
 	// Queue up custom gas token address ready for reinitialization
@@ -138,18 +138,17 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 	waitForTx(t, tx, err, l1Client)
 
-	// Reinitialise with exicsting initializer values but with custom gas token set
+	// Reinitialise with existing initializer values but with custom gas token set
 	tx, err = systemConfig.Initialize(deployerOpts, owner,
 		overhead,
 		scalar,
 		batcherHash,
-		minGasLimit,
+		gasLimit,
 		unsafeBlockSigner,
 		resourceConfig,
 		batchInbox,
 		addresses)
-	require.NoError(t, err)
-	// waitForTx(t, tx, err, l1Client)
+	waitForTx(t, tx, err, l1Client)
 
 	// Read Custom Gas Token and check it has been set properly
 	gpt, err := systemConfig.GasPayingToken(&bind.CallOpts{})
