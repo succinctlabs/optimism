@@ -129,25 +129,17 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	require.NoError(t, err)
 	require.Equal(t, currentSlotValue, [32]byte{0})
 
-	// Deploy a fresh SystemConfig implementation
-	newSystemConfigAddr, tx, _, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
-	waitForTx(t, tx, err, l1Client)
-
 	// Prepare calldata for SystemConfigProxy -> SystemConfig upgrade
 	encodedUpgradeCall, err = proxyAdminABI.Pack("upgrade",
-		cfg.L1Deployments.SystemConfigProxy, newSystemConfigAddr)
+		cfg.L1Deployments.SystemConfigProxy, cfg.L1Deployments.SystemConfig)
 	require.NoError(t, err)
 
 	// Execute SystemConfigProxy -> SystemConfig upgrade
 	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 	waitForTx(t, tx, err, l1Client)
 
-	// Bind a SystemConfig to the SystemConfigProxy address
-	newSystemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfigProxy, l1Client)
-	require.NoError(t, err)
-
 	// Reinitialise with exicsting initializer values but with custom gas token set
-	tx, err = newSystemConfig.Initialize(cliqueSignerOpts, owner,
+	tx, err = systemConfig.Initialize(cliqueSignerOpts, owner,
 		overhead,
 		scalar,
 		batcherHash,
