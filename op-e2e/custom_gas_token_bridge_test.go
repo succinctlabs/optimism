@@ -180,12 +180,18 @@ func TestCustomGasTokenLockAndMint(t *testing.T) {
 }
 
 func callViaSafe(t *testing.T, opts *bind.TransactOpts, client *ethclient.Client, safeAddress common.Address, target common.Address, data []byte) (*types.Transaction, error) {
-	signature := [289]byte{}
-	copy(signature[96:160], opts.From[:])
-	signature[288] = uint8(1)
+	signature := [65]byte{}
+	copy(signature[12:], opts.From[:])
+	signature[64] = uint8(1)
 
 	safe, err := bindings.NewSafe(safeAddress, client)
 	require.NoError(t, err)
+
+	isOwner, err := safe.IsOwner(&bind.CallOpts{}, opts.From)
+	owners, err := safe.GetOwners(&bind.CallOpts{})
+	require.NoError(t, err)
+	t.Log(owners, opts.From)
+	require.True(t, isOwner)
 
 	return safe.ExecTransaction(opts, target, big.NewInt(0), data, 0, big.NewInt(0), big.NewInt(0), big.NewInt(0), common.Address{}, common.Address{}, signature[:])
 
@@ -193,6 +199,8 @@ func callViaSafe(t *testing.T, opts *bind.TransactOpts, client *ethclient.Client
 
 func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress common.Address) {
 	l1Client := sys.Clients["l1"]
+	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
+	require.NoError(t, err)
 
 	systemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfig, l1Client)
 	require.NoError(t, err)
@@ -229,15 +237,15 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 
 	addresses.GasPayingToken = cgtAddress
 
-	// newSystemConfigAddr, tx, _, err := bindings.DeploySystemConfig(opts, l1Client)
+	newSystemConfigAddr, tx, _, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
 
-	// require.NoError(t, err)
-	// _, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
-	// require.NoError(t, err)
-
-	abi, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
 	require.NoError(t, err)
-	encodedInitializeCall, err := abi.Pack("initialize",
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
+	require.NoError(t, err)
+	encodedInitializeCall, err := sysCfgABI.Pack("initialize",
 		owner,
 		overhead,
 		scalar,
@@ -249,13 +257,21 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 		addresses)
 	require.NoError(t, err)
 
-	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
+	proxyAdmin, err := bindings.NewProxyAdmin(cfg.L1Deployments.ProxyAdmin, l1Client)
+	require.NoError(t, err)
+	proxyAdminOwner, err := proxyAdmin.Owner(&bind.CallOpts{})
 	require.NoError(t, err)
 
-	sysCfgOnwer, err := systemConfig.Owner(&bind.CallOpts{})
+	proxyAdminABI, err := abi.JSON(strings.NewReader(bindings.ProxyAdminABI))
+	require.NoError(t, err)
+	encodedUpgradeAndCallCall, err := proxyAdminABI.Pack("upgradeAndCall",
+		cfg.L1Deployments.SystemConfig, newSystemConfigAddr, encodedInitializeCall)
 	require.NoError(t, err)
 
-	tx, err := callViaSafe(t, deployerOpts, l1Client, sysCfgOnwer, cfg.L1Deployments.SystemConfig, encodedInitializeCall)
+	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
+	require.NoError(t, err)
+
+	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.SystemConfig, encodedUpgradeAndCallCall)
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
 	require.NoError(t, err)
