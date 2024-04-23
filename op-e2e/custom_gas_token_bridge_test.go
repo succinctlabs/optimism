@@ -48,7 +48,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
-	systemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfig, l1Client)
+	systemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfigProxy, l1Client)
 	require.NoError(t, err)
 
 	owner, err := systemConfig.Owner(&bind.CallOpts{})
@@ -59,7 +59,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	require.NoError(t, err)
 	batcherHash, err := systemConfig.BatcherHash(&bind.CallOpts{})
 	require.NoError(t, err)
-	gasLimit, err := systemConfig.GasLimit(&bind.CallOpts{})
+	// gasLimit, err := systemConfig.GasLimit(&bind.CallOpts{})
 	require.NoError(t, err)
 	unsafeBlockSigner, err := systemConfig.UnsafeBlockSigner(&bind.CallOpts{})
 	require.NoError(t, err)
@@ -81,20 +81,14 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	addresses.OptimismMintableERC20Factory, err = systemConfig.OptimismMintableERC20Factory(&bind.CallOpts{})
 	require.NoError(t, err)
 
+	minGasLimit, err := systemConfig.MinimumGasLimit(&bind.CallOpts{})
+	require.NoError(t, err)
+
 	addresses.GasPayingToken = cgtAddress
 
-	sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
+	// sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
 	require.NoError(t, err)
-	_, err = sysCfgABI.Pack("initialize",
-		owner,
-		overhead,
-		scalar,
-		batcherHash,
-		gasLimit,
-		unsafeBlockSigner,
-		resourceConfig,
-		batchInbox,
-		addresses)
+
 	require.NoError(t, err)
 
 	proxyAdmin, err := bindings.NewProxyAdmin(cfg.L1Deployments.ProxyAdmin, l1Client)
@@ -160,7 +154,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 		overhead,
 		scalar,
 		batcherHash,
-		gasLimit,
+		minGasLimit,
 		unsafeBlockSigner,
 		resourceConfig,
 		batchInbox,
@@ -187,6 +181,16 @@ func TestSetCustomGasToken(t *testing.T) {
 	log := testlog.Logger(t, log.LevelInfo)
 	log.Info("genesis", "l2", sys.RollupConfig.Genesis.L2, "l1", sys.RollupConfig.Genesis.L1, "l2_time", sys.RollupConfig.Genesis.L2Time)
 
-	setCustomGasToken(t, cfg, sys, common.HexToAddress("0xabc"))
+	l1Client := sys.Clients["l1"]
+	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
+	require.NoError(t, err)
+
+	// Deploy WETH
+	wethAddress, tx, _, err := bindings.DeployWETH(deployerOpts, l1Client)
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err, "Waiting for deposit tx on L1")
+
+	setCustomGasToken(t, cfg, sys, wethAddress)
 
 }
