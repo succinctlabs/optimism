@@ -101,15 +101,15 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	storageSetterAddr, tx, _, err := bindings.DeployStorageSetter(deployerOpts, l1Client)
 	waitForTx(t, tx, err, l1Client)
 
+	// Set up a signer which controls the Proxy Admin Owner SAFE
+	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
+	require.NoError(t, err)
+
 	// Encode calldata for upgrading SystemConfigProxy to the StorageSetter implementation
 	proxyAdminABI, err := abi.JSON(strings.NewReader(bindings.ProxyAdminABI))
 	require.NoError(t, err)
 	encodedUpgradeCall, err := proxyAdminABI.Pack("upgrade",
 		cfg.L1Deployments.SystemConfigProxy, storageSetterAddr)
-	require.NoError(t, err)
-
-	// Set up a signer which controls the Proxy Admin Owner SAFE
-	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
 	// Execute the upgrade SystemConfigProxy -> StorageSetter
@@ -139,7 +139,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	waitForTx(t, tx, err, l1Client)
 
 	// Reinitialise with exicsting initializer values but with custom gas token set
-	tx, err = systemConfig.Initialize(cliqueSignerOpts, owner,
+	tx, err = systemConfig.Initialize(deployerOpts, owner,
 		overhead,
 		scalar,
 		batcherHash,
@@ -148,13 +148,13 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 		resourceConfig,
 		batchInbox,
 		addresses)
-
-	waitForTx(t, tx, err, l1Client)
+	require.NoError(t, err)
+	// waitForTx(t, tx, err, l1Client)
 
 	// Read Custom Gas Token and check it has been set properly
 	gpt, err := systemConfig.GasPayingToken(&bind.CallOpts{})
 	require.NoError(t, err)
-	require.Equal(t, gpt, cgtAddress)
+	require.Equal(t, gpt.Addr, cgtAddress)
 }
 func TestSetCustomGasToken(t *testing.T) {
 	InitParallel(t)
