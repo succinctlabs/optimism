@@ -188,9 +188,7 @@ func callViaSafe(t *testing.T, opts *bind.TransactOpts, client *ethclient.Client
 	require.NoError(t, err)
 
 	isOwner, err := safe.IsOwner(&bind.CallOpts{}, opts.From)
-	owners, err := safe.GetOwners(&bind.CallOpts{})
 	require.NoError(t, err)
-	t.Log(owners, opts.From)
 	require.True(t, isOwner)
 
 	return safe.ExecTransaction(opts, target, big.NewInt(0), data, 0, big.NewInt(0), big.NewInt(0), big.NewInt(0), common.Address{}, common.Address{}, signature[:])
@@ -271,7 +269,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
-	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.SystemConfig, encodedUpgradeAndCallCall)
+	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeAndCallCall)
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
 	require.NoError(t, err)
