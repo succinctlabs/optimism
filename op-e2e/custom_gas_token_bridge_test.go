@@ -83,9 +83,6 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	addresses.OptimismMintableERC20Factory, err = systemConfig.OptimismMintableERC20Factory(&bind.CallOpts{})
 	require.NoError(t, err)
 
-	// minGasLimit, err := systemConfig.MinimumGasLimit(&bind.CallOpts{})
-	require.NoError(t, err)
-
 	// Queue up custom gas token address ready for reinitialization
 	addresses.GasPayingToken = cgtAddress
 
@@ -129,17 +126,11 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	require.NoError(t, err)
 	require.Equal(t, currentSlotValue, [32]byte{0})
 
-	// Prepare calldata for SystemConfigProxy -> SystemConfig upgrade
-	encodedUpgradeCall, err = proxyAdminABI.Pack("upgrade",
-		cfg.L1Deployments.SystemConfigProxy, cfg.L1Deployments.SystemConfig)
+	// Prepare calldata for initializing SystemConfig
+	sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
 	require.NoError(t, err)
-
-	// Execute SystemConfigProxy -> SystemConfig upgrade
-	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
-	waitForTx(t, tx, err, l1Client)
-
-	// Reinitialise with existing initializer values but with custom gas token set
-	tx, err = systemConfig.Initialize(deployerOpts, owner,
+	encodedInitializeCall, err := sysCfgABI.Pack("initialize",
+		owner,
 		overhead,
 		scalar,
 		batcherHash,
@@ -148,6 +139,15 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 		resourceConfig,
 		batchInbox,
 		addresses)
+	require.NoError(t, err)
+
+	// Prepare calldata for SystemConfigProxy -> SystemConfig upgradeAndCall
+	encodedUpgradeCall, err = proxyAdminABI.Pack("upgradeAndCall",
+		cfg.L1Deployments.SystemConfigProxy, cfg.L1Deployments.SystemConfig, encodedInitializeCall)
+	require.NoError(t, err)
+
+	// Execute SystemConfigProxy -> SystemConfig upgrade
+	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 	waitForTx(t, tx, err, l1Client)
 
 	// Read Custom Gas Token and check it has been set properly
