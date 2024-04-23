@@ -83,12 +83,6 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 
 	addresses.GasPayingToken = cgtAddress
 
-	newSystemConfigAddr, tx, newSystemConfig, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
-
-	require.NoError(t, err)
-	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
-	require.NoError(t, err)
-
 	sysCfgABI, err := abi.JSON(strings.NewReader(bindings.SystemConfigABI))
 	require.NoError(t, err)
 	_, err = sysCfgABI.Pack("initialize",
@@ -108,19 +102,58 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	proxyAdminOwner, err := proxyAdmin.Owner(&bind.CallOpts{})
 	require.NoError(t, err)
 
+	// TODO upgrade first to storage setter, set the initializer slot to zero
+	// then upgrade to the actual final implementation and reinitialize it
+
+	// https://oplabs-pbc.slack.com/archives/C05B4JVDGLV/p1712613918495169?thread_ts=1712610727.142309&cid=C05B4JVDGLV
+	// https://oplabs-pbc.slack.com/archives/C05B4JVDGLV/p1712616740306809?thread_ts=1712610727.142309&cid=C05B4JVDGLV
+
 	proxyAdminABI, err := abi.JSON(strings.NewReader(bindings.ProxyAdminABI))
 	require.NoError(t, err)
+
+	storageSetterAddr, _, _, err := bindings.DeployStorageSetter(deployerOpts, l1Client)
+	require.NoError(t, err)
+
 	encodedUpgradeCall, err := proxyAdminABI.Pack("upgrade",
-		cfg.L1Deployments.SystemConfigProxy, newSystemConfigAddr)
+		cfg.L1Deployments.SystemConfigProxy, storageSetterAddr)
 	require.NoError(t, err)
 
 	cliqueSignerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.CliqueSigner, cfg.L1ChainIDBig())
+	require.NoError(t, err)
+
+	tx, err := callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	storageSetter, err := bindings.NewStorageSetter(cfg.L1Deployments.SystemConfigProxy, l1Client)
+	require.NoError(t, err)
+
+	tx, err = storageSetter.SetBytes320(deployerOpts, [32]byte{0}, [32]byte{0})
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	currentSlotValue, err := storageSetter.GetBytes32(&bind.CallOpts{}, [32]byte{0})
+	require.NoError(t, err)
+	require.Equal(t, currentSlotValue, [32]byte{0})
+
+	newSystemConfigAddr, tx, _, err := bindings.DeploySystemConfig(deployerOpts, l1Client)
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	encodedUpgradeCall, err = proxyAdminABI.Pack("upgrade",
+		cfg.L1Deployments.SystemConfigProxy, newSystemConfigAddr)
 	require.NoError(t, err)
 
 	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	newSystemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfigProxy, l1Client)
 	require.NoError(t, err)
 
 	tx, err = newSystemConfig.Initialize(cliqueSignerOpts, owner,
