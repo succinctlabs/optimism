@@ -138,6 +138,15 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 	waitForTx(t, tx, err, l1Client)
 
+	optimismPortal, err := bindings.NewOptimismPortal(cfg.L1Deployments.OptimismPortal, l1Client)
+	require.NoError(t, err)
+
+	opsc, err := optimismPortal.SystemConfig(&bind.CallOpts{})
+	require.NoError(t, err)
+
+	require.Equal(t, cfg.L1Deployments.SystemConfigProxy, opsc)
+
+	deployerOpts.GasLimit = 8_000_000
 	// Reinitialise with existing initializer values but with custom gas token set
 	tx, err = systemConfig.Initialize(deployerOpts, owner,
 		overhead,
