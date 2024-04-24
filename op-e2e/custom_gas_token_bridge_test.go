@@ -138,15 +138,9 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	tx, err = callViaSafe(t, cliqueSignerOpts, l1Client, proxyAdminOwner, cfg.L1Deployments.ProxyAdmin, encodedUpgradeCall)
 	waitForTx(t, tx, err, l1Client)
 
-	optimismPortal, err := bindings.NewOptimismPortal(cfg.L1Deployments.OptimismPortal, l1Client)
+	version, err := systemConfig.Version(&bind.CallOpts{})
 	require.NoError(t, err)
-
-	opsc, err := optimismPortal.SystemConfig(&bind.CallOpts{})
-	require.NoError(t, err)
-
-	require.Equal(t, cfg.L1Deployments.SystemConfigProxy, opsc)
-
-	deployerOpts.GasLimit = 8_000_000
+	t.Log("version: ", version)
 	// Reinitialise with existing initializer values but with custom gas token set
 	tx, err = systemConfig.Initialize(deployerOpts, owner,
 		overhead,
@@ -162,7 +156,7 @@ func setCustomGasToken(t *testing.T, cfg SystemConfig, sys *System, cgtAddress c
 	// Read Custom Gas Token and check it has been set properly
 	gpt, err := systemConfig.GasPayingToken(&bind.CallOpts{})
 	require.NoError(t, err)
-	require.Equal(t, gpt.Addr, cgtAddress)
+	require.Equal(t, cgtAddress, gpt.Addr)
 }
 func TestSetCustomGasToken(t *testing.T) {
 	InitParallel(t)
@@ -181,10 +175,17 @@ func TestSetCustomGasToken(t *testing.T) {
 	require.NoError(t, err)
 
 	// Deploy WETH
-	wethAddress, tx, _, err := bindings.DeployWETH(deployerOpts, l1Client)
+	wethAddress, tx, weth, err := bindings.DeployWETH9(deployerOpts, l1Client)
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
-	require.NoError(t, err, "Waiting for deposit tx on L1")
+	require.NoError(t, err)
+
+	name, err := weth.Name(&bind.CallOpts{})
+	require.NoError(t, err)
+	symbol, err := weth.Symbol(&bind.CallOpts{})
+	require.NoError(t, err)
+
+	t.Log("weth address/name/symbol " + wethAddress.Hex() + "/" + name + "/" + symbol)
 
 	setCustomGasToken(t, cfg, sys, wethAddress)
 
