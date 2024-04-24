@@ -19,12 +19,69 @@ import (
 )
 
 func TestCustomGasTokenLockAndMint(t *testing.T) {
-	t.Skip()
-	// TODO
-	// Deploy an ERC20 token to L1
-	// setCustomGasToken(token.address)
-	// systemConfig.DepositERC20Transaction()
+	InitParallel(t)
+
+	cfg := DefaultSystemConfig(t)
+
+	sys, err := cfg.Start(t)
+	require.Nil(t, err, "Error starting up system")
+	defer sys.Close()
+
+	log := testlog.Logger(t, log.LevelInfo)
+	log.Info("genesis", "l2", sys.RollupConfig.Genesis.L2, "l1", sys.RollupConfig.Genesis.L1, "l2_time", sys.RollupConfig.Genesis.L2Time)
+
+	l1Client := sys.Clients["l1"]
+	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
+	require.NoError(t, err)
+
+	// Deploy WETH9, we'll use this as our custom gas token for the purpose of the test
+	weth9Address, tx, weth9, err := bindings.DeployWETH9(deployerOpts, l1Client)
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	setCustomGasToken(t, cfg, sys, weth9Address)
+
+	amountToBridge := big.NewInt(10)
+
+	// Get some WETH
+	deployerOpts.Value = big.NewInt(10_000_000)
+	tx, err = weth9.Deposit(deployerOpts)
+	waitForTx(t, tx, err, l1Client)
+	deployerOpts.Value = nil
+
+	newBalance, err := weth9.BalanceOf(&bind.CallOpts{}, deployerOpts.From)
+	require.NoError(t, err)
+
+	require.Equal(t, newBalance, big.NewInt(10_000_000))
+
+	// Approve OptimismPortal
+	tx, err = weth9.Approve(deployerOpts, cfg.L1Deployments.OptimismPortalProxy, amountToBridge)
+	waitForTx(t, tx, err, l1Client)
+
+	optimismPortal, err := bindings.NewOptimismPortal(cfg.L1Deployments.OptimismPortalProxy, l1Client)
+	require.NoError(t, err)
+
+	previousL2Balance, err := l1Client.BalanceAt(context.Background(), deployerOpts.From, nil)
+	require.NoError(t, err)
+
+	tx, err = optimismPortal.DepositERC20Transaction(deployerOpts,
+		deployerOpts.From,
+		amountToBridge,
+		amountToBridge,
+		30_000_000,
+		false,
+		[]byte{},
+	)
+	waitForTx(t, tx, err, l1Client)
+
+	newL2Balance, err := l1Client.BalanceAt(context.Background(), deployerOpts.From, nil)
+	require.NoError(t, err)
+
+	l2BalanceIncrease := big.NewInt(0).Sub(newL2Balance, previousL2Balance)
+
 	// check for balance increase on L2
+	require.Equal(t, amountToBridge, l2BalanceIncrease)
 }
 
 func callViaSafe(t *testing.T, opts *bind.TransactOpts, client *ethclient.Client, safeAddress common.Address, target common.Address, data []byte) (*types.Transaction, error) {
