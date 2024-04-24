@@ -174,18 +174,11 @@ func TestSetCustomGasToken(t *testing.T) {
 	deployerOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Deployer, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
-	// Deploy WETH
-	wethAddress, tx, weth, err := bindings.DeployWETH9(deployerOpts, l1Client)
+	// Deploy WETH, we'll use this as our custom gas token for the purpose of the test
+	wethAddress, tx, _, err := bindings.DeployWETH9(deployerOpts, l1Client)
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
 	require.NoError(t, err)
-
-	name, err := weth.Name(&bind.CallOpts{})
-	require.NoError(t, err)
-	symbol, err := weth.Symbol(&bind.CallOpts{})
-	require.NoError(t, err)
-
-	t.Log("weth address/name/symbol " + wethAddress.Hex() + "/" + name + "/" + symbol)
 
 	setCustomGasToken(t, cfg, sys, wethAddress)
 
