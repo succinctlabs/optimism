@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-bindings/bindings"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
@@ -31,6 +32,8 @@ func TestCustomGasTokenLockAndMint(t *testing.T) {
 	log.Info("genesis", "l2", sys.RollupConfig.Genesis.L2, "l1", sys.RollupConfig.Genesis.L1, "l2_time", sys.RollupConfig.Genesis.L2Time)
 
 	l1Client := sys.Clients["l1"]
+	l2Client := sys.Clients["sequencer"]
+
 	aliceOpts, err := bind.NewKeyedTransactorWithChainID(cfg.Secrets.Alice, cfg.L1ChainIDBig())
 	require.NoError(t, err)
 
@@ -64,7 +67,7 @@ func TestCustomGasTokenLockAndMint(t *testing.T) {
 
 	recipient := common.HexToAddress("0xbeefdead")
 
-	previousL2Balance, err := l1Client.BalanceAt(context.Background(), recipient, nil)
+	previousL2Balance, err := l2Client.BalanceAt(context.Background(), recipient, nil)
 	require.NoError(t, err)
 
 	ver, err := optimismPortal.Version(&bind.CallOpts{})
@@ -81,8 +84,11 @@ func TestCustomGasTokenLockAndMint(t *testing.T) {
 	)
 	waitForTx(t, tx, err, l1Client)
 
-	newL2Balance, err := l1Client.BalanceAt(context.Background(), recipient, nil)
+	newL2Balance, err := l2Client.BalanceAt(context.Background(), recipient, nil)
 	require.NoError(t, err)
+
+	// wait 3s for the deposit to be picked up on L2
+	time.Sleep(3 * time.Second)
 
 	l2BalanceIncrease := big.NewInt(0).Sub(newL2Balance, previousL2Balance)
 
