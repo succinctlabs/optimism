@@ -5,10 +5,11 @@ import (
 	"math/big"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ethereum-optimism/optimism/op-bindings/bindings"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/receipts"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
+	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-service/testlog"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -82,13 +83,22 @@ func TestCustomGasTokenLockAndMint(t *testing.T) {
 		false,
 		[]byte{},
 	)
-	waitForTx(t, tx, err, l1Client)
+	require.NoError(t, err)
+	receipt, err := wait.ForReceiptOK(context.Background(), l1Client, tx.Hash())
+	require.NoError(t, err)
+
+	// compute the deposit transaction hash + poll for it
+
+	depositEvent, err := receipts.FindLog(receipt.Logs, optimismPortal.ParseTransactionDeposited)
+	require.NoError(t, err, "Should emit deposit event")
+
+	depositTx, err := derive.UnmarshalDepositLogEvent(&depositEvent.Raw)
+	require.NoError(t, err)
+	_, err = wait.ForReceiptOK(context.Background(), l2Client, types.NewTx(depositTx).Hash())
+	require.NoError(t, err)
 
 	newL2Balance, err := l2Client.BalanceAt(context.Background(), recipient, nil)
 	require.NoError(t, err)
-
-	// wait 3s for the deposit to be picked up on L2
-	time.Sleep(3 * time.Second)
 
 	l2BalanceIncrease := big.NewInt(0).Sub(newL2Balance, previousL2Balance)
 
