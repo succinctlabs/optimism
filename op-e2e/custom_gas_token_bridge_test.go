@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ethereum-optimism/optimism/op-bindings/bindings"
+	"github.com/ethereum-optimism/optimism/op-bindings/predeploys"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/receipts"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
@@ -253,10 +254,39 @@ func TestSetCustomGasToken(t *testing.T) {
 
 	setCustomGasToken(t, cfg, sys, wethAddress)
 
+	// Check name and symbol in systemConfig
+	systemConfig, err := bindings.NewSystemConfig(cfg.L1Deployments.SystemConfigProxy, l1Client)
+	require.NoError(t, err)
+
+	name, err := systemConfig.GasPayingTokenName(&bind.CallOpts{})
+	require.NoError(t, err)
+	require.Equal(t, "Wrapped Ether", name)
+
+	symbol, err := systemConfig.GasPayingTokenSymbol(&bind.CallOpts{})
+	require.NoError(t, err)
+	require.Equal(t, "WETH", symbol)
+
+	// Check name and symbol in WETH predeploy
+	l2Client := sys.Clients["sequencer"]
+	weth, err := bindings.NewWETH(predeploys.WETHAddr, l2Client)
+	require.NoError(t, err)
+
+	name, err = weth.Name(&bind.CallOpts{})
+	require.NoError(t, err)
+	require.Equal(t, "Wrapped Wrapped Ether", name)
+
+	symbol, err = weth.Symbol(&bind.CallOpts{})
+	require.NoError(t, err)
+	require.Equal(t, "WWETH", symbol)
+
 }
 
 func waitForTx(t *testing.T, tx *types.Transaction, err error, client *ethclient.Client) {
 	require.NoError(t, err)
 	_, err = wait.ForReceiptOK(context.Background(), client, tx.Hash())
 	require.NoError(t, err)
+}
+
+func TestWETHBehaviourWithCustomGasToken(t *testing.T) {
+
 }
