@@ -68,7 +68,10 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/txmgr"
 )
 
-var testingJWTSecret = [32]byte{123}
+var (
+	testingJWTSecret = [32]byte{123}
+	genesisTime      = hexutil.Uint64(0)
+)
 
 func newTxMgrConfig(l1Addr string, privKey *ecdsa.PrivateKey) txmgr.CLIConfig {
 	return txmgr.CLIConfig{
@@ -159,6 +162,43 @@ func DefaultSystemConfig(t *testing.T) SystemConfig {
 		MaxPendingTransactions: 1,
 		BatcherTargetNumFrames: 1,
 	}
+}
+
+func RegolithSystemConfig(t *testing.T, regolithTimeOffset *hexutil.Uint64) SystemConfig {
+	cfg := DefaultSystemConfig(t)
+	cfg.DeployConfig.L2GenesisRegolithTimeOffset = regolithTimeOffset
+	cfg.DeployConfig.L2GenesisCanyonTimeOffset = nil
+	cfg.DeployConfig.L2GenesisDeltaTimeOffset = nil
+	cfg.DeployConfig.L2GenesisEcotoneTimeOffset = nil
+	cfg.DeployConfig.L2GenesisFjordTimeOffset = nil
+	// ADD NEW FORKS HERE!
+	return cfg
+}
+
+func CanyonSystemConfig(t *testing.T, canyonTimeOffset *hexutil.Uint64) SystemConfig {
+	cfg := RegolithSystemConfig(t, &genesisTime)
+	cfg.DeployConfig.L2GenesisCanyonTimeOffset = canyonTimeOffset
+	return cfg
+}
+
+func DeltaSystemConfig(t *testing.T, deltaTimeOffset *hexutil.Uint64) SystemConfig {
+	cfg := CanyonSystemConfig(t, &genesisTime)
+	cfg.DeployConfig.L2GenesisDeltaTimeOffset = deltaTimeOffset
+	return cfg
+}
+
+func EcotoneSystemConfig(t *testing.T, ecotoneTimeOffset *hexutil.Uint64) SystemConfig {
+	cfg := DeltaSystemConfig(t, &genesisTime)
+	//  from Ecotone onwards, activate L1 Cancun at genesis
+	cfg.DeployConfig.L1CancunTimeOffset = &genesisTime
+	cfg.DeployConfig.L2GenesisEcotoneTimeOffset = ecotoneTimeOffset
+	return cfg
+}
+
+func FjordSystemConfig(t *testing.T, fjordTimeOffset *hexutil.Uint64) SystemConfig {
+	cfg := EcotoneSystemConfig(t, &genesisTime)
+	cfg.DeployConfig.L2GenesisFjordTimeOffset = fjordTimeOffset
+	return cfg
 }
 
 func writeDefaultJWT(t *testing.T) string {
@@ -606,7 +646,7 @@ func (cfg SystemConfig) Start(t *testing.T, _opts ...SystemConfigOption) (*Syste
 	// TODO: refactor testing to allow use of in-process rpc connections instead
 	// of only websockets (which are required for external eth client tests).
 	for name, nodeCfg := range cfg.Nodes {
-		configureL1(nodeCfg, sys.EthInstances["l1"])
+		configureL1(nodeCfg, sys.EthInstances["l1"], sys.L1BeaconEndpoint())
 		configureL2(nodeCfg, sys.EthInstances[name], cfg.JWTSecret)
 		if sys.RollupConfig.EcotoneTime != nil {
 			nodeCfg.Beacon = &rollupNode.L1BeaconEndpointConfig{BeaconAddr: sys.L1BeaconAPIAddr}
@@ -920,7 +960,7 @@ func selectEndpoint(node EthInstance) string {
 	return node.WSEndpoint()
 }
 
-func configureL1(rollupNodeCfg *rollupNode.Config, l1Node EthInstance) {
+func configureL1(rollupNodeCfg *rollupNode.Config, l1Node EthInstance, beaconEndpoint string) {
 	l1EndpointConfig := selectEndpoint(l1Node)
 	rollupNodeCfg.L1 = &rollupNode.L1EndpointConfig{
 		L1NodeAddr:       l1EndpointConfig,
@@ -930,6 +970,9 @@ func configureL1(rollupNodeCfg *rollupNode.Config, l1Node EthInstance) {
 		BatchSize:        20,
 		HttpPollInterval: time.Millisecond * 100,
 		MaxConcurrency:   10,
+	}
+	rollupNodeCfg.Beacon = &rollupNode.L1BeaconEndpointConfig{
+		BeaconAddr: beaconEndpoint,
 	}
 }
 
