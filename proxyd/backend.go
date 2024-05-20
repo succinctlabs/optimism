@@ -711,6 +711,7 @@ type BackendGroup struct {
 	Consensus       *ConsensusPoller
 }
 
+// NOTE: BackendGroup Forward contains the log for balancing with consensus aware
 func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch bool) ([]*RPCRes, string, error) {
 	if len(rpcReqs) == 0 {
 		return nil, "", nil
@@ -718,13 +719,19 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 
 	backends := bg.orderedBackendsForRequest()
 
+	/*
+		NOTE:: Jacob
+				Check if the length of the backends are zero and use fallback backend group?
+				Will we still want to use the Rewrite context from the consensus group in this case?
+				Is fallback group maintained by with the Conseus Tracker?
+	*/
+
 	overriddenResponses := make([]*indexedReqRes, 0)
 	rewrittenReqs := make([]*RPCReq, 0, len(rpcReqs))
 
 	if bg.Consensus != nil {
 		// When `consensus_aware` is set to `true`, the backend group acts as a load balancer
 		// serving traffic from any backend that agrees in the consensus group
-
 		// We also rewrite block tags to enforce compliance with consensus
 		rctx := RewriteContext{
 			latest:        bg.Consensus.GetLatestBlockNumber(),
@@ -774,6 +781,7 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 		servedBy := fmt.Sprintf("%s/%s", bg.Name, back.Name)
 
 		if len(rpcReqs) > 0 {
+			// NOTE: HERE WE forward the request
 			res, err = back.Forward(ctx, rpcReqs, isBatch)
 			if errors.Is(err, ErrConsensusGetReceiptsCantBeBatched) ||
 				errors.Is(err, ErrConsensusGetReceiptsInvalidTarget) ||
@@ -876,6 +884,7 @@ func weightedShuffle(backends []*Backend) {
 }
 
 func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
+	// NOTE: here we go
 	if bg.Consensus != nil {
 		return bg.loadBalancedConsensusGroup()
 	} else if bg.WeightedRouting {

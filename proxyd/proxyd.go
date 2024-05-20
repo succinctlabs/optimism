@@ -321,6 +321,7 @@ func Start(config *Config) (*Server, func(), error) {
 		log.Info("WS server not enabled (ws_port is set to 0)")
 	}
 
+	// NOTE: Here we configure consenus aware
 	for bgName, bg := range backendGroups {
 		bgcfg := config.BackendGroups[bgName]
 		if bgcfg.ConsensusAware {
