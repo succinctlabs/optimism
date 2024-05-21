@@ -163,6 +163,8 @@ type Backend struct {
 	networkErrorsSlidingWindow   *sw.AvgSlidingWindow
 
 	weight int
+
+	fallback bool
 }
 
 type BackendOpt func(b *Backend)

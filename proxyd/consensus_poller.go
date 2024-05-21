@@ -41,6 +41,9 @@ type ConsensusPoller struct {
 	maxBlockLag        uint64
 	maxBlockRange      uint64
 	interval           time.Duration
+
+	fallbackGroup       *BackendGroup
+	fallbackModeEnabled bool
 }
 
 type backendState struct {
@@ -128,7 +131,6 @@ func (ah *PollerAsyncHandler) Init() {
 			for {
 				timer := time.NewTimer(ah.cp.interval)
 				ah.cp.UpdateBackend(ah.ctx, be)
-
 				select {
 				case <-timer.C:
 				case <-ah.ctx.Done():
@@ -144,7 +146,26 @@ func (ah *PollerAsyncHandler) Init() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
 			ah.cp.UpdateBackendGroupConsensus(ah.ctx)
+			select {
+			case <-timer.C:
+			case <-ah.ctx.Done():
+				timer.Stop()
+				return
+			}
+		}
+	}()
 
+	// NOTE: Consistently poll for backend candidates, if we have zero use fallback
+	go func() {
+		for {
+			timer := time.NewTimer(ah.cp.interval / 4)
+			candidates := ah.cp.getConsensusCandidates()
+			if len(candidates) == 0 {
+				// Enable Fallback Mode
+				ah.cp.UseFallback()
+			} else {
+				ah.cp.DisableFallback()
+			}
 			select {
 			case <-timer.C:
 			case <-ah.ctx.Done():
@@ -154,6 +175,17 @@ func (ah *PollerAsyncHandler) Init() {
 		}
 	}()
 }
+
+// UseFallback will configure all requests to force to a specific backend
+func (cp *ConsensusPoller) UseFallback() {
+	cp.fallbackEnabled = true
+}
+
+// DisableFallback Group will disable the fallback group
+func (cp *ConsensusPoller) DisableFallback() {
+	cp.fallbackEnabled = false
+}
+
 func (ah *PollerAsyncHandler) Shutdown() {
 	ah.cp.cancelFunc()
 }
@@ -262,6 +294,16 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	bs := cp.getBackendState(be)
 	RecordConsensusBackendBanned(be, bs.IsBanned())
+
+	// Force the fallback candidate if fallback mode is enabled
+	// Turn off forced candidate if fallback is disabled
+	if be.fallback {
+		if cp.fallbackModeEnabled {
+			log.Info("Fallback Mode Enabled. Forcing fallback cluster", "backend", be.Name)
+			be.forcedCandidate = true
+		}
+		be.forcedCandidate = false
+	}
 
 	if bs.IsBanned() {
 		log.Debug("skipping backend - banned", "backend", be.Name)
@@ -528,6 +570,7 @@ func (cp *ConsensusPoller) Reset() {
 	}
 }
 
+// NOTE: Jacob, when using fetchBlock look in here to account for 0 blocks, may want to count for specific error types here too
 // fetchBlock is a convenient wrapper to make a request to get a block directly from the backend
 func (cp *ConsensusPoller) fetchBlock(ctx context.Context, be *Backend, block string) (blockNumber hexutil.Uint64, blockHash string, err error) {
 	var rpcRes RPCRes
