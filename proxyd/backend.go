@@ -707,10 +707,11 @@ func sortBatchRPCResponse(req []*RPCReq, res []*RPCRes) {
 }
 
 type BackendGroup struct {
-	Name            string
-	Backends        []*Backend
-	WeightedRouting bool
-	Consensus       *ConsensusPoller
+	Name                string
+	Backends            []*Backend
+	WeightedRouting     bool
+	Consensus           *ConsensusPoller
+	fallbackModeEnabled bool
 }
 
 // NOTE: BackendGroup Forward contains the log for balancing with consensus aware
@@ -720,13 +721,14 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 	}
 
 	backends := bg.orderedBackendsForRequest()
-
-	/*
-		NOTE:: Jacob
-				Check if the length of the backends are zero and use fallback backend group?
-				Will we still want to use the Rewrite context from the consensus group in this case?
-				Is fallback group maintained by with the Conseus Tracker?
+	/*	NOTE:: Jacob
+		Check if the length of the backends are zero and use fallback backend group?
+		Will we still want to use the Rewrite context from the consensus group in this case?
+		Is fallback group maintained by with the Conseus Tracker?
 	*/
+	if len(backends) == 0 {
+		bg.fallbackModeEnabled = true
+	}
 
 	overriddenResponses := make([]*indexedReqRes, 0)
 	rewrittenReqs := make([]*RPCReq, 0, len(rpcReqs))
@@ -881,14 +883,16 @@ func weightedShuffle(backends []*Backend) {
 	weight := func(i int) float64 {
 		return float64(backends[i].weight)
 	}
-
 	weightedshuffle.ShuffleInplace(backends, weight, nil)
 }
 
 func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
-	// NOTE: here we go
+	// NOTE: Consensus Mode
 	if bg.Consensus != nil {
-		return bg.loadBalancedConsensusGroup()
+		healthyBackends := bg.loadBalancedConsensusGroup()
+		return healthyBackends
+
+		// NOTE: Simple Weighted Routing
 	} else if bg.WeightedRouting {
 		result := make([]*Backend, len(bg.Backends))
 		copy(result, bg.Backends)
@@ -904,6 +908,7 @@ func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
 
 	backendsHealthy := make([]*Backend, 0, len(cg))
 	backendsDegraded := make([]*Backend, 0, len(cg))
+	backendsFallback := make([]*Backend, 0, len(cg))
 	// separate into healthy, degraded and unhealthy backends
 	for _, be := range cg {
 		// unhealthy are filtered out and not attempted
@@ -913,6 +918,10 @@ func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
 		if be.IsDegraded() {
 			backendsDegraded = append(backendsDegraded, be)
 			continue
+		}
+		// // Note: If backend is fallback, we force it in fallbackmode
+		if be.fallback {
+			backendsFallback = append(backendsFallback, be)
 		}
 		backendsHealthy = append(backendsHealthy, be)
 	}
@@ -934,7 +943,9 @@ func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
 	// degraded backends are used as fallback
 	backendsHealthy = append(backendsHealthy, backendsDegraded...)
 
+	// If none of the backends are health we return the fallback
 	return backendsHealthy
+
 }
 
 func (bg *BackendGroup) Shutdown() {

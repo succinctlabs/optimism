@@ -41,9 +41,6 @@ type ConsensusPoller struct {
 	maxBlockLag        uint64
 	maxBlockRange      uint64
 	interval           time.Duration
-
-	fallbackGroup       *BackendGroup
-	fallbackModeEnabled bool
 }
 
 type backendState struct {
@@ -159,7 +156,9 @@ func (ah *PollerAsyncHandler) Init() {
 	go func() {
 		for {
 			timer := time.NewTimer(ah.cp.interval / 4)
+			// backends := bg.orderedBackendsForRequest()
 			candidates := ah.cp.getConsensusCandidates()
+
 			if len(candidates) == 0 {
 				// Enable Fallback Mode
 				ah.cp.UseFallback()
@@ -178,12 +177,12 @@ func (ah *PollerAsyncHandler) Init() {
 
 // UseFallback will configure all requests to force to a specific backend
 func (cp *ConsensusPoller) UseFallback() {
-	cp.fallbackEnabled = true
+	cp.fallbackModeEnabled = true
 }
 
 // DisableFallback Group will disable the fallback group
 func (cp *ConsensusPoller) DisableFallback() {
-	cp.fallbackEnabled = false
+	cp.fallbackModeEnabled = false
 }
 
 func (ah *PollerAsyncHandler) Shutdown() {
@@ -294,16 +293,6 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	bs := cp.getBackendState(be)
 	RecordConsensusBackendBanned(be, bs.IsBanned())
-
-	// Force the fallback candidate if fallback mode is enabled
-	// Turn off forced candidate if fallback is disabled
-	if be.fallback {
-		if cp.fallbackModeEnabled {
-			log.Info("Fallback Mode Enabled. Forcing fallback cluster", "backend", be.Name)
-			be.forcedCandidate = true
-		}
-		be.forcedCandidate = false
-	}
 
 	if bs.IsBanned() {
 		log.Debug("skipping backend - banned", "backend", be.Name)
@@ -670,6 +659,7 @@ func (cp *ConsensusPoller) setBackendState(be *Backend, peerCount uint64, inSync
 	return changed
 }
 
+// NOTE: JACOB PUT YOUR CODE HERE
 // getConsensusCandidates find out what backends are the candidates to be in the consensus group
 // and create a copy of current their state
 //
@@ -684,6 +674,20 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	candidates := make(map[*Backend]*backendState, len(cp.backendGroup.Backends))
 
 	for _, be := range cp.backendGroup.Backends {
+
+		/*
+			Force the fallback backend to be a candidate, if fallback mode is enabled
+			Do not force the fallback backend, if fallback mode is disabled
+			Odd Issue, where there will not be a backend state available for the first time
+		*/
+		if be.fallback {
+			if cp.backendGroup.fallbackModeEnabled {
+				log.Info("Fallback Mode Enabled. Forcing fallback backend as a candidate", "backend", be.Name)
+				be.forcedCandidate = true
+			}
+			be.forcedCandidate = false
+		}
+
 		bs := cp.getBackendState(be)
 		if be.forcedCandidate {
 			candidates[be] = bs
