@@ -80,7 +80,7 @@ func TestFallback(t *testing.T) {
 
 	ctx := context.Background()
 
-	// poll for updated consensus
+	// Use Update to Advance the Candidate iteration
 	update := func() {
 		for _, be := range bg.Backends {
 			bg.Consensus.UpdateBackend(ctx, be)
@@ -156,8 +156,21 @@ func TestFallback(t *testing.T) {
 		// unknown consensus at init
 		require.Equal(t, "0x0", bg.Consensus.GetLatestBlockNumber().String())
 
-		// first poll
+		// Set the nodes/backend
+
+		// Then Update the consensusGroup
 		update()
+		// Determine Fallback mode
+		bg.Consensus.GetFallbackMode()
+
+		// Check the backends in the Consensus Group to verify if fallback was turned on
+		for _, be := range bg.Consensus.GetConsensusGroup() {
+			// Can check for fallback or specific nodes to be healthy / returned
+			if be.Name == "fallback" {
+
+			}
+
+		}
 		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
 		// as a default we use:
