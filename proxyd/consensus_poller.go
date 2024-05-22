@@ -41,6 +41,8 @@ type ConsensusPoller struct {
 	maxBlockLag        uint64
 	maxBlockRange      uint64
 	interval           time.Duration
+
+	fallbackModeEnabled bool
 }
 
 type backendState struct {
@@ -127,6 +129,7 @@ func (ah *PollerAsyncHandler) Init() {
 		go func(be *Backend) {
 			for {
 				timer := time.NewTimer(ah.cp.interval)
+				// NOTE: Jacob updating a backed only updates its record, no affect on consensus group or backends aval
 				ah.cp.UpdateBackend(ah.ctx, be)
 				select {
 				case <-timer.C:
@@ -401,6 +404,23 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
 
+	// If we have no candidates, enable fallback mode
+	if len(candidates) == 0 {
+		cp.fallbackModeEnabled = true
+	}
+	healthyNonFallbackCandidates := 0
+	for be := range candidates {
+		if !be.fallback {
+			healthyNonFallbackCandidates += 1
+
+		}
+	}
+
+	if healthyNonFallbackCandidates > 1 {
+		cp.fallbackModeEnabled = false
+
+	}
+
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
 	//        the lowest finalized block number
@@ -542,6 +562,10 @@ func (cp *ConsensusPoller) Ban(be *Backend) {
 	bs.latestBlockNumber = 0
 	bs.safeBlockNumber = 0
 	bs.finalizedBlockNumber = 0
+}
+
+func (ct *ConsensusPoller) GetFallbackMode() bool {
+	return ct.fallbackModeEnabled
 }
 
 // Unban removes any bans from the backends
