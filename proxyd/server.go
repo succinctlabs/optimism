@@ -535,7 +535,6 @@ func (s *Server) handleBatchRPC(ctx context.Context, reqs []json.RawMessage, isL
 			start := i * s.maxUpstreamBatchSize
 			end := int(math.Min(float64(start+s.maxUpstreamBatchSize), float64(len(cacheMisses))))
 			elems := cacheMisses[start:end]
-			// NOTE: Jacob Here the Request is forwarded to the backend group
 			res, sb, err := s.BackendGroups[group.backendGroup].Forward(ctx, createBatchRequest(elems), isBatch)
 			servedBy[sb] = true
 			if err != nil {

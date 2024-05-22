@@ -158,47 +158,6 @@ func TestConsensus(t *testing.T) {
 		nodes["node1"].mockBackend.Reset()
 	}
 
-	// Ban Both nodes
-	useNoNodes := func() {
-		overridePeerCount("node2", 0)
-		overridePeerCount("node1", 0)
-		update()
-
-		consensusGroup := bg.Consensus.GetConsensusGroup()
-		require.Equal(t, 0, len(consensusGroup))
-		require.NotContains(t, consensusGroup, nodes["node1"].backend)
-		require.NotContains(t, consensusGroup, nodes["node2"].backend)
-		nodes["node1"].mockBackend.Reset()
-		nodes["node2"].mockBackend.Reset()
-	}
-
-	// t.Run("Fallover Test V1", func(t *testing.T) {
-	// 	reset()
-	// 	useNoNodes()
-	// 	// Query with no nodes to trigger fallback mode
-	// 	_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
-
-	// 	// Expect one request to fail
-	// 	require.NoError(t, err)
-	// 	require.Equal(t, 503, statusCode)
-	// 	require.Equal(t, bg.Consensus.GetFallbackMode(), true)
-
-	// 	// first poll
-	// 	update()
-	// 	bg.Consensus.
-
-	// 	// _, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
-	// 	// as a default we use:
-	// 	// - latest at 0x101 [257]
-	// 	// - safe at 0xe1 [225]
-	// 	// - finalized at 0xc1 [193]
-
-	// 	// consensus at block 0x101
-	// 	require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
-	// 	require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
-	// 	require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
-	// })
-
 	t.Run("initial consensus", func(t *testing.T) {
 		reset()
 

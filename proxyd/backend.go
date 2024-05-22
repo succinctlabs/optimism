@@ -773,7 +773,6 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 
 	rpcRequestsTotal.Inc()
 
-	// NOTE: Jacob, make sure we have backends in this array
 	for _, back := range backends {
 		res := make([]*RPCRes, 0)
 		var err error
@@ -781,7 +780,6 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 		servedBy := fmt.Sprintf("%s/%s", bg.Name, back.Name)
 
 		if len(rpcReqs) > 0 {
-			// NOTE: HERE WE forward the request
 			res, err = back.Forward(ctx, rpcReqs, isBatch)
 			if errors.Is(err, ErrConsensusGetReceiptsCantBeBatched) ||
 				errors.Is(err, ErrConsensusGetReceiptsInvalidTarget) ||
@@ -883,16 +881,12 @@ func weightedShuffle(backends []*Backend) {
 }
 
 /*
-NOTE:: Jacob
-Need to return backend groups from here when in fallback mode enabled
+NOTE: Jacob Need to return backend groups from here when in fallback mode enabled
 */
 func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
-	// NOTE: Consensus Mode
 	if bg.Consensus != nil {
 		healthyBackends := bg.loadBalancedConsensusGroup()
 		return healthyBackends
-
-		// NOTE: Simple Weighted Routing
 	} else if bg.WeightedRouting {
 		result := make([]*Backend, len(bg.Backends))
 		copy(result, bg.Backends)
