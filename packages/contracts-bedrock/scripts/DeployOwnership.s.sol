@@ -60,14 +60,34 @@ contract DeployOwnership is Deploy {
     function _run() internal override {
         console.log("start of Ownership Deployment");
         // The SuperchainConfig is needed as a constructor argument to the Deputy Guardian Module
-        deploySuperchainConfig();
+        // deploySuperchainConfig();
+        save("SuperchainConfig", 0xC2Be75506d5724086DEB7245bd260Cc9753911Be);
 
-        deployFoundationOperationsSafe();
-        deployFoundationUpgradeSafe();
         deploySecurityCouncilSafe();
         deployGuardianSafe();
         configureGuardianSafe();
-        configureSecurityCouncilSafe();
+
+        // deployFoundationOperationsSafe();
+        save("FoundationOperationsSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
+
+        // deployFoundationUpgradeSafe();
+        save("FoundationUpgradeSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
+
+        // deploySecurityCouncilSafe();
+        save("SecurityCouncilSafe", 0xf64bc17485f0B4Ea5F06A96514182FC4cB561977);
+        // deployGuardianSafe();
+        save("GuardianSafe", 0x7a50f00e8D05b95F98fE38d8BeE366a7324dCf7E);
+
+        vm.startBroadcast();
+
+        deployLivenessGuard();
+        deployLivenessModule();
+        deployDeputyGuardianModule();
+
+        vm.stopBroadcast();
+
+        // configureGuardianSafe();
+        // configureSecurityCouncilSafe();
 
         console.log("Ownership contracts completed");
     }
@@ -219,7 +239,7 @@ contract DeployOwnership is Deploy {
         });
 
         // Finalize configuration by removing the additional deployer key.
-        removeDeployerFromSafe({ _name: "GuardianSafe", _newThreshold: 1 });
+        // removeDeployerFromSafe({ _name: "GuardianSafe", _newThreshold: 1 });
         console.log("DeputyGuardianModule enabled on GuardianSafe");
     }
 
