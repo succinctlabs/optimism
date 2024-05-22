@@ -155,27 +155,27 @@ func (ah *PollerAsyncHandler) Init() {
 		}
 	}()
 
-	// NOTE: Consistently poll for backend candidates, if we have zero use fallback
-	go func() {
-		for {
-			timer := time.NewTimer(ah.cp.interval / 4)
-			// backends := bg.orderedBackendsForRequest()
-			candidates := ah.cp.getConsensusCandidates()
+	// 	// NOTE: Consistently poll for backend candidates, if we have zero use fallback
+	// 	go func() {
+	// 		for {
+	// 			timer := time.NewTimer(ah.cp.interval / 4)
+	// 			// backends := bg.orderedBackendsForRequest()
+	// 			candidates := ah.cp.getConsensusCandidates()
 
-			if len(candidates) == 0 {
-				// Enable Fallback Mode
-				ah.cp.UseFallback()
-			} else {
-				ah.cp.DisableFallback()
-			}
-			select {
-			case <-timer.C:
-			case <-ah.ctx.Done():
-				timer.Stop()
-				return
-			}
-		}
-	}()
+	//			if len(candidates) == 0 {
+	//				// Enable Fallback Mode
+	//				ah.cp.UseFallback()
+	//			} else {
+	//				ah.cp.DisableFallback()
+	//			}
+	//			select {
+	//			case <-timer.C:
+	//			case <-ah.ctx.Done():
+	//				timer.Stop()
+	//				return
+	//			}
+	//		}
+	//	}()
 }
 
 // UseFallback will configure all requests to force to a specific backend
@@ -404,18 +404,19 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
 
-	// If we have no candidates, enable fallback mode
+	// If we have no candidates, turn on fallback mode
 	if len(candidates) == 0 {
 		cp.fallbackModeEnabled = true
 	}
+	// Count candidates that are healthy and not fallback
 	healthyNonFallbackCandidates := 0
 	for be := range candidates {
 		if !be.fallback {
 			healthyNonFallbackCandidates += 1
-
 		}
 	}
 
+	// Disable Fallback above threshold
 	if healthyNonFallbackCandidates > 1 {
 		cp.fallbackModeEnabled = false
 
@@ -683,7 +684,6 @@ func (cp *ConsensusPoller) setBackendState(be *Backend, peerCount uint64, inSync
 	return changed
 }
 
-// NOTE: JACOB PUT YOUR CODE HERE
 // getConsensusCandidates find out what backends are the candidates to be in the consensus group
 // and create a copy of current their state
 //

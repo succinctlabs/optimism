@@ -880,13 +880,9 @@ func weightedShuffle(backends []*Backend) {
 	weightedshuffle.ShuffleInplace(backends, weight, nil)
 }
 
-/*
-NOTE: Jacob Need to return backend groups from here when in fallback mode enabled
-*/
 func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
 	if bg.Consensus != nil {
-		healthyBackends := bg.loadBalancedConsensusGroup()
-		return healthyBackends
+		return bg.loadBalancedConsensusGroup()
 	} else if bg.WeightedRouting {
 		result := make([]*Backend, len(bg.Backends))
 		copy(result, bg.Backends)
@@ -898,6 +894,9 @@ func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
 }
 
 func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
+	/*
+		NOTE: If we force the candidates they will always be in consensus group
+	*/
 	cg := bg.Consensus.GetConsensusGroup()
 
 	backendsHealthy := make([]*Backend, 0, len(cg))
@@ -932,9 +931,7 @@ func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
 	// degraded backends are used as fallback
 	backendsHealthy = append(backendsHealthy, backendsDegraded...)
 
-	// If none of the backends are health we return the fallback
 	return backendsHealthy
-
 }
 
 func (bg *BackendGroup) Shutdown() {
