@@ -14,13 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// type nodeContext struct {
-// 	backend     *proxyd.Backend   // this is the actual backend impl in proxyd
-// 	mockBackend *MockBackend      // this is the fake backend that we can use to mock responses
-// 	handler     *ms.MockedHandler // this is where we control the state of mocked responses
-// }
-
-func setup_v1(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *ProxydHTTPClient, func()) {
+func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *ProxydHTTPClient, func()) {
 	// setup mock servers
 	node1 := NewMockBackend(nil)
 	node2 := NewMockBackend(nil)
@@ -48,7 +42,7 @@ func setup_v1(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *Prox
 	node2.SetHandler(http.HandlerFunc(h2.Handler))
 
 	// setup proxyd
-	config := ReadConfig("fallback")
+	config := ReadConfig("consensus")
 	svr, shutdown, err := proxyd.Start(config)
 	require.NoError(t, err)
 
@@ -78,8 +72,8 @@ func setup_v1(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *Prox
 	return nodes, bg, client, shutdown
 }
 
-func FallbackMode(t *testing.T) {
-	nodes, bg, client, shutdown := setup(t)
+func TestFallback(t *testing.T) {
+	nodes, bg, client, shutdown := setup_failover(t)
 	defer nodes["node1"].mockBackend.Close()
 	defer nodes["node2"].mockBackend.Close()
 	defer shutdown()
@@ -112,37 +106,37 @@ func FallbackMode(t *testing.T) {
 		})
 	}
 
-	// overrideBlock := func(node string, blockRequest string, blockResponse string) {
-	// 	override(node,
-	// 		"eth_getBlockByNumber",
-	// 		blockRequest,
-	// 		buildResponse(map[string]string{
-	// 			"number": blockResponse,
-	// 			"hash":   "hash_" + blockResponse,
-	// 		}))
-	// }
+	overrideBlock := func(node string, blockRequest string, blockResponse string) {
+		override(node,
+			"eth_getBlockByNumber",
+			blockRequest,
+			buildResponse(map[string]string{
+				"number": blockResponse,
+				"hash":   "hash_" + blockResponse,
+			}))
+	}
 
-	// overrideBlockHash := func(node string, blockRequest string, number string, hash string) {
-	// 	override(node,
-	// 		"eth_getBlockByNumber",
-	// 		blockRequest,
-	// 		buildResponse(map[string]string{
-	// 			"number": number,
-	// 			"hash":   hash,
-	// 		}))
-	// }
+	overrideBlockHash := func(node string, blockRequest string, number string, hash string) {
+		override(node,
+			"eth_getBlockByNumber",
+			blockRequest,
+			buildResponse(map[string]string{
+				"number": number,
+				"hash":   hash,
+			}))
+	}
 
 	overridePeerCount := func(node string, count int) {
 		override(node, "net_peerCount", "", buildResponse(hexutil.Uint64(count).String()))
 	}
 
-	// overrideNotInSync := func(node string) {
-	// 	override(node, "eth_syncing", "", buildResponse(map[string]string{
-	// 		"startingblock": "0x0",
-	// 		"currentblock":  "0x0",
-	// 		"highestblock":  "0x100",
-	// 	}))
-	// }
+	overrideNotInSync := func(node string) {
+		override(node, "eth_syncing", "", buildResponse(map[string]string{
+			"startingblock": "0x0",
+			"currentblock":  "0x0",
+			"highestblock":  "0x100",
+		}))
+	}
 
 	// force ban node2 and make sure node1 is the only one in consensus
 	// useOnlyNode1 := func() {
@@ -155,47 +149,32 @@ func FallbackMode(t *testing.T) {
 	// 	nodes["node1"].mockBackend.Reset()
 	// }
 
-	// Ban Both nodes
-	useNoNodes := func() {
-		overridePeerCount("node2", 0)
-		overridePeerCount("node1", 0)
-		update()
-		consensusGroup := bg.Consensus.GetConsensusGroup()
-		require.Equal(t, 0, len(consensusGroup))
-		require.NotContains(t, consensusGroup, nodes["node1"].backend)
-		require.NotContains(t, consensusGroup, nodes["node2"].backend)
-		nodes["node1"].mockBackend.Reset()
-		nodes["node2"].mockBackend.Reset()
-	}
-
-	t.Run("Fallover Test V1", func(t *testing.T) {
+	// NOTE: Use debug test above the Run call to step through calls
+	t.Run("initial fallback", func(t *testing.T) {
 		reset()
-		useNoNodes()
-		// Query with no nodes to trigger fallback mode
-		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
-		// Expect one request to fail
-		require.NoError(t, err)
-		require.Equal(t, 503, statusCode)
-		require.Equal(t, bg.Consensus.GetFallbackMode(), true)
-
-		_, statusCode, err = client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
-		require.NoError(t, err)
-		require.Equal(t, 200, statusCode)
-		require.Equal(t, bg.Consensus.GetFallbackMode(), true)
+		// unknown consensus at init
+		require.Equal(t, "0x0", bg.Consensus.GetLatestBlockNumber().String())
 
 		// first poll
 		update()
+		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
-		// _, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 		// as a default we use:
 		// - latest at 0x101 [257]
 		// - safe at 0xe1 [225]
 		// - finalized at 0xc1 [193]
 
 		// consensus at block 0x101
+		require.Equal(t, 200, statusCode)
+		require.Nil(t, err, "error not nil")
 		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
 		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
 		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+		overridePeerCount("node2", 0)
+		overrideNotInSync("node1")
+		overrideBlock("node1", "safe", "0xb1")
+		overrideBlockHash("node2", "0x102", "0x102", "wrong_hash")
+		// overrideBlock("node1")
 	})
 }

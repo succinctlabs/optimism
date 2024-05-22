@@ -721,10 +721,6 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 	}
 
 	backends := bg.orderedBackendsForRequest()
-	if len(backends) == 0 {
-		bg.fallbackModeEnabled = true
-	}
-
 	overriddenResponses := make([]*indexedReqRes, 0)
 	rewrittenReqs := make([]*RPCReq, 0, len(rpcReqs))
 

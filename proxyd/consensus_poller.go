@@ -41,7 +41,12 @@ type ConsensusPoller struct {
 	maxBlockLag        uint64
 	maxBlockRange      uint64
 	interval           time.Duration
-
+	// For now use bool in struct,
+	// Circular/infinite function/stack call between FallBackMode <-> getCandidates
+	//		fallbackMode calls getCandidates to see how many candidates are avail
+	// 		getCandidates calls fallBackMode to see if we need to add fallback candidates
+	// 			realistically, one can just read the value, no need to compute everytime
+	// stack goes boom
 	fallbackModeEnabled bool
 }
 
@@ -63,6 +68,36 @@ type backendState struct {
 
 func (bs *backendState) IsBanned() bool {
 	return time.Now().Before(bs.bannedUntil)
+}
+
+// If there are no candidates which are healthy and not labeled fallback
+// FallbackMode will return true
+// If there are health non-fallback candidates we will return false
+func (cp *ConsensusPoller) SetFallBackMode() {
+	candidates := cp.getConsensusCandidates()
+
+	if len(candidates) == 0 {
+		cp.fallbackModeEnabled = true
+		// return true
+	}
+	// Count candidates that are healthy and not fallback
+	healthyNonFallbackCandidates := 0
+	for be := range candidates {
+		if !be.fallback {
+			healthyNonFallbackCandidates += 1
+		}
+	}
+
+	// Disable Fallback above threshold
+	if healthyNonFallbackCandidates > 1 {
+		cp.fallbackModeEnabled = false
+		// return false
+	}
+	cp.fallbackModeEnabled = true
+}
+
+func (cp *ConsensusPoller) GetFallbackMode() bool {
+	return cp.fallbackModeEnabled
 }
 
 // GetConsensusGroup returns the backend members that are agreeing in a consensus
@@ -154,38 +189,6 @@ func (ah *PollerAsyncHandler) Init() {
 			}
 		}
 	}()
-
-	// 	// NOTE: Consistently poll for backend candidates, if we have zero use fallback
-	// 	go func() {
-	// 		for {
-	// 			timer := time.NewTimer(ah.cp.interval / 4)
-	// 			// backends := bg.orderedBackendsForRequest()
-	// 			candidates := ah.cp.getConsensusCandidates()
-
-	//			if len(candidates) == 0 {
-	//				// Enable Fallback Mode
-	//				ah.cp.UseFallback()
-	//			} else {
-	//				ah.cp.DisableFallback()
-	//			}
-	//			select {
-	//			case <-timer.C:
-	//			case <-ah.ctx.Done():
-	//				timer.Stop()
-	//				return
-	//			}
-	//		}
-	//	}()
-}
-
-// UseFallback will configure all requests to force to a specific backend
-func (cp *ConsensusPoller) UseFallback() {
-	cp.fallbackModeEnabled = true
-}
-
-// DisableFallback Group will disable the fallback group
-func (cp *ConsensusPoller) DisableFallback() {
-	cp.fallbackModeEnabled = false
 }
 
 func (ah *PollerAsyncHandler) Shutdown() {
@@ -403,12 +406,11 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
-
-	// If we have no candidates, turn on fallback mode
 	if len(candidates) == 0 {
 		cp.fallbackModeEnabled = true
 	}
 	// Count candidates that are healthy and not fallback
+	// If we have no candidates, turn on fallback mode
 	healthyNonFallbackCandidates := 0
 	for be := range candidates {
 		if !be.fallback {
@@ -416,10 +418,9 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 		}
 	}
 
-	// Disable Fallback above threshold
+	// // Disable Fallback above threshold
 	if healthyNonFallbackCandidates > 1 {
 		cp.fallbackModeEnabled = false
-
 	}
 
 	// update the lowest latest block number and hash
@@ -565,10 +566,6 @@ func (cp *ConsensusPoller) Ban(be *Backend) {
 	bs.finalizedBlockNumber = 0
 }
 
-func (ct *ConsensusPoller) GetFallbackMode() bool {
-	return ct.fallbackModeEnabled
-}
-
 // Unban removes any bans from the backends
 func (cp *ConsensusPoller) Unban(be *Backend) {
 	bs := cp.backendState[be]
@@ -698,7 +695,6 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	candidates := make(map[*Backend]*backendState, len(cp.backendGroup.Backends))
 
 	for _, be := range cp.backendGroup.Backends {
-
 		/*
 			Force the fallback backend to be a candidate, if fallback mode is enabled
 			Do not force the fallback backend, if fallback mode is disabled
