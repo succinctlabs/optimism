@@ -75,7 +75,7 @@ func NewRaftConsensus(log log.Logger, serverID, serverAddr, storageDir string, b
 		return nil, errors.Wrap(err, "failed to create raft tcp transport")
 	}
 
-	fsm := &unsafeHeadTracker{}
+	fsm := NewUnsafeHeadTracker(log)
 
 	r, err := raft.NewRaft(rc, fsm, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
@@ -207,6 +207,8 @@ func (rc *RaftConsensus) Shutdown() error {
 
 // CommitUnsafePayload implements Consensus, it commits latest unsafe payload to the cluster FSM.
 func (rc *RaftConsensus) CommitUnsafePayload(payload *eth.ExecutionPayloadEnvelope) error {
+	rc.log.Debug("committing unsafe payload", "number", uint64(payload.ExecutionPayload.BlockNumber), "hash", payload.ExecutionPayload.BlockHash.Hex())
+
 	var buf bytes.Buffer
 	if _, err := payload.MarshalSSZ(&buf); err != nil {
 		return errors.Wrap(err, "failed to marshal payload envelope")
@@ -216,14 +218,21 @@ func (rc *RaftConsensus) CommitUnsafePayload(payload *eth.ExecutionPayloadEnvelo
 	if err := f.Error(); err != nil {
 		return errors.Wrap(err, "failed to apply payload envelope")
 	}
+	rc.log.Debug("unsafe payload committed", "number", uint64(payload.ExecutionPayload.BlockNumber), "hash", payload.ExecutionPayload.BlockHash.Hex())
+
+	// raft.Apply only guarantees that log entries are committed to majority of the followers, but it does not guarantee that the log entry is applied to the FSM.
+	// Utilize barrier here to make sure they're applied to the FSM.
+	if err := rc.r.Barrier(defaultTimeout).Error(); err != nil {
+		return errors.Wrap(err, "failed to apply barrier")
+	}
+	rc.log.Debug("unsafe payload applied to FSM", "number", uint64(payload.ExecutionPayload.BlockNumber), "hash", payload.ExecutionPayload.BlockHash.Hex())
 
 	return nil
 }
 
 // LatestUnsafePayload implements Consensus, it returns the latest unsafe payload from FSM.
 func (rc *RaftConsensus) LatestUnsafePayload() *eth.ExecutionPayloadEnvelope {
-	payload := rc.unsafeTracker.UnsafeHead()
-	return payload
+	return rc.unsafeTracker.UnsafeHead()
 }
 
 // ClusterMembership implements Consensus, it returns the current cluster membership configuration.
