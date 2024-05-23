@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
@@ -153,6 +154,14 @@ func TestFallback(t *testing.T) {
 		return false
 	}
 
+	recordLastUpdates := func(backends []*proxyd.Backend) []time.Time {
+		lastUpdated := []time.Time{}
+		for _, be := range backends {
+			lastUpdated = append(lastUpdated, bg.Consensus.GetLastUpdate(be))
+		}
+		return lastUpdated
+	}
+
 	// convenient methods to manipulate state and mock responses
 	reset := func() {
 		for _, node := range nodes {
@@ -249,5 +258,28 @@ func TestFallback(t *testing.T) {
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+	})
+	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
+		reset()
+		// first poll
+		update()
+		first_update := recordLastUpdates(bg.Backends)
+		useOnlyFallback()
+		update()
+		second_update := recordLastUpdates(bg.Backends)
+
+		// consensus at block 0x101
+		require.Equal(t, first_update[0], second_update[0])
+		require.NotEqual(t, first_update[1], second_update[1])
+
+		// as a default we use:
+		// - latest at 0x101 [257]
+		// - safe at 0xe1 [225]
+		// - finalized at 0xc1 [193]
+
+		// consensus at block 0x101
+		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
+		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
+		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
 	})
 }
