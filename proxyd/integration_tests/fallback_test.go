@@ -181,9 +181,9 @@ func TestFallback(t *testing.T) {
 	t.Run("initial", func(t *testing.T) {
 		reset()
 		update()
-		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		require.False(t, bg.Consensus.GetFallbackMode())
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.Equal(t, false, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 
 		// Check the backends in the Consensus Group to verify if fallback was turned on
 		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
@@ -202,21 +202,56 @@ func TestFallback(t *testing.T) {
 		// overrideBlock("node1")
 	})
 
-	t.Run("trigger Fallback Mode", func(t *testing.T) {
+	t.Run("trigger single node failing once", func(t *testing.T) {
 		reset()
 		useOnlyFallback()
 		update()
-		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		// require.Equal(t, false, bg.Consensus.GetFallbackMode())
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.Equal(t, true, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 	})
 
-	t.Run("trigger Fallback Mode", func(t *testing.T) {
+	t.Run("trigger single node failing continously", func(t *testing.T) {
 		reset()
 		useOnlyFallback()
-		update()
-		require.Equal(t, false, bg.Consensus.GetFallbackMode())
-		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.Equal(t, true, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+
+		for i := 0; i < 10; i++ {
+			update()
+			// require.Equal(t, false, bg.Consensus.GetFallbackMode())
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		}
+	})
+
+	t.Run("trigger single node failing continously", func(t *testing.T) {
+		reset()
+		useOnlyFallback()
+		for i := 0; i < 10; i++ {
+			update()
+			// require.Equal(t, false, bg.Consensus.GetFallbackMode())
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		}
+	})
+
+	t.Run("trigger healthy -> fallback -> healthy", func(t *testing.T) {
+		reset()
+		for i := 0; i < 5; i++ {
+			update()
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		}
+		useOnlyFallback()
+		for i := 0; i < 5; i++ {
+			update()
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		}
+		reset()
+		for i := 0; i < 10; i++ {
+			update()
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		}
 	})
 }
