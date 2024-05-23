@@ -705,7 +705,9 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 				log.Info("Fallback Mode Enabled. Forcing fallback backend as a candidate", "backend", be.Name)
 				be.forcedCandidate = true
 			}
+			// Don't force and don't add it to the candidates
 			be.forcedCandidate = false
+			continue
 		}
 
 		bs := cp.getBackendState(be)

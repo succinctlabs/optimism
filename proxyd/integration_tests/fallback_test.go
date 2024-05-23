@@ -138,6 +138,17 @@ func TestFallback(t *testing.T) {
 		}))
 	}
 
+	containsFallbackNode := func(backends []*proxyd.Backend) bool {
+		for _, be := range backends {
+			// Note: Currently checks for name but would like to expose fallback better
+			if be.Name == "fallback" {
+				return true
+			}
+
+		}
+		return false
+	}
+
 	// force ban node2 and make sure node1 is the only one in consensus
 	// useOnlyNode1 := func() {
 	// 	overridePeerCount("node2", 0)
@@ -150,33 +161,18 @@ func TestFallback(t *testing.T) {
 	// }
 
 	// NOTE: Use debug test above the Run call to step through calls
-	t.Run("initial fallback", func(t *testing.T) {
+
+	// TODO: Rename to with no fallback mode, no fallback backends should be returned
+	t.Run("initial", func(t *testing.T) {
 		reset()
 
-		// unknown consensus at init
-		require.Equal(t, "0x0", bg.Consensus.GetLatestBlockNumber().String())
-
-		// Set the nodes/backend
-
-		// Then Update the consensusGroup
 		update()
-		// Determine Fallback mode
-		bg.Consensus.GetFallbackMode()
+		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.Equal(t, false, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 
 		// Check the backends in the Consensus Group to verify if fallback was turned on
-		// for _, be := range bg.Consensus.GetConsensusGroup() {
-		// 	// Can check for fallback or specific nodes to be healthy / returned
-		// 	if be.Name == "fallback" {
-
-		// 	}
-
-		// }
 		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
-
-		// as a default we use:
-		// - latest at 0x101 [257]
-		// - safe at 0xe1 [225]
-		// - finalized at 0xc1 [193]
 
 		// consensus at block 0x101
 		require.Equal(t, 200, statusCode)
@@ -190,4 +186,6 @@ func TestFallback(t *testing.T) {
 		overrideBlockHash("node2", "0x102", "0x102", "wrong_hash")
 		// overrideBlock("node1")
 	})
+
+	t.Run("Trigger Fallback Mode")
 }
