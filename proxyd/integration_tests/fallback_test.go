@@ -57,12 +57,12 @@ func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup,
 
 	// convenient mapping to access the nodes by name
 	nodes := map[string]nodeContext{
-		"node1": {
+		"normal": {
 			mockBackend: node1,
 			backend:     bg.Backends[0],
 			handler:     &h1,
 		},
-		"node2": {
+		"fallback": {
 			mockBackend: node2,
 			backend:     bg.Backends[1],
 			handler:     &h2,
@@ -74,8 +74,8 @@ func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup,
 
 func TestFallback(t *testing.T) {
 	nodes, bg, client, shutdown := setup_failover(t)
-	defer nodes["node1"].mockBackend.Close()
-	defer nodes["node2"].mockBackend.Close()
+	defer nodes["normal"].mockBackend.Close()
+	defer nodes["fallback"].mockBackend.Close()
 	defer shutdown()
 
 	ctx := context.Background()
@@ -88,17 +88,10 @@ func TestFallback(t *testing.T) {
 		bg.Consensus.UpdateBackendGroupConsensus(ctx)
 	}
 
-	// convenient methods to manipulate state and mock responses
-	reset := func() {
-		for _, node := range nodes {
-			node.handler.ResetOverrides()
-			node.mockBackend.Reset()
-		}
-		bg.Consensus.ClearListeners()
-		bg.Consensus.Reset()
-	}
-
 	override := func(node string, method string, block string, response string) {
+		if _, ok := nodes[node]; !ok {
+			t.Fatalf("node %s does not exist in the nodes map", node)
+		}
 		nodes[node].handler.AddOverride(&ms.MethodTemplate{
 			Method:   method,
 			Block:    block,
@@ -138,34 +131,55 @@ func TestFallback(t *testing.T) {
 		}))
 	}
 
+	// force ban node2 and make sure node1 is the only one in consensus
+	useOnlyFallback := func() {
+		overridePeerCount("normal", 0)
+		update()
+
+		consensusGroup := bg.Consensus.GetConsensusGroup()
+		require.Equal(t, 1, len(consensusGroup))
+		require.Contains(t, consensusGroup, nodes["fallback"].backend)
+		require.NotContains(t, consensusGroup, nodes["normal"].backend)
+		nodes["fallback"].mockBackend.Reset()
+	}
+
 	containsFallbackNode := func(backends []*proxyd.Backend) bool {
 		for _, be := range backends {
 			// Note: Currently checks for name but would like to expose fallback better
 			if be.Name == "fallback" {
 				return true
 			}
-
 		}
 		return false
 	}
 
-	// force ban node2 and make sure node1 is the only one in consensus
-	// useOnlyNode1 := func() {
-	// 	overridePeerCount("node2", 0)
-	// 	update()
+	// convenient methods to manipulate state and mock responses
+	reset := func() {
+		for _, node := range nodes {
+			node.handler.ResetOverrides()
+			node.mockBackend.Reset()
+		}
+		bg.Consensus.ClearListeners()
+		bg.Consensus.Reset()
+		// 	// Require starting without a fallback node, and fallback is false
+		// 	require.Equal(t, false, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		// 	require.Equal(t, false, bg.Consensus.GetFallbackMode())
 
-	// 	consensusGroup := bg.Consensus.GetConsensusGroup()
-	// 	require.Equal(t, 1, len(consensusGroup))
-	// 	require.Contains(t, consensusGroup, nodes["node1"].backend)
-	// 	nodes["node1"].mockBackend.Reset()
-	// }
+		// 	consensusGroup := bg.Consensus.GetConsensusGroup()
+		// 	require.Equal(t, "fallback", nodes["fallback"].backend.Name)
+		// 	require.Equal(t, "normal", nodes["normal"].backend.Name)
+		// 	require.Contains(t, consensusGroup, nodes["normal"].backend)
+		// 	require.NotContains(t, consensusGroup, nodes["fallback"].backend)
+		// 	// Not sure if I need these
+		// 	nodes["failover"].mockBackend.Reset()
+		// 	nodes["normal"].mockBackend.Reset()
+	}
 
 	// NOTE: Use debug test above the Run call to step through calls
 
 	// TODO: Rename to with no fallback mode, no fallback backends should be returned
 	t.Run("initial", func(t *testing.T) {
 		reset()
-
 		update()
 		require.Equal(t, false, bg.Consensus.GetFallbackMode())
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
@@ -174,18 +188,35 @@ func TestFallback(t *testing.T) {
 		// Check the backends in the Consensus Group to verify if fallback was turned on
 		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
-		// consensus at block 0x101
+		// TODO: Delete these later consensus at block 0x101
 		require.Equal(t, 200, statusCode)
 		require.Nil(t, err, "error not nil")
 		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
 		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
 		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
-		overridePeerCount("node2", 0)
-		overrideNotInSync("node1")
-		overrideBlock("node1", "safe", "0xb1")
-		overrideBlockHash("node2", "0x102", "0x102", "wrong_hash")
+		// TODO: Remove these, just here so compiler doesn't complain
+		overridePeerCount("fallback", 0)
+		overrideNotInSync("normal")
+		overrideBlock("normal", "safe", "0xb1")
+		overrideBlockHash("fallback", "0x102", "0x102", "wrong_hash")
 		// overrideBlock("node1")
 	})
 
-	t.Run("Trigger Fallback Mode")
+	t.Run("trigger Fallback Mode", func(t *testing.T) {
+		reset()
+		useOnlyFallback()
+		update()
+		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.Equal(t, true, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+	})
+
+	t.Run("trigger Fallback Mode", func(t *testing.T) {
+		reset()
+		useOnlyFallback()
+		update()
+		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.Equal(t, true, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+	})
 }

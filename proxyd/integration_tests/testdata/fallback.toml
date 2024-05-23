@@ -6,16 +6,16 @@ response_timeout_seconds = 1
 max_degraded_latency_threshold = "30ms"
 
 [backends]
-[backends.node1]
+[backends.normal]
 rpc_url = "$NODE1_URL"
 
-[backends.node2]
+[backends.fallback]
 rpc_url = "$NODE2_URL"
 fallback = true
 
 [backend_groups]
 [backend_groups.node]
-backends = ["node1", "node2"]
+backends = ["normal", "fallback"]
 consensus_aware = true
 consensus_handler = "noop" # allow more control over the consensus poller for tests
 consensus_ban_period = "1m"

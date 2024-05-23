@@ -406,22 +406,22 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
-	if len(candidates) == 0 {
-		cp.fallbackModeEnabled = true
-	}
+	// if len(candidates) == 0 {
+	// 	cp.fallbackModeEnabled = true
+	// }
 	// Count candidates that are healthy and not fallback
 	// If we have no candidates, turn on fallback mode
-	healthyNonFallbackCandidates := 0
-	for be := range candidates {
-		if !be.fallback {
-			healthyNonFallbackCandidates += 1
-		}
-	}
+	// healthyNonFallbackCandidates := 0
+	// for be := range candidates {
+	// 	f !be.fallback {
+	// 		healthyNonFallbackCandidates += 1
+	// 	}
+	// }
 
-	// // Disable Fallback above threshold
-	if healthyNonFallbackCandidates > 1 {
-		cp.fallbackModeEnabled = false
-	}
+	// // // Disable Fallback above threshold
+	// if healthyNonFallbackCandidates > 1 {
+	// 	cp.fallbackModeEnabled = false
+	// }
 
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
@@ -695,18 +695,9 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	candidates := make(map[*Backend]*backendState, len(cp.backendGroup.Backends))
 
 	for _, be := range cp.backendGroup.Backends {
-		/*
-			Force the fallback backend to be a candidate, if fallback mode is enabled
-			Do not force the fallback backend, if fallback mode is disabled
-			Odd Issue, where there will not be a backend state available for the first time
-		*/
-		if be.fallback {
-			if cp.backendGroup.fallbackModeEnabled {
-				log.Info("Fallback Mode Enabled. Forcing fallback backend as a candidate", "backend", be.Name)
-				be.forcedCandidate = true
-			}
-			// Don't force and don't add it to the candidates
-			be.forcedCandidate = false
+
+		// If we are not in fallback mode, do not add fallbacks
+		if !cp.fallbackModeEnabled && be.fallback {
 			continue
 		}
 
@@ -732,6 +723,24 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 		}
 
 		candidates[be] = bs
+	}
+	// fallbacks := 0
+	normal := 0
+	for be := range candidates {
+		if !be.fallback {
+			normal += 1
+		}
+	}
+	/*
+		If there are no candidates, add the fallbacks.
+	*/
+	if normal == 0 {
+		for _, be := range cp.backendGroup.Backends {
+			if be.fallback {
+				bs := cp.getBackendState(be)
+				candidates[be] = bs
+			}
+		}
 	}
 
 	// find the highest block, in order to use it defining the highest non-lagging ancestor block
