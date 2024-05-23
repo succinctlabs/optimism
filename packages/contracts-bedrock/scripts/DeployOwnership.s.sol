@@ -65,6 +65,7 @@ contract DeployOwnership is Deploy {
 
         // deployFoundationSafe();
         save("FoundationSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
+        save("FoundationOperationsSafe", 0x837DE453AD5F21E89771e3c06239d8236c0EFd5E);
         // deploySecurityCouncilSafe();
         save("SecurityCouncilSafe", 0xf64bc17485f0B4Ea5F06A96514182FC4cB561977);
         // deployGuardianSafe();
@@ -72,8 +73,8 @@ contract DeployOwnership is Deploy {
 
         vm.startBroadcast();
 
-        deployLivenessGuard();
-        deployLivenessModule();
+        // deployLivenessGuard();
+        // deployLivenessModule();
         deployDeputyGuardianModule();
 
         vm.stopBroadcast();
@@ -100,7 +101,7 @@ contract DeployOwnership is Deploy {
         guardianConfig_ = GuardianConfig({
             safeConfig: SafeConfig({ threshold: 1, owners: exampleGuardianOwners }),
             deputyGuardianModuleConfig: DeputyGuardianModuleConfig({
-                deputyGuardian: mustGetAddress("FoundationSafe"),
+                deputyGuardian: mustGetAddress("FoundationOperationsSafe"),
                 superchainConfig: SuperchainConfig(mustGetAddress("SuperchainConfig"))
             })
         });
