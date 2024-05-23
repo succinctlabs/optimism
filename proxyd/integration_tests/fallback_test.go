@@ -42,7 +42,7 @@ func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup,
 	node2.SetHandler(http.HandlerFunc(h2.Handler))
 
 	// setup proxyd
-	config := ReadConfig("consensus")
+	config := ReadConfig("fallback")
 	svr, shutdown, err := proxyd.Start(config)
 	require.NoError(t, err)
 
@@ -164,13 +164,13 @@ func TestFallback(t *testing.T) {
 		bg.Consensus.GetFallbackMode()
 
 		// Check the backends in the Consensus Group to verify if fallback was turned on
-		for _, be := range bg.Consensus.GetConsensusGroup() {
-			// Can check for fallback or specific nodes to be healthy / returned
-			if be.Name == "fallback" {
+		// for _, be := range bg.Consensus.GetConsensusGroup() {
+		// 	// Can check for fallback or specific nodes to be healthy / returned
+		// 	if be.Name == "fallback" {
 
-			}
+		// 	}
 
-		}
+		// }
 		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
 		// as a default we use:

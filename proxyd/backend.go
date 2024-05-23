@@ -281,6 +281,12 @@ func WithConsensusReceiptTarget(receiptsTarget string) BackendOpt {
 	}
 }
 
+func WithFallback(fallback bool) BackendOpt {
+	return func(b *Backend) {
+		b.fallback = fallback
+	}
+}
+
 type indexedReqRes struct {
 	index int
 	req   *RPCReq

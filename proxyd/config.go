@@ -103,6 +103,8 @@ type BackendConfig struct {
 	ConsensusSkipPeerCountCheck bool   `toml:"consensus_skip_peer_count"`
 	ConsensusForcedCandidate    bool   `toml:"consensus_forced_candidate"`
 	ConsensusReceiptsTarget     string `toml:"consensus_receipts_target"`
+
+	Fallback bool `toml:"fallback"`
 }
 
 type BackendsConfig map[string]*BackendConfig

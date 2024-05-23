@@ -8,7 +8,6 @@ max_degraded_latency_threshold = "30ms"
 [backends]
 [backends.node1]
 rpc_url = "$NODE1_URL"
-fallback = false
 
 [backends.node2]
 rpc_url = "$NODE2_URL"
