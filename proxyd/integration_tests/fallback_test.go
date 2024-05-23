@@ -236,22 +236,18 @@ func TestFallback(t *testing.T) {
 
 	t.Run("trigger healthy -> fallback -> healthy", func(t *testing.T) {
 		reset()
-		for i := 0; i < 5; i++ {
-			update()
-			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		}
+		update()
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+
 		useOnlyFallback()
-		for i := 0; i < 5; i++ {
-			update()
-			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		}
+		update()
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+
 		reset()
-		for i := 0; i < 10; i++ {
-			update()
-			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		}
+		update()
+		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 	})
 }

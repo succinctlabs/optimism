@@ -724,7 +724,8 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 
 		candidates[be] = bs
 	}
-	// fallbacks := 0
+
+	// Count Number normal candidates
 	normal := 0
 	for be := range candidates {
 		if !be.fallback {
@@ -732,13 +733,17 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 		}
 	}
 	/*
-		If there are no candidates, add the fallbacks.
+		Force the fallbacks if there are zero normal candidates
+		otherwise do not force them
 	*/
-	if normal == 0 {
-		for _, be := range cp.backendGroup.Backends {
-			if be.fallback {
+	for _, be := range cp.backendGroup.Backends {
+		if be.fallback {
+			if normal == 0 {
+				be.forcedCandidate = true
 				bs := cp.getBackendState(be)
 				candidates[be] = bs
+			} else {
+				be.forcedCandidate = false
 			}
 		}
 	}
