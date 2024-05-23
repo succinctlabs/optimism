@@ -63,9 +63,9 @@ contract DeployOwnership is Deploy {
         // deploySuperchainConfig();
         save("SuperchainConfig", 0xC2Be75506d5724086DEB7245bd260Cc9753911Be);
 
-        deploySecurityCouncilSafe();
-        deployGuardianSafe();
-        configureGuardianSafe();
+        // deploySecurityCouncilSafe();
+        // deployGuardianSafe();
+        // configureGuardianSafe();
 
         // deployFoundationOperationsSafe();
         save("FoundationOperationsSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
@@ -80,8 +80,8 @@ contract DeployOwnership is Deploy {
 
         vm.startBroadcast();
 
-        deployLivenessGuard();
-        deployLivenessModule();
+        // deployLivenessGuard();
+        // deployLivenessModule();
         deployDeputyGuardianModule();
 
         vm.stopBroadcast();
