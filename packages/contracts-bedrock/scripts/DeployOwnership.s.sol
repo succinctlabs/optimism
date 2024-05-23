@@ -73,9 +73,9 @@ contract DeployOwnership is Deploy {
 
         vm.startBroadcast();
 
-        // deployLivenessGuard();
-        // deployLivenessModule();
-        deployDeputyGuardianModule();
+        deployLivenessGuard();
+        deployLivenessModule();
+        // deployDeputyGuardianModule();
 
         vm.stopBroadcast();
 
@@ -117,9 +117,9 @@ contract DeployOwnership is Deploy {
         councilConfig_ = SecurityCouncilConfig({
             safeConfig: safeConfig,
             livenessModuleConfig: LivenessModuleConfig({
-                livenessInterval: 24 weeks,
-                thresholdPercentage: 75,
-                minOwners: 8,
+                livenessInterval: 104 weeks, // (2 years)
+                thresholdPercentage: 20,
+                minOwners: 2,
                 fallbackOwner: mustGetAddress("FoundationSafe")
             })
         });
