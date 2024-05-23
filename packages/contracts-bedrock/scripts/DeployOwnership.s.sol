@@ -80,9 +80,9 @@ contract DeployOwnership is Deploy {
 
         vm.startBroadcast();
 
-        // deployLivenessGuard();
-        // deployLivenessModule();
-        deployDeputyGuardianModule();
+        deployLivenessGuard();
+        deployLivenessModule();
+        // deployDeputyGuardianModule();
 
         vm.stopBroadcast();
 
