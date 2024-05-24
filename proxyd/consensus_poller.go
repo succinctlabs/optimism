@@ -300,6 +300,12 @@ func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	bs := cp.getBackendState(be)
 	RecordConsensusBackendBanned(be, bs.IsBanned())
 
+	if be.fallback && !cp.GetFallbackMode() {
+		return
+	}
+	// NOTE:
+	// Update: both normal mode -> no fallback updated
+	// 			- Custom set fallback lastUpdate to bad value
 	if bs.IsBanned() {
 		log.Debug("skipping backend - banned", "backend", be.Name)
 		return
@@ -406,22 +412,41 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
-	// if len(candidates) == 0 {
-	// 	cp.fallbackModeEnabled = true
-	// }
-	// Count candidates that are healthy and not fallback
-	// If we have no candidates, turn on fallback mode
-	// healthyNonFallbackCandidates := 0
-	// for be := range candidates {
-	// 	f !be.fallback {
-	// 		healthyNonFallbackCandidates += 1
-	// 	}
-	// }
 
-	// // // Disable Fallback above threshold
-	// if healthyNonFallbackCandidates > 1 {
-	// 	cp.fallbackModeEnabled = false
-	// }
+	// Count Number normal candidates
+	numHealthyCandidates := 0
+	numFallbacksEnabled := 0
+	for be := range candidates {
+		if !be.fallback {
+			numHealthyCandidates += 1
+		} else {
+			numFallbacksEnabled += 1
+		}
+	}
+	/*
+		Force the fallbacks on if there are zero normal candidates
+		otherwise do not force them
+	*/
+	cp.fallbackModeEnabled = (numHealthyCandidates == 0)
+	for _, be := range cp.backendGroup.Backends {
+		if be.fallback {
+			if cp.fallbackModeEnabled {
+				be.forcedCandidate = true
+			} else {
+				be.forcedCandidate = false
+			}
+		}
+	}
+
+	/*
+		If we just enabled fallback, and no fallback candidates in pool return prior state
+		since the updates backend states of fallback will be stale
+
+		other option is to update backend states here
+	*/
+	if cp.fallbackModeEnabled && (numFallbacksEnabled == 0) {
+		return
+	}
 
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
@@ -663,6 +688,13 @@ func (cp *ConsensusPoller) getBackendState(be *Backend) *backendState {
 	}
 }
 
+func (cp *ConsensusPoller) GetLastUpdate(be *Backend) time.Time {
+	bs := cp.backendState[be]
+	defer bs.backendStateMux.Unlock()
+	bs.backendStateMux.Lock()
+	return bs.lastUpdate
+}
+
 func (cp *ConsensusPoller) setBackendState(be *Backend, peerCount uint64, inSync bool,
 	latestBlockNumber hexutil.Uint64, latestBlockHash string,
 	safeBlockNumber hexutil.Uint64,
@@ -697,7 +729,7 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	for _, be := range cp.backendGroup.Backends {
 
 		// If we are not in fallback mode, do not add fallbacks
-		if !cp.fallbackModeEnabled && be.fallback {
+		if !cp.GetFallbackMode() && be.fallback {
 			continue
 		}
 
@@ -723,29 +755,6 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 		}
 
 		candidates[be] = bs
-	}
-
-	// Count Number normal candidates
-	normal := 0
-	for be := range candidates {
-		if !be.fallback {
-			normal += 1
-		}
-	}
-	/*
-		Force the fallbacks if there are zero normal candidates
-		otherwise do not force them
-	*/
-	for _, be := range cp.backendGroup.Backends {
-		if be.fallback {
-			if normal == 0 {
-				be.forcedCandidate = true
-				bs := cp.getBackendState(be)
-				candidates[be] = bs
-			} else {
-				be.forcedCandidate = false
-			}
-		}
 	}
 
 	// find the highest block, in order to use it defining the highest non-lagging ancestor block

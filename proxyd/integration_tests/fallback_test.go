@@ -154,6 +154,7 @@ func TestFallback(t *testing.T) {
 		return false
 	}
 
+	// Could return this in a nice struct
 	recordLastUpdates := func(backends []*proxyd.Backend) []time.Time {
 		lastUpdated := []time.Time{}
 		for _, be := range backends {
@@ -260,24 +261,42 @@ func TestFallback(t *testing.T) {
 		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 	})
 	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
+		normalTimestamps := []time.Time{}
+		fallbackTimestamps := []time.Time{}
+
+		// Normal Behavior -> Normal Backend is updated, fallback is not
 		reset()
-		// first poll
 		update()
-		first_update := recordLastUpdates(bg.Backends)
-		useOnlyFallback()
-		update()
-		second_update := recordLastUpdates(bg.Backends)
+		ts := recordLastUpdates(bg.Backends)
+		normalTimestamps = append(normalTimestamps, ts[0])
+		fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+		require.False(t, normalTimestamps[0].IsZero())
+		require.True(t, fallbackTimestamps[0].IsZero())
 
 		// consensus at block 0x101
-		require.Equal(t, first_update[0], second_update[0])
-		require.NotEqual(t, first_update[1], second_update[1])
+		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
+		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
+		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
 
-		// as a default we use:
-		// - latest at 0x101 [257]
-		// - safe at 0xe1 [225]
-		// - finalized at 0xc1 [193]
+		/*
+		 Set Normal backend to Fail ->
+		 Neither backend should be updated
+		*/
+		overridePeerCount("normal", 0)
+		update()
+		ts = recordLastUpdates(bg.Backends)
+		normalTimestamps = append(normalTimestamps, ts[0])
+		fallbackTimestamps = append(fallbackTimestamps, ts[1])
 
-		// consensus at block 0x101
+		// Normal should be updated again
+		require.False(t, normalTimestamps[1].IsZero())
+		require.GreaterOrEqual(t, normalTimestamps[1], normalTimestamps[0])
+
+		// Fallback should not be updated
+		require.True(t, fallbackTimestamps[1].IsZero())
+
+		// Consensus should stay the same
 		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
 		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
 		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
