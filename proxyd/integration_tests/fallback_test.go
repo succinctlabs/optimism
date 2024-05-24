@@ -240,18 +240,6 @@ func TestFallback(t *testing.T) {
 		require.True(t, bg.Consensus.GetFallbackMode())
 	})
 
-	// t.Run("trigger single node failing continously, expect only failover in consensus", func(t *testing.T) {
-	// 	reset()
-	// 	triggerFirstNormalFailure()
-
-	// 	for i := 0; i < 10; i++ {
-	// 		update()
-	// 		require.Equal(t, true, bg.Consensus.GetFallbackMode())
-	// 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-	// 		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-	// 	}
-	// })
-
 	t.Run("trigger healthy -> fallback, update -> healthy", func(t *testing.T) {
 		reset()
 		update()
@@ -295,8 +283,7 @@ func TestFallback(t *testing.T) {
 	})
 
 	/*
-	 Set Normal backend to Fail ->
-	 Neither backend should be updated
+	 Set Normal backend to Fail -> both backends should be updated
 	*/
 	t.Run("Ensure both nodes are quieried in fallback mode", func(t *testing.T) {
 		reset()
@@ -307,7 +294,7 @@ func TestFallback(t *testing.T) {
 			normalTimestamps = append(normalTimestamps, ts[0])
 			fallbackTimestamps = append(fallbackTimestamps, ts[1])
 
-			// Normal should be updated again
+			// Both Nodes should be updated again
 			require.False(t, normalTimestamps[i].IsZero())
 			require.False(t, fallbackTimestamps[i].IsZero(),
 				fmt.Sprintf("Error: Fallback timestamp: %v was not queried on iteratio %d", fallbackTimestamps[i], i),
@@ -315,6 +302,81 @@ func TestFallback(t *testing.T) {
 			if i > 0 {
 				require.Greater(t, normalTimestamps[i], normalTimestamps[i-1])
 				require.Greater(t, fallbackTimestamps[i], fallbackTimestamps[i-1])
+			}
+		}
+	})
+
+	t.Run("Ensure both nodes are quieried in fallback mode", func(t *testing.T) {
+		reset()
+		triggerFirstNormalFailure()
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+			// Both Nodes should be updated again
+			require.False(t, normalTimestamps[i].IsZero())
+			require.False(t, fallbackTimestamps[i].IsZero(),
+				fmt.Sprintf("Error: Fallback timestamp: %v was not queried on iteratio %d", fallbackTimestamps[i], i),
+			)
+			if i > 0 {
+				require.Greater(t, normalTimestamps[i], normalTimestamps[i-1])
+				require.Greater(t, fallbackTimestamps[i], fallbackTimestamps[i-1])
+			}
+		}
+	})
+	t.Run("Healthy -> Fallback -> Healthy with timestamps", func(t *testing.T) {
+		reset()
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+			// Normal is queried, fallback is not
+			require.False(t, normalTimestamps[i].IsZero())
+			require.True(t, fallbackTimestamps[i].IsZero(),
+				fmt.Sprintf("Error: Fallback timestamp: %v was not queried on iteratio %d", fallbackTimestamps[i], i),
+			)
+			if i > 0 {
+				require.Greater(t, normalTimestamps[i], normalTimestamps[i-1])
+				// Fallbacks should be zeros
+				require.Equal(t, fallbackTimestamps[i], fallbackTimestamps[i-1])
+			}
+		}
+
+		offset := 10
+		triggerFirstNormalFailure()
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+			// Both Nodes should be updated again
+			require.False(t, normalTimestamps[i+offset].IsZero())
+			require.False(t, fallbackTimestamps[i+offset].IsZero())
+
+			require.Greater(t, normalTimestamps[i+offset], normalTimestamps[i+offset-1])
+			require.Greater(t, fallbackTimestamps[i+offset], fallbackTimestamps[i+offset-1])
+		}
+
+		overridePeerCount("normal", 5)
+		offset = 20
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+			// Normal Node will be updated
+			require.False(t, normalTimestamps[i+offset].IsZero())
+			require.Greater(t, normalTimestamps[i+offset], normalTimestamps[i+offset-1])
+
+			// fallback should not be updating
+			if offset+i > 21 {
+				require.Equal(t, fallbackTimestamps[i+offset], fallbackTimestamps[i+offset-1])
 			}
 		}
 	})
