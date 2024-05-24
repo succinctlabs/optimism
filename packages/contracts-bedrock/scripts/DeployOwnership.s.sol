@@ -60,34 +60,18 @@ contract DeployOwnership is Deploy {
     function _run() internal override {
         console.log("start of Ownership Deployment");
         // The SuperchainConfig is needed as a constructor argument to the Deputy Guardian Module
-        // deploySuperchainConfig();
+
         save("SuperchainConfig", 0xC2Be75506d5724086DEB7245bd260Cc9753911Be);
-
-        // deploySecurityCouncilSafe();
-        // deployGuardianSafe();
-        // configureGuardianSafe();
-
-        // deployFoundationOperationsSafe();
-        save("FoundationOperationsSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
-
-        // deployFoundationUpgradeSafe();
+        save("FoundationOperationsSafe", 0x837DE453AD5F21E89771e3c06239d8236c0EFd5E);
         save("FoundationUpgradeSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
-
-        // deploySecurityCouncilSafe();
         save("SecurityCouncilSafe", 0xf64bc17485f0B4Ea5F06A96514182FC4cB561977);
-        // deployGuardianSafe();
         save("GuardianSafe", 0x7a50f00e8D05b95F98fE38d8BeE366a7324dCf7E);
 
         vm.startBroadcast();
 
-        deployLivenessGuard();
-        deployLivenessModule();
-        // deployDeputyGuardianModule();
+        deployDeputyGuardianModule();
 
         vm.stopBroadcast();
-
-        // configureGuardianSafe();
-        // configureSecurityCouncilSafe();
 
         console.log("Ownership contracts completed");
     }
