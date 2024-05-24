@@ -70,32 +70,6 @@ func (bs *backendState) IsBanned() bool {
 	return time.Now().Before(bs.bannedUntil)
 }
 
-// If there are no candidates which are healthy and not labeled fallback
-// FallbackMode will return true
-// If there are health non-fallback candidates we will return false
-func (cp *ConsensusPoller) SetFallBackMode() {
-	candidates := cp.getConsensusCandidates()
-
-	if len(candidates) == 0 {
-		cp.fallbackModeEnabled = true
-		// return true
-	}
-	// Count candidates that are healthy and not fallback
-	healthyNonFallbackCandidates := 0
-	for be := range candidates {
-		if !be.fallback {
-			healthyNonFallbackCandidates += 1
-		}
-	}
-
-	// Disable Fallback above threshold
-	if healthyNonFallbackCandidates > 1 {
-		cp.fallbackModeEnabled = false
-		// return false
-	}
-	cp.fallbackModeEnabled = true
-}
-
 func (cp *ConsensusPoller) GetFallbackMode() bool {
 	return cp.fallbackModeEnabled
 }
