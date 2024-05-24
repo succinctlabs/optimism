@@ -413,7 +413,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	}
 
 	/*
-		Remove Fallbacks from Candidate Group,
+		If Fallback Mode disabled, Remove Fallbacks from Candidate Group,
 		must use candidates group, or could have failed lookup from backends group
 	*/
 	if !cp.fallbackModeEnabled {

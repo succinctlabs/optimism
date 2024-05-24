@@ -144,7 +144,8 @@ func TestFallback(t *testing.T) {
 		return false
 	}
 
-	// Could return this in a nice struct
+	// TODO: Improvement instead of simple array,
+	// ensure normal and backend are returned in strict order
 	recordLastUpdates := func(backends []*proxyd.Backend) []time.Time {
 		lastUpdated := []time.Time{}
 		for _, be := range backends {
@@ -281,29 +282,36 @@ func TestFallback(t *testing.T) {
 	// 	require.False(t, normalTimestamps[0].IsZero())
 	// 	require.True(t, fallbackTimestamps[0].IsZero())
 	// })
-	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
-		// Normal Behavior -> Normal Backend is updated, fallback is not
+	t.Run("Ensure fallback is not updated when in normal mode", func(t *testing.T) {
 		reset()
-		update()
-		ts := recordLastUpdates(bg.Backends)
-		normalTimestamps = append(normalTimestamps, ts[0])
-		fallbackTimestamps = append(fallbackTimestamps, ts[1])
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
 
-		require.False(t, normalTimestamps[0].IsZero())
-		require.True(t, fallbackTimestamps[0].IsZero())
+			require.False(t, normalTimestamps[i].IsZero())
+			require.True(t, fallbackTimestamps[i].IsZero())
 
-		// consensus at block 0x101
-		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
-		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
-		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+			require.False(t, bg.Consensus.GetFallbackMode())
+			require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
+			// require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 
+			// consensus at block 0x101
+			require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
+			require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
+			require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+		}
+	})
+
+	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
 		/*
 		 Set Normal backend to Fail ->
 		 Neither backend should be updated
 		*/
 		overridePeerCount("normal", 0)
 		update()
-		ts = recordLastUpdates(bg.Backends)
+		ts := recordLastUpdates(bg.Backends)
 		normalTimestamps = append(normalTimestamps, ts[0])
 		fallbackTimestamps = append(fallbackTimestamps, ts[1])
 
