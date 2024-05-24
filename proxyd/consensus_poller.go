@@ -402,6 +402,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 		otherwise do not force them
 	*/
 	cp.fallbackModeEnabled = (numHealthyCandidates == 0)
+	RecordFailOverOccurance(cp.backendGroup, cp.fallbackModeEnabled)
 	for _, be := range cp.backendGroup.Backends {
 		if be.fallback {
 			if cp.fallbackModeEnabled {

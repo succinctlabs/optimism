@@ -410,6 +410,14 @@ var (
 	}, []string{
 		"backend_name",
 	})
+
+	failOverEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "failover_enabled",
+		Help:      "Bool gauge for if failover has been enabled",
+	}, []string{
+		"backend_group_name",
+	})
 )
 
 func RecordRedisError(source string) {
@@ -539,6 +547,10 @@ func RecordBackendUnexpectedBlockTags(b *Backend, unexpected bool) {
 
 func RecordConsensusBackendBanned(b *Backend, banned bool) {
 	consensusBannedBackends.WithLabelValues(b.Name).Set(boolToFloat64(banned))
+}
+
+func RecordFailOverOccurance(b *BackendGroup, failover bool) {
+	failOverEnabled.WithLabelValues(b.Name).Set(boolToFloat64(failover))
 }
 
 func RecordConsensusBackendPeerCount(b *Backend, peerCount uint64) {
