@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *ProxydHTTPClient, func()) {
+func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup, *ProxydHTTPClient, func(), []time.Time, []time.Time) {
 	// setup mock servers
 	node1 := NewMockBackend(nil)
 	node2 := NewMockBackend(nil)
@@ -69,12 +69,14 @@ func setup_failover(t *testing.T) (map[string]nodeContext, *proxyd.BackendGroup,
 			handler:     &h2,
 		},
 	}
+	normalTimestamps := []time.Time{}
+	fallbackTimestamps := []time.Time{}
 
-	return nodes, bg, client, shutdown
+	return nodes, bg, client, shutdown, normalTimestamps, fallbackTimestamps
 }
 
 func TestFallback(t *testing.T) {
-	nodes, bg, client, shutdown := setup_failover(t)
+	nodes, bg, client, shutdown, normalTimestamps, fallbackTimestamps := setup_failover(t)
 	defer nodes["normal"].mockBackend.Close()
 	defer nodes["fallback"].mockBackend.Close()
 	defer shutdown()
@@ -132,18 +134,6 @@ func TestFallback(t *testing.T) {
 		}))
 	}
 
-	// force ban node2 and make sure node1 is the only one in consensus
-	useOnlyFallback := func() {
-		overridePeerCount("normal", 0)
-		update()
-
-		consensusGroup := bg.Consensus.GetConsensusGroup()
-		require.Equal(t, 1, len(consensusGroup))
-		require.Contains(t, consensusGroup, nodes["fallback"].backend)
-		require.NotContains(t, consensusGroup, nodes["normal"].backend)
-		nodes["fallback"].mockBackend.Reset()
-	}
-
 	containsFallbackNode := func(backends []*proxyd.Backend) bool {
 		for _, be := range backends {
 			// Note: Currently checks for name but would like to expose fallback better
@@ -185,10 +175,35 @@ func TestFallback(t *testing.T) {
 		// 	nodes["normal"].mockBackend.Reset()
 	}
 
-	// NOTE: Use debug test above the Run call to step through calls
+	// Trigger Consensus group into fallback mode
+	// old consensus group should be returned one time, and fallback group should be enabled
+	// Fallback will be returned subsequent update
+	triggerFirstNormalFailure := func() {
+		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		consensusGroupV1 := bg.Consensus.GetConsensusGroup()
+		overridePeerCount("normal", 0)
+		update()
+		consensusGroupV2 := bg.Consensus.GetConsensusGroup()
+		require.Equal(t, len(consensusGroupV1), len(consensusGroupV2))
+		require.Equal(t, consensusGroupV1, consensusGroupV2)
+		require.Equal(t, true, bg.Consensus.GetFallbackMode())
+		nodes["fallback"].mockBackend.Reset()
+	}
 
-	// TODO: Rename to with no fallback mode, no fallback backends should be returned
-	t.Run("initial", func(t *testing.T) {
+	// Test Consistency in TestSetup
+	t.Run("Test consistency in TestSetup", func(t *testing.T) {
+		reset()
+		triggerFirstNormalFailure()
+		for i := 0; i < 10; i++ {
+			update()
+			require.Equal(t, true, bg.Consensus.GetFallbackMode())
+			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			// TODO: Check for updates and queries
+		}
+	})
+
+	t.Run("Query Healthy Normal Node", func(t *testing.T) {
 		reset()
 		update()
 		require.False(t, bg.Consensus.GetFallbackMode())
@@ -212,33 +227,21 @@ func TestFallback(t *testing.T) {
 		// overrideBlock("node1")
 	})
 
-	t.Run("trigger single node failing once", func(t *testing.T) {
-		reset()
-		useOnlyFallback()
+	t.Run("trigger normal failure, subsequent update return failover in consensus group, and fallback mode enabled", func(t *testing.T) {
+		triggerFirstNormalFailure()
 		update()
-		// require.Equal(t, false, bg.Consensus.GetFallbackMode())
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, bg.Consensus.GetFallbackMode())
 	})
 
-	t.Run("trigger single node failing continously", func(t *testing.T) {
+	t.Run("trigger single node failing continously, expect only failover in consensus", func(t *testing.T) {
 		reset()
-		useOnlyFallback()
+		triggerFirstNormalFailure()
 
 		for i := 0; i < 10; i++ {
 			update()
-			// require.Equal(t, false, bg.Consensus.GetFallbackMode())
-			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		}
-	})
-
-	t.Run("trigger single node failing continously", func(t *testing.T) {
-		reset()
-		useOnlyFallback()
-		for i := 0; i < 10; i++ {
-			update()
-			// require.Equal(t, false, bg.Consensus.GetFallbackMode())
+			require.Equal(t, true, bg.Consensus.GetFallbackMode())
 			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 		}
@@ -250,20 +253,31 @@ func TestFallback(t *testing.T) {
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 
-		useOnlyFallback()
+		triggerFirstNormalFailure()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 
-		reset()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 	})
-	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
-		normalTimestamps := []time.Time{}
-		fallbackTimestamps := []time.Time{}
 
+	// t.Run("Under normal behavior the fallback should not be queried", func(t *testing.T) {
+	// 	normalTimestamps := []time.Time{}
+	// 	fallbackTimestamps := []time.Time{}
+
+	// 	// Normal Behavior -> Normal Backend is updated, fallback is not
+	// 	reset()
+	// 	update()
+	// 	ts := recordLastUpdates(bg.Backends)
+	// 	normalTimestamps = append(normalTimestamps, ts[0])
+	// 	fallbackTimestamps = append(fallbackTimestamps, ts[1])
+
+	// 	require.False(t, normalTimestamps[0].IsZero())
+	// 	require.True(t, fallbackTimestamps[0].IsZero())
+	// })
+	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
 		// Normal Behavior -> Normal Backend is updated, fallback is not
 		reset()
 		update()

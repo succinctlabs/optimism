@@ -270,11 +270,12 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		backendGroup: bg,
 		backendState: state,
 
-		banPeriod:          5 * time.Minute,
-		maxUpdateThreshold: 30 * time.Second,
-		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
-		minPeerCount:       3,
-		interval:           DefaultPollerInterval,
+		banPeriod:           5 * time.Minute,
+		maxUpdateThreshold:  30 * time.Second,
+		maxBlockLag:         8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
+		minPeerCount:        3,
+		interval:            DefaultPollerInterval,
+		fallbackModeEnabled: false,
 	}
 
 	for _, opt := range opts {
@@ -441,7 +442,6 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	/*
 		If we just enabled fallback, and no fallback candidates in pool return prior state
 		since the updates backend states of fallback will be stale
-
 		other option is to update backend states here
 	*/
 	if cp.fallbackModeEnabled && (numFallbacksEnabled == 0) {
@@ -599,11 +599,14 @@ func (cp *ConsensusPoller) Unban(be *Backend) {
 	bs.bannedUntil = time.Now().Add(-10 * time.Hour)
 }
 
-// Reset reset all backend states
+// Reset reset all backend states, and the existing consensus group
 func (cp *ConsensusPoller) Reset() {
 	for _, be := range cp.backendGroup.Backends {
 		cp.backendState[be] = &backendState{}
 	}
+	// Jacob Note: Reseting Backend Consensus group may break other tests
+	cp.consensusGroup = []*Backend{}
+	cp.fallbackModeEnabled = false
 }
 
 // NOTE: Jacob, when using fetchBlock look in here to account for 0 blocks, may want to count for specific error types here too
