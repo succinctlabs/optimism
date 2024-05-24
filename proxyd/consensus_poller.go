@@ -386,43 +386,18 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
 
-	// Count Number, Fallback normal candidates
-	numHealthyCandidates := 0
-	numFallbacksEnabled := 0
-	for be := range candidates {
-		if !be.fallback {
-			numHealthyCandidates += 1
-		} else {
-			numFallbacksEnabled += 1
-		}
-	}
-	/*
-		Toggle Fallbacks Off
-		Force the fallbacks on if there are zero normal candidates
-		otherwise do not force them
-	*/
-	cp.fallbackModeEnabled = (numHealthyCandidates == 0)
+	numHealthy, numFallbacksEnabled := GetCandidateHealth(candidates)
+
+	cp.fallbackModeEnabled = (numHealthy == 0)
 	RecordFailOverOccurance(cp.backendGroup, cp.fallbackModeEnabled)
-	for _, be := range cp.backendGroup.Backends {
-		if be.fallback {
-			if cp.fallbackModeEnabled {
-				be.forcedCandidate = true
-			} else {
-				be.forcedCandidate = false
-			}
-		}
-	}
+	cp.ToggleFallbackBackends()
 
 	/*
 		If Fallback Mode disabled, Remove Fallbacks from Candidate Group,
 		must use candidates group, or could have failed lookup from backends group
 	*/
 	if !cp.fallbackModeEnabled {
-		for be := range candidates {
-			if _, ok := candidates[be]; ok && be.fallback {
-				delete(candidates, be)
-			}
-		}
+		RemoveFallbacksFromCandidatePool(candidates)
 	}
 
 	/*
@@ -769,4 +744,42 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	}
 
 	return candidates
+}
+
+func GetCandidateHealth(candidates map[*Backend]*backendState) (normal, fallback int) {
+	// Count Number, Fallback normal candidates
+	numHealthyCandidates := 0
+	numFallbacksEnabled := 0
+	for be := range candidates {
+		if !be.fallback {
+			numHealthyCandidates += 1
+		} else {
+			numFallbacksEnabled += 1
+		}
+	}
+	return numHealthyCandidates, numFallbacksEnabled
+
+}
+
+/*
+ToggleFallbackBackends will force the fallbacks on if  otherwise disable them
+*/
+func (cp *ConsensusPoller) ToggleFallbackBackends() {
+	for _, be := range cp.backendGroup.Backends {
+		if be.fallback {
+			if cp.fallbackModeEnabled {
+				be.forcedCandidate = true
+			} else {
+				be.forcedCandidate = false
+			}
+		}
+	}
+}
+
+func RemoveFallbacksFromCandidatePool(candidates map[*Backend]*backendState) {
+	for be := range candidates {
+		if _, ok := candidates[be]; ok && be.fallback {
+			delete(candidates, be)
+		}
+	}
 }
