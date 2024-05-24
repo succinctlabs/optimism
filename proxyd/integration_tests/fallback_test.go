@@ -134,10 +134,10 @@ func TestFallback(t *testing.T) {
 		}))
 	}
 
-	containsFallbackNode := func(backends []*proxyd.Backend) bool {
+	containsNode := func(backends []*proxyd.Backend, name string) bool {
 		for _, be := range backends {
 			// Note: Currently checks for name but would like to expose fallback better
-			if be.Name == "fallback" {
+			if be.Name == name {
 				return true
 			}
 		}
@@ -175,9 +175,11 @@ func TestFallback(t *testing.T) {
 		// 	nodes["normal"].mockBackend.Reset()
 	}
 
-	// Trigger Consensus group into fallback mode
-	// old consensus group should be returned one time, and fallback group should be enabled
-	// Fallback will be returned subsequent update
+	/*
+		triggerFirstNormalFailure: will trigger consensus group into fallback mode
+		old consensus group should be returned one time, and fallback group should be enabled
+		Fallback will be returned subsequent update
+	*/
 	triggerFirstNormalFailure := func() {
 		require.Equal(t, false, bg.Consensus.GetFallbackMode())
 		consensusGroupV1 := bg.Consensus.GetConsensusGroup()
@@ -190,77 +192,79 @@ func TestFallback(t *testing.T) {
 		nodes["fallback"].mockBackend.Reset()
 	}
 
-	// Test Consistency in TestSetup
-	t.Run("Test consistency in TestSetup", func(t *testing.T) {
+	t.Run("Test fallback Mode will not be exited, unless state changes", func(t *testing.T) {
 		reset()
 		triggerFirstNormalFailure()
 		for i := 0; i < 10; i++ {
 			update()
 			require.Equal(t, true, bg.Consensus.GetFallbackMode())
-			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+			require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			// TODO: Check for updates and queries
 		}
 	})
 
-	t.Run("Query Healthy Normal Node", func(t *testing.T) {
+	t.Run("Test Healthy mode will not be exited unless state changes", func(t *testing.T) {
 		reset()
-		update()
-		require.False(t, bg.Consensus.GetFallbackMode())
-		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		for i := 0; i < 10; i++ {
+			update()
+			require.False(t, bg.Consensus.GetFallbackMode())
+			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+			require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 
-		// Check the backends in the Consensus Group to verify if fallback was turned on
-		_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
+			_, statusCode, err := client.SendRPC("eth_getBlockByNumber", []interface{}{"0x101", false})
 
-		// TODO: Delete these later consensus at block 0x101
-		require.Equal(t, 200, statusCode)
-		require.Nil(t, err, "error not nil")
-		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
-		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
-		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+			require.Equal(t, 200, statusCode)
+			require.Nil(t, err, "error not nil")
+			require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
+			require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
+			require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+		}
 		// TODO: Remove these, just here so compiler doesn't complain
 		overridePeerCount("fallback", 0)
 		overrideNotInSync("normal")
 		overrideBlock("normal", "safe", "0xb1")
 		overrideBlockHash("fallback", "0x102", "0x102", "wrong_hash")
-		// overrideBlock("node1")
 	})
 
 	t.Run("trigger normal failure, subsequent update return failover in consensus group, and fallback mode enabled", func(t *testing.T) {
+		reset()
 		triggerFirstNormalFailure()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 		require.True(t, bg.Consensus.GetFallbackMode())
 	})
 
-	t.Run("trigger single node failing continously, expect only failover in consensus", func(t *testing.T) {
+	// t.Run("trigger single node failing continously, expect only failover in consensus", func(t *testing.T) {
+	// 	reset()
+	// 	triggerFirstNormalFailure()
+
+	// 	for i := 0; i < 10; i++ {
+	// 		update()
+	// 		require.Equal(t, true, bg.Consensus.GetFallbackMode())
+	// 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
+	// 		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+	// 	}
+	// })
+
+	t.Run("trigger healthy -> fallback, update -> healthy", func(t *testing.T) {
 		reset()
-		triggerFirstNormalFailure()
-
-		for i := 0; i < 10; i++ {
-			update()
-			require.Equal(t, true, bg.Consensus.GetFallbackMode())
-			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-			require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		}
-	})
-
-	t.Run("trigger healthy -> fallback -> healthy", func(t *testing.T) {
-		reset()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.False(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
+		require.False(t, bg.Consensus.GetFallbackMode())
 
 		triggerFirstNormalFailure()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
+		require.True(t, bg.Consensus.GetFallbackMode())
 
+		overridePeerCount("normal", 5)
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
-		require.True(t, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
+		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
+		require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 	})
 
 	// t.Run("Under normal behavior the fallback should not be queried", func(t *testing.T) {

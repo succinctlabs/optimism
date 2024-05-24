@@ -386,7 +386,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
 
-	// Count Number normal candidates
+	// Count Number, Fallback normal candidates
 	numHealthyCandidates := 0
 	numFallbacksEnabled := 0
 	for be := range candidates {
@@ -397,6 +397,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 		}
 	}
 	/*
+		Toggle Fallbacks Off
 		Force the fallbacks on if there are zero normal candidates
 		otherwise do not force them
 	*/
@@ -407,6 +408,18 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 				be.forcedCandidate = true
 			} else {
 				be.forcedCandidate = false
+			}
+		}
+	}
+
+	/*
+		Remove Fallbacks from Candidate Group,
+		must use candidates group, or could have failed lookup from backends group
+	*/
+	if !cp.fallbackModeEnabled {
+		for be := range candidates {
+			if _, ok := candidates[be]; ok && be.fallback {
+				delete(candidates, be)
 			}
 		}
 	}
