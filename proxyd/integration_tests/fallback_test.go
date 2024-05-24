@@ -2,6 +2,7 @@ package integration_tests
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -162,6 +163,9 @@ func TestFallback(t *testing.T) {
 		}
 		bg.Consensus.ClearListeners()
 		bg.Consensus.Reset()
+
+		normalTimestamps = []time.Time{}
+		fallbackTimestamps = []time.Time{}
 		// 	// Require starting without a fallback node, and fallback is false
 		// 	require.Equal(t, false, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
 		// 	require.Equal(t, false, bg.Consensus.GetFallbackMode())
@@ -268,20 +272,6 @@ func TestFallback(t *testing.T) {
 		require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 	})
 
-	// t.Run("Under normal behavior the fallback should not be queried", func(t *testing.T) {
-	// 	normalTimestamps := []time.Time{}
-	// 	fallbackTimestamps := []time.Time{}
-
-	// 	// Normal Behavior -> Normal Backend is updated, fallback is not
-	// 	reset()
-	// 	update()
-	// 	ts := recordLastUpdates(bg.Backends)
-	// 	normalTimestamps = append(normalTimestamps, ts[0])
-	// 	fallbackTimestamps = append(fallbackTimestamps, ts[1])
-
-	// 	require.False(t, normalTimestamps[0].IsZero())
-	// 	require.True(t, fallbackTimestamps[0].IsZero())
-	// })
 	t.Run("Ensure fallback is not updated when in normal mode", func(t *testing.T) {
 		reset()
 		for i := 0; i < 10; i++ {
@@ -295,7 +285,7 @@ func TestFallback(t *testing.T) {
 
 			require.False(t, bg.Consensus.GetFallbackMode())
 			require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
-			// require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
+			require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 
 			// consensus at block 0x101
 			require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
@@ -304,27 +294,28 @@ func TestFallback(t *testing.T) {
 		}
 	})
 
-	t.Run("Ensure fallback is excluded from consensus", func(t *testing.T) {
-		/*
-		 Set Normal backend to Fail ->
-		 Neither backend should be updated
-		*/
-		overridePeerCount("normal", 0)
-		update()
-		ts := recordLastUpdates(bg.Backends)
-		normalTimestamps = append(normalTimestamps, ts[0])
-		fallbackTimestamps = append(fallbackTimestamps, ts[1])
+	/*
+	 Set Normal backend to Fail ->
+	 Neither backend should be updated
+	*/
+	t.Run("Ensure both nodes are quieried in fallback mode", func(t *testing.T) {
+		reset()
+		triggerFirstNormalFailure()
+		for i := 0; i < 10; i++ {
+			update()
+			ts := recordLastUpdates(bg.Backends)
+			normalTimestamps = append(normalTimestamps, ts[0])
+			fallbackTimestamps = append(fallbackTimestamps, ts[1])
 
-		// Normal should be updated again
-		require.False(t, normalTimestamps[1].IsZero())
-		require.GreaterOrEqual(t, normalTimestamps[1], normalTimestamps[0])
-
-		// Fallback should not be updated
-		require.True(t, fallbackTimestamps[1].IsZero())
-
-		// Consensus should stay the same
-		require.Equal(t, "0x101", bg.Consensus.GetLatestBlockNumber().String())
-		require.Equal(t, "0xe1", bg.Consensus.GetSafeBlockNumber().String())
-		require.Equal(t, "0xc1", bg.Consensus.GetFinalizedBlockNumber().String())
+			// Normal should be updated again
+			require.False(t, normalTimestamps[i].IsZero())
+			require.False(t, fallbackTimestamps[i].IsZero(),
+				fmt.Sprintf("Error: Fallback timestamp: %v was not queried on iteratio %d", fallbackTimestamps[i], i),
+			)
+			if i > 0 {
+				require.Greater(t, normalTimestamps[i], normalTimestamps[i-1])
+				require.Greater(t, fallbackTimestamps[i], fallbackTimestamps[i-1])
+			}
+		}
 	})
 }
