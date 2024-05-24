@@ -164,8 +164,8 @@ func (ah *PollerAsyncHandler) Init() {
 		go func(be *Backend) {
 			for {
 				timer := time.NewTimer(ah.cp.interval)
-				// NOTE: Jacob updating a backed only updates its record, no affect on consensus group or backends aval
 				ah.cp.UpdateBackend(ah.ctx, be)
+
 				select {
 				case <-timer.C:
 				case <-ah.ctx.Done():
@@ -181,6 +181,7 @@ func (ah *PollerAsyncHandler) Init() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
 			ah.cp.UpdateBackendGroupConsensus(ah.ctx)
+
 			select {
 			case <-timer.C:
 			case <-ah.ctx.Done():
@@ -190,7 +191,6 @@ func (ah *PollerAsyncHandler) Init() {
 		}
 	}()
 }
-
 func (ah *PollerAsyncHandler) Shutdown() {
 	ah.cp.cancelFunc()
 }
@@ -304,9 +304,7 @@ func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	if be.fallback && !cp.GetFallbackMode() {
 		return
 	}
-	// NOTE:
-	// Update: both normal mode -> no fallback updated
-	// 			- Custom set fallback lastUpdate to bad value
+
 	if bs.IsBanned() {
 		log.Debug("skipping backend - banned", "backend", be.Name)
 		return
