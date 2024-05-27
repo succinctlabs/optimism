@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import { Vm } from "forge-std/Vm.sol";
 import { Executables } from "scripts/Executables.sol";
 import { stdJson } from "forge-std/StdJson.sol";
+import { Shell } from "src/libraries/Shell.sol";
 
 /// @notice Contains information about a storage slot. Mirrors the layout of the storage
 ///         slot object in Forge artifacts so that we can deserialize JSON into this struct.
@@ -78,8 +79,8 @@ library ForgeArtifacts {
         cmd[0] = Executables.bash;
         cmd[1] = "-c";
         cmd[2] = string.concat(Executables.jq, " '.methodIdentifiers | keys' < ", _getForgeArtifactPath(_name));
-        bytes memory res = vm.ffi(cmd);
-        ids_ = stdJson.readStringArray(string(res), "");
+        string memory res = Shell.run(cmd);
+        ids_ = stdJson.readStringArray(res, "");
     }
 
     function _getForgeArtifactDirectory(string memory _name) internal returns (string memory dir_) {
@@ -184,7 +185,8 @@ library ForgeArtifacts {
             Executables.jq,
             " -R -s 'split(\"\n\")[:-1]'"
         );
-        string[] memory contractNames = abi.decode(vm.parseJson(string(vm.ffi(command))), (string[]));
+        string memory result = Shell.run(command);
+        string[] memory contractNames = abi.decode(vm.parseJson(result), (string[]));
 
         abis_ = new Abi[](contractNames.length);
 
