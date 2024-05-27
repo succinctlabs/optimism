@@ -155,19 +155,11 @@ library ForgeArtifacts {
     /// @notice Returns the function ABIs of all L1 contracts.
     function getContractFunctionAbis(
         string memory path,
-        string[] memory pathExcludes
+        string[] memory excludedContracts
     )
         internal
         returns (Abi[] memory abis_)
     {
-        string memory pathExcludesPat;
-        for (uint256 i = 0; i < pathExcludes.length; i++) {
-            pathExcludesPat = string.concat(pathExcludesPat, " -path ", pathExcludes[i]);
-            if (i != pathExcludes.length - 1) {
-                pathExcludesPat = string.concat(pathExcludesPat, " -o ");
-            }
-        }
-
         string[] memory command = new string[](3);
         command[0] = Executables.bash;
         command[1] = "-c";
@@ -175,7 +167,6 @@ library ForgeArtifacts {
             Executables.find,
             " ",
             path,
-            bytes(pathExcludesPat).length > 0 ? string.concat(" ! \\( ", pathExcludesPat, " \\)") : "",
             " -type f ",
             "-exec basename {} \\;",
             " | ",
@@ -183,15 +174,16 @@ library ForgeArtifacts {
             " 's/\\.[^.]*$//'",
             " | ",
             Executables.jq,
-            " -R -s 'split(\"\n\")[:-1]'"
+            " -r -R -s 'split(\"\n\")[:-1]'"
         );
         string memory result = Shell.run(command);
         string[] memory contractNames = abi.decode(vm.parseJson(result), (string[]));
+        string[] memory contractNamesFiltered = filterStrings(contractNames, excludedContracts);
 
-        abis_ = new Abi[](contractNames.length);
+        abis_ = new Abi[](contractNamesFiltered.length);
 
-        for (uint256 i; i < contractNames.length; i++) {
-            string memory contractName = contractNames[i];
+        for (uint256 i; i < contractNamesFiltered.length; i++) {
+            string memory contractName = contractNamesFiltered[i];
             string[] memory methodIdentifiers = getMethodIdentifiers(contractName);
             abis_[i].contractName = contractName;
             abis_[i].entries = new AbiEntry[](methodIdentifiers.length);
@@ -212,5 +204,32 @@ library ForgeArtifacts {
             path = string.concat(path, outputs[i], "/");
         }
         vm.createDir(path, true);
+    }
+
+    /// @notice Filters an array of strings to remove any strings that are in the excludedContracts array.
+    function filterStrings(
+        string[] memory contracts,
+        string[] memory excludedContracts
+    )
+        internal
+        pure
+        returns (string[] memory filteredContracts_)
+    {
+        string[] memory filteredContracts = new string[](contracts.length - excludedContracts.length);
+        uint256 filteredLength = 0;
+        for (uint256 i; i < contracts.length; i++) {
+            bool excluded = false;
+            for (uint256 j; j < excludedContracts.length; j++) {
+                if (keccak256(bytes(contracts[i])) == keccak256(bytes(excludedContracts[j]))) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if (!excluded) {
+                filteredContracts[filteredLength] = contracts[i];
+                filteredLength++;
+            }
+        }
+        filteredContracts_ = filteredContracts;
     }
 }
