@@ -47,7 +47,11 @@ type ConsensusPoller struct {
 	// 		getCandidates calls fallBackMode to see if we need to add fallback candidates
 	// 			realistically, one can just read the value, no need to compute everytime
 	// stack goes boom
-	fallbackModeEnabled bool
+	healthyCandidates int
+}
+
+func (cp *ConsensusPoller) FallbackModeEnabled() bool {
+	return cp.healthyCandidates == 0
 }
 
 type backendState struct {
@@ -70,9 +74,9 @@ func (bs *backendState) IsBanned() bool {
 	return time.Now().Before(bs.bannedUntil)
 }
 
-func (cp *ConsensusPoller) GetFallbackMode() bool {
-	return cp.fallbackModeEnabled
-}
+// func (cp *ConsensusPoller) GetFallbackMode() bool {
+// 	return cp.fallbackModeEnabled
+// }
 
 // GetConsensusGroup returns the backend members that are agreeing in a consensus
 func (cp *ConsensusPoller) GetConsensusGroup() []*Backend {
@@ -244,12 +248,12 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		backendGroup: bg,
 		backendState: state,
 
-		banPeriod:           5 * time.Minute,
-		maxUpdateThreshold:  30 * time.Second,
-		maxBlockLag:         8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
-		minPeerCount:        3,
-		interval:            DefaultPollerInterval,
-		fallbackModeEnabled: false,
+		banPeriod:          5 * time.Minute,
+		maxUpdateThreshold: 30 * time.Second,
+		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
+		minPeerCount:       3,
+		interval:           DefaultPollerInterval,
+		healthyCandidates:  len(bg.Backends), // Assume starting with health candidates
 	}
 
 	for _, opt := range opts {
@@ -275,7 +279,7 @@ func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	bs := cp.getBackendState(be)
 	RecordConsensusBackendBanned(be, bs.IsBanned())
 
-	if be.fallback && !cp.GetFallbackMode() {
+	if be.fallback && !cp.FallbackModeEnabled() {
 		return
 	}
 
@@ -388,15 +392,15 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	numHealthy, numFallbacksEnabled := GetCandidateHealth(candidates)
 
-	cp.fallbackModeEnabled = (numHealthy == 0)
-	RecordFailOverOccurance(cp.backendGroup, cp.fallbackModeEnabled)
+	cp.healthyCandidates = numHealthy
+	RecordFailOverOccurance(cp.backendGroup, cp.FallbackModeEnabled())
 	cp.ToggleFallbackBackends()
 
 	/*
 		If Fallback Mode disabled, Remove Fallbacks from Candidate Group,
 		must use candidates group, or could have failed lookup from backends group
 	*/
-	if !cp.fallbackModeEnabled {
+	if !cp.FallbackModeEnabled() {
 		RemoveFallbacksFromCandidatePool(candidates)
 	}
 
@@ -405,7 +409,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 		since the updates backend states of fallback will be stale
 		other option is to update backend states here
 	*/
-	if cp.fallbackModeEnabled && (numFallbacksEnabled == 0) {
+	if cp.FallbackModeEnabled() && (numFallbacksEnabled == 0) {
 		return
 	}
 
@@ -567,7 +571,7 @@ func (cp *ConsensusPoller) Reset() {
 	}
 	// Jacob Note: Reseting Backend Consensus group may break other tests
 	cp.consensusGroup = []*Backend{}
-	cp.fallbackModeEnabled = false
+	cp.healthyCandidates = len(cp.backendGroup.Backends)
 }
 
 // NOTE: Jacob, when using fetchBlock look in here to account for 0 blocks, may want to count for specific error types here too
@@ -693,7 +697,7 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	for _, be := range cp.backendGroup.Backends {
 
 		// If we are not in fallback mode, do not add fallbacks
-		if !cp.GetFallbackMode() && be.fallback {
+		if !cp.FallbackModeEnabled() && be.fallback {
 			continue
 		}
 
@@ -767,7 +771,7 @@ ToggleFallbackBackends will force the fallbacks on if  otherwise disable them
 func (cp *ConsensusPoller) ToggleFallbackBackends() {
 	for _, be := range cp.backendGroup.Backends {
 		if be.fallback {
-			if cp.fallbackModeEnabled {
+			if cp.FallbackModeEnabled() {
 				be.forcedCandidate = true
 			} else {
 				be.forcedCandidate = false

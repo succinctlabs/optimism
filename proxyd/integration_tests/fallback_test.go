@@ -186,14 +186,14 @@ func TestFallback(t *testing.T) {
 		Fallback will be returned subsequent update
 	*/
 	triggerFirstNormalFailure := func() {
-		require.Equal(t, false, bg.Consensus.GetFallbackMode())
+		require.Equal(t, false, bg.Consensus.FallbackModeEnabled())
 		consensusGroupV1 := bg.Consensus.GetConsensusGroup()
 		overridePeerCount("normal", 0)
 		update()
 		consensusGroupV2 := bg.Consensus.GetConsensusGroup()
 		require.Equal(t, len(consensusGroupV1), len(consensusGroupV2))
 		require.Equal(t, consensusGroupV1, consensusGroupV2)
-		require.Equal(t, true, bg.Consensus.GetFallbackMode())
+		require.Equal(t, true, bg.Consensus.FallbackModeEnabled())
 		nodes["fallback"].mockBackend.Reset()
 	}
 
@@ -202,7 +202,7 @@ func TestFallback(t *testing.T) {
 		triggerFirstNormalFailure()
 		for i := 0; i < 10; i++ {
 			update()
-			require.Equal(t, true, bg.Consensus.GetFallbackMode())
+			require.Equal(t, true, bg.Consensus.FallbackModeEnabled())
 			require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		}
@@ -212,7 +212,7 @@ func TestFallback(t *testing.T) {
 		reset()
 		for i := 0; i < 10; i++ {
 			update()
-			require.False(t, bg.Consensus.GetFallbackMode())
+			require.False(t, bg.Consensus.FallbackModeEnabled())
 			require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 			require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 
@@ -237,7 +237,7 @@ func TestFallback(t *testing.T) {
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
-		require.True(t, bg.Consensus.GetFallbackMode())
+		require.True(t, bg.Consensus.FallbackModeEnabled())
 	})
 
 	t.Run("trigger healthy -> fallback, update -> healthy", func(t *testing.T) {
@@ -245,13 +245,13 @@ func TestFallback(t *testing.T) {
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
-		require.False(t, bg.Consensus.GetFallbackMode())
+		require.False(t, bg.Consensus.FallbackModeEnabled())
 
 		triggerFirstNormalFailure()
 		update()
 		require.Equal(t, 1, len(bg.Consensus.GetConsensusGroup()))
 		require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
-		require.True(t, bg.Consensus.GetFallbackMode())
+		require.True(t, bg.Consensus.FallbackModeEnabled())
 
 		overridePeerCount("normal", 5)
 		update()
@@ -271,7 +271,7 @@ func TestFallback(t *testing.T) {
 			require.False(t, normalTimestamps[i].IsZero())
 			require.True(t, fallbackTimestamps[i].IsZero())
 
-			require.False(t, bg.Consensus.GetFallbackMode())
+			require.False(t, bg.Consensus.FallbackModeEnabled())
 			require.True(t, containsNode(bg.Consensus.GetConsensusGroup(), "normal"))
 			require.False(t, containsNode(bg.Consensus.GetConsensusGroup(), "fallback"))
 
