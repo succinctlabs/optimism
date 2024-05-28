@@ -163,8 +163,6 @@ type Backend struct {
 	networkErrorsSlidingWindow   *sw.AvgSlidingWindow
 
 	weight int
-
-	fallback bool
 }
 
 type BackendOpt func(b *Backend)
@@ -278,12 +276,6 @@ func WithMaxErrorRateThreshold(maxErrorRateThreshold float64) BackendOpt {
 func WithConsensusReceiptTarget(receiptsTarget string) BackendOpt {
 	return func(b *Backend) {
 		b.receiptsTarget = receiptsTarget
-	}
-}
-
-func WithFallback(fallback bool) BackendOpt {
-	return func(b *Backend) {
-		b.fallback = fallback
 	}
 }
 
@@ -713,11 +705,42 @@ func sortBatchRPCResponse(req []*RPCReq, res []*RPCRes) {
 }
 
 type BackendGroup struct {
-	Name                string
-	Backends            []*Backend
-	WeightedRouting     bool
-	Consensus           *ConsensusPoller
-	fallbackModeEnabled bool
+	Name             string
+	Backends         []*Backend
+	WeightedRouting  bool
+	Consensus        *ConsensusPoller
+	FallbackBackends []string
+}
+
+func (bg *BackendGroup) Fallbacks() []*Backend {
+	fallbacks := []*Backend{}
+	for _, a := range bg.Backends {
+		for _, name := range bg.FallbackBackends {
+			if a.Name == name {
+				fallbacks = append(fallbacks, a)
+			}
+		}
+	}
+	return fallbacks
+}
+
+func (bg *BackendGroup) Primaries() []*Backend {
+	primaries := []*Backend{}
+	fallbackMap := make(map[string]bool)
+
+	// Populate the map with fallback backend names
+	for _, name := range bg.FallbackBackends {
+		fallbackMap[name] = true
+	}
+
+	// Filter out backends that are in the fallback list
+	for _, a := range bg.Backends {
+		if !fallbackMap[a.Name] {
+			primaries = append(primaries, a)
+		}
+	}
+
+	return primaries
 }
 
 // NOTE: BackendGroup Forward contains the log for balancing with consensus aware

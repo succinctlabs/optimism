@@ -103,8 +103,6 @@ type BackendConfig struct {
 	ConsensusSkipPeerCountCheck bool   `toml:"consensus_skip_peer_count"`
 	ConsensusForcedCandidate    bool   `toml:"consensus_forced_candidate"`
 	ConsensusReceiptsTarget     string `toml:"consensus_receipts_target"`
-
-	Fallback bool `toml:"fallback"`
 }
 
 type BackendsConfig map[string]*BackendConfig
@@ -128,6 +126,8 @@ type BackendGroupConfig struct {
 	ConsensusHAHeartbeatInterval TOMLDuration `toml:"consensus_ha_heartbeat_interval"`
 	ConsensusHALockPeriod        TOMLDuration `toml:"consensus_ha_lock_period"`
 	ConsensusHARedis             RedisConfig  `toml:"consensus_ha_redis"`
+
+	FallbackBackends []string `toml:"fallbacks"`
 }
 
 type BackendGroupsConfig map[string]*BackendGroupConfig

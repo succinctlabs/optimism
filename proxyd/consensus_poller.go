@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -41,17 +40,6 @@ type ConsensusPoller struct {
 	maxBlockLag        uint64
 	maxBlockRange      uint64
 	interval           time.Duration
-	// For now use bool in struct,
-	// Circular/infinite function/stack call between FallBackMode <-> getCandidates
-	//		fallbackMode calls getCandidates to see how many candidates are avail
-	// 		getCandidates calls fallBackMode to see if we need to add fallback candidates
-	// 			realistically, one can just read the value, no need to compute everytime
-	// stack goes boom
-	healthyCandidates int
-}
-
-func (cp *ConsensusPoller) FallbackModeEnabled() bool {
-	return cp.healthyCandidates == 0
 }
 
 type backendState struct {
@@ -73,10 +61,6 @@ type backendState struct {
 func (bs *backendState) IsBanned() bool {
 	return time.Now().Before(bs.bannedUntil)
 }
-
-// func (cp *ConsensusPoller) GetFallbackMode() bool {
-// 	return cp.fallbackModeEnabled
-// }
 
 // GetConsensusGroup returns the backend members that are agreeing in a consensus
 func (cp *ConsensusPoller) GetConsensusGroup() []*Backend {
@@ -137,12 +121,31 @@ func NewPollerAsyncHandler(ctx context.Context, cp *ConsensusPoller) ConsensusAs
 	}
 }
 func (ah *PollerAsyncHandler) Init() {
-	// create the individual backend pollers
-	for _, be := range ah.cp.backendGroup.Backends {
+	// create the individual backend pollers.
+	for _, be := range ah.cp.backendGroup.Primaries() {
 		go func(be *Backend) {
 			for {
 				timer := time.NewTimer(ah.cp.interval)
 				ah.cp.UpdateBackend(ah.ctx, be)
+				select {
+				case <-timer.C:
+				case <-ah.ctx.Done():
+					timer.Stop()
+					return
+				}
+			}
+		}(be)
+	}
+
+	for _, be := range ah.cp.backendGroup.Fallbacks() {
+		go func(be *Backend) {
+			for {
+				timer := time.NewTimer(ah.cp.interval)
+
+				healthyCandidates := ah.cp.FilterCandidates(ah.cp.backendGroup.Primaries())
+				if len(healthyCandidates) == 0 {
+					ah.cp.UpdateBackend(ah.ctx, be)
+				}
 
 				select {
 				case <-timer.C:
@@ -154,7 +157,6 @@ func (ah *PollerAsyncHandler) Init() {
 		}(be)
 	}
 
-	// create the group consensus poller
 	go func() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
@@ -253,7 +255,6 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
 		minPeerCount:       3,
 		interval:           DefaultPollerInterval,
-		healthyCandidates:  len(bg.Backends), // Assume starting with health candidates
 	}
 
 	for _, opt := range opts {
@@ -278,10 +279,6 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 func (cp *ConsensusPoller) UpdateBackend(ctx context.Context, be *Backend) {
 	bs := cp.getBackendState(be)
 	RecordConsensusBackendBanned(be, bs.IsBanned())
-
-	if be.fallback && !cp.FallbackModeEnabled() {
-		return
-	}
 
 	if bs.IsBanned() {
 		log.Debug("skipping backend - banned", "backend", be.Name)
@@ -389,29 +386,6 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
-
-	numHealthy, numFallbacksEnabled := GetCandidateHealth(candidates)
-
-	cp.healthyCandidates = numHealthy
-	RecordFailOverOccurance(cp.backendGroup, cp.FallbackModeEnabled())
-	cp.ToggleFallbackBackends()
-
-	/*
-		If Fallback Mode disabled, Remove Fallbacks from Candidate Group,
-		must use candidates group, or could have failed lookup from backends group
-	*/
-	if !cp.FallbackModeEnabled() {
-		RemoveFallbacksFromCandidatePool(candidates)
-	}
-
-	/*
-		If we just enabled fallback, and no fallback candidates in pool return prior state
-		since the updates backend states of fallback will be stale
-		other option is to update backend states here
-	*/
-	if cp.FallbackModeEnabled() && (numFallbacksEnabled == 0) {
-		return
-	}
 
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
@@ -571,7 +545,6 @@ func (cp *ConsensusPoller) Reset() {
 	}
 	// Jacob Note: Reseting Backend Consensus group may break other tests
 	cp.consensusGroup = []*Backend{}
-	cp.healthyCandidates = len(cp.backendGroup.Backends)
 }
 
 // NOTE: Jacob, when using fetchBlock look in here to account for 0 blocks, may want to count for specific error types here too
@@ -681,7 +654,21 @@ func (cp *ConsensusPoller) setBackendState(be *Backend, peerCount uint64, inSync
 	return changed
 }
 
-// getConsensusCandidates find out what backends are the candidates to be in the consensus group
+// getConsensusCandidates will search for candidates in the primary group,
+// if there are none it will search for candidates in he fallback group
+func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
+
+	healthyPrimaries := cp.FilterCandidates(cp.backendGroup.Primaries())
+
+	RecordFailOverOccurance(cp.backendGroup, len(healthyPrimaries) == 0)
+	if len(healthyPrimaries) > 0 {
+		return healthyPrimaries
+	}
+
+	return cp.FilterCandidates(cp.backendGroup.Fallbacks())
+}
+
+// filterCandidates find out what backends are the candidates to be in the consensus group
 // and create a copy of current their state
 //
 // a candidate is a serving node within the following conditions:
@@ -691,15 +678,11 @@ func (cp *ConsensusPoller) setBackendState(be *Backend, peerCount uint64, inSync
 //   - in sync
 //   - updated recently
 //   - not lagging latest block
-func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
+func (cp *ConsensusPoller) FilterCandidates(backends []*Backend) map[*Backend]*backendState {
+
 	candidates := make(map[*Backend]*backendState, len(cp.backendGroup.Backends))
 
-	for _, be := range cp.backendGroup.Backends {
-
-		// If we are not in fallback mode, do not add fallbacks
-		if !cp.FallbackModeEnabled() && be.fallback {
-			continue
-		}
+	for _, be := range backends {
 
 		bs := cp.getBackendState(be)
 		if be.forcedCandidate {
@@ -746,44 +729,5 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	for _, be := range lagging {
 		delete(candidates, be)
 	}
-
 	return candidates
-}
-
-func GetCandidateHealth(candidates map[*Backend]*backendState) (normal, fallback int) {
-	// Count Number, Fallback normal candidates
-	numHealthyCandidates := 0
-	numFallbacksEnabled := 0
-	for be := range candidates {
-		if !be.fallback {
-			numHealthyCandidates += 1
-		} else {
-			numFallbacksEnabled += 1
-		}
-	}
-	return numHealthyCandidates, numFallbacksEnabled
-
-}
-
-/*
-ToggleFallbackBackends will force the fallbacks on if  otherwise disable them
-*/
-func (cp *ConsensusPoller) ToggleFallbackBackends() {
-	for _, be := range cp.backendGroup.Backends {
-		if be.fallback {
-			if cp.FallbackModeEnabled() {
-				be.forcedCandidate = true
-			} else {
-				be.forcedCandidate = false
-			}
-		}
-	}
-}
-
-func RemoveFallbacksFromCandidatePool(candidates map[*Backend]*backendState) {
-	for be := range candidates {
-		if _, ok := candidates[be]; ok && be.fallback {
-			delete(candidates, be)
-		}
-	}
 }
