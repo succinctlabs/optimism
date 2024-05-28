@@ -378,6 +378,7 @@ func Start(config *Config) (*Server, func(), error) {
 			bg.Consensus = cp
 
 			if bgcfg.ConsensusHA {
+				bg.Consensus.consensusHA = true
 				tracker.(*RedisConsensusTracker).Init()
 			}
 		}
