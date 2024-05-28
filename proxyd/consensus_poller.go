@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -157,6 +158,7 @@ func (ah *PollerAsyncHandler) Init() {
 		}(be)
 	}
 
+	// create the group consensus poller
 	go func() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
@@ -543,11 +545,8 @@ func (cp *ConsensusPoller) Reset() {
 	for _, be := range cp.backendGroup.Backends {
 		cp.backendState[be] = &backendState{}
 	}
-	// Jacob Note: Reseting Backend Consensus group may break other tests
-	cp.consensusGroup = []*Backend{}
 }
 
-// NOTE: Jacob, when using fetchBlock look in here to account for 0 blocks, may want to count for specific error types here too
 // fetchBlock is a convenient wrapper to make a request to get a block directly from the backend
 func (cp *ConsensusPoller) fetchBlock(ctx context.Context, be *Backend, block string) (blockNumber hexutil.Uint64, blockHash string, err error) {
 	var rpcRes RPCRes
@@ -729,5 +728,6 @@ func (cp *ConsensusPoller) FilterCandidates(backends []*Backend) map[*Backend]*b
 	for _, be := range lagging {
 		delete(candidates, be)
 	}
+
 	return candidates
 }

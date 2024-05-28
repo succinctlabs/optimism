@@ -750,12 +750,14 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 	}
 
 	backends := bg.orderedBackendsForRequest()
+
 	overriddenResponses := make([]*indexedReqRes, 0)
 	rewrittenReqs := make([]*RPCReq, 0, len(rpcReqs))
 
 	if bg.Consensus != nil {
 		// When `consensus_aware` is set to `true`, the backend group acts as a load balancer
 		// serving traffic from any backend that agrees in the consensus group
+
 		// We also rewrite block tags to enforce compliance with consensus
 		rctx := RewriteContext{
 			latest:        bg.Consensus.GetLatestBlockNumber(),
@@ -902,6 +904,7 @@ func weightedShuffle(backends []*Backend) {
 	weight := func(i int) float64 {
 		return float64(backends[i].weight)
 	}
+
 	weightedshuffle.ShuffleInplace(backends, weight, nil)
 }
 
@@ -919,9 +922,6 @@ func (bg *BackendGroup) orderedBackendsForRequest() []*Backend {
 }
 
 func (bg *BackendGroup) loadBalancedConsensusGroup() []*Backend {
-	/*
-		NOTE: If we force the candidates they will always be in consensus group
-	*/
 	cg := bg.Consensus.GetConsensusGroup()
 
 	backendsHealthy := make([]*Backend, 0, len(cg))
