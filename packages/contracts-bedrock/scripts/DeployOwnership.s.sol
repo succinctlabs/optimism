@@ -61,14 +61,25 @@ contract DeployOwnership is Deploy {
         console.log("start of Ownership Deployment");
         // The SuperchainConfig is needed as a constructor argument to the Deputy Guardian Module
 
-        save("SuperchainConfig", 0xC2Be75506d5724086DEB7245bd260Cc9753911Be);
-        save("FoundationOperationsSafe", 0x837DE453AD5F21E89771e3c06239d8236c0EFd5E);
-        save("FoundationUpgradeSafe", 0xDEe57160aAfCF04c34C887B5962D0a69676d3C8B);
-        save("SecurityCouncilSafe", 0xf64bc17485f0B4Ea5F06A96514182FC4cB561977);
-        save("GuardianSafe", 0x7a50f00e8D05b95F98fE38d8BeE366a7324dCf7E);
+        // https://github.com/ethereum-optimism/superchain-registry/blob/main/superchain/configs/mainnet/superchain.yaml
+        save("SuperchainConfig", 0x95703e0982140D16f8ebA6d158FccEde42f04a4C);
+
+        // https://www.notion.so/oplabs/L1-Operations-Key-152a7e9fa54d484b885129e570688cd1?pvs=4
+        save("FoundationOperationsSafe", 0x9BA6e03D8B90dE867373Db8cF1A58d2F7F006b3A);
+
+        // https://www.notion.so/oplabs/L1-Upgrade-Key-OP-Mainnet-5152ebdb0b674ed182db54a5fa18c25d?pvs=4
+        save("FoundationUpgradeSafe", 0x847B5c174615B1B7fDF770882256e2D3E95b9D92);
+
+        // https://app.safe.global/home?safe=eth:0xc2819DC788505Aac350142A7A707BF9D03E3Bd03
+        save("SecurityCouncilSafe", 0xc2819DC788505Aac350142A7A707BF9D03E3Bd03);
+
+        // https://app.safe.global/home?safe=eth:0x09f7150D8c019BeF34450d6920f6B3608ceFdAf2
+        save("GuardianSafe", 0x09f7150D8c019BeF34450d6920f6B3608ceFdAf2);
 
         vm.startBroadcast();
 
+        deployLivenessGuard();
+        deployLivenessModule();
         deployDeputyGuardianModule();
 
         vm.stopBroadcast();
