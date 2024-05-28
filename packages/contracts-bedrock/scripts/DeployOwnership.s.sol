@@ -118,7 +118,7 @@ contract DeployOwnership is Deploy {
             safeConfig: safeConfig,
             livenessModuleConfig: LivenessModuleConfig({
                 livenessInterval: 104 weeks, // (2 years)
-                thresholdPercentage: 20,
+                thresholdPercentage: 30,
                 minOwners: 2,
                 fallbackOwner: mustGetAddress("FoundationSafe")
             })
