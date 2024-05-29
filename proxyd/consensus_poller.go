@@ -123,6 +123,9 @@ func NewPollerAsyncHandler(ctx context.Context, cp *ConsensusPoller) ConsensusAs
 }
 func (ah *PollerAsyncHandler) Init() {
 	// create the individual backend pollers.
+	log.Info("Number of primary canidates", ":", len(ah.cp.backendGroup.Primaries()))
+	log.Info("Number of fallback canidates", ":", len(ah.cp.backendGroup.Fallbacks()))
+
 	for _, be := range ah.cp.backendGroup.Primaries() {
 		go func(be *Backend) {
 			for {
@@ -144,7 +147,10 @@ func (ah *PollerAsyncHandler) Init() {
 				timer := time.NewTimer(ah.cp.interval)
 
 				healthyCandidates := ah.cp.FilterCandidates(ah.cp.backendGroup.Primaries())
+
+				log.Info("Number of healthy primary canidates", ":", len(healthyCandidates))
 				if len(healthyCandidates) == 0 {
+					log.Info("Zero Healthy Candidates, Updating Fallback Backends", ":", len(healthyCandidates))
 					ah.cp.UpdateBackend(ah.ctx, be)
 				}
 
@@ -162,6 +168,7 @@ func (ah *PollerAsyncHandler) Init() {
 	go func() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
+			log.Info("Updating Backend Group Consensus")
 			ah.cp.UpdateBackendGroupConsensus(ah.ctx)
 
 			select {
@@ -252,7 +259,7 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		backendGroup: bg,
 		backendState: state,
 
-		banPeriod:          5 * time.Minute,
+		banPeriod:          1 * time.Minute,
 		maxUpdateThreshold: 30 * time.Second,
 		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
 		minPeerCount:       3,

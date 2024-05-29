@@ -351,6 +351,19 @@ func Start(config *Config) (*Server, func(), error) {
 				copts = append(copts, WithPollerInterval(time.Duration(bgcfg.ConsensusPollerInterval)))
 			}
 
+			// TODO: May need to update this for the bool map
+			for _, fbName := range bgcfg.FallbackBackends {
+				found := false
+				for _, be := range bgcfg.Backends {
+					if be == fbName {
+						found = true
+					}
+				}
+				if !found {
+					log.Crit("Error Fallback Backend Not Found in Backend List", "Fallback Name", fbName)
+				}
+			}
+
 			var tracker ConsensusTracker
 			if bgcfg.ConsensusHA {
 				if bgcfg.ConsensusHARedis.URL == "" {
