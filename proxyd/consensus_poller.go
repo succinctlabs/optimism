@@ -666,7 +666,7 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 
 	healthyPrimaries := cp.FilterCandidates(cp.backendGroup.Primaries())
 
-	RecordFailOverOccurance(cp.backendGroup, len(healthyPrimaries) == 0)
+	RecordFallbackOccurance(cp.backendGroup, len(healthyPrimaries) == 0)
 	if len(healthyPrimaries) > 0 {
 		return healthyPrimaries
 	}
