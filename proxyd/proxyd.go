@@ -351,16 +351,12 @@ func Start(config *Config) (*Server, func(), error) {
 				copts = append(copts, WithPollerInterval(time.Duration(bgcfg.ConsensusPollerInterval)))
 			}
 
-			// TODO: May need to update this for the bool map
-			for _, fbName := range bgcfg.FallbackBackends {
-				found := false
-				for _, be := range bgcfg.Backends {
-					if be == fbName {
-						found = true
-					}
-				}
-				if !found {
-					log.Crit("Error Fallback Backend Not Found in Backend List", "Fallback Name", fbName)
+			for _, be := range bgcfg.Backends {
+				if fallback, ok := bgcfg.FallbackBackends[be]; !ok {
+					log.Crit("Error Backend Not Found in Backend Fallback Configurations", "Fallback Name", be)
+				} else {
+					log.Debug("Configuring new backend for group", "Group", bgName, "Backend", be, "fallback", fallback)
+
 				}
 			}
 

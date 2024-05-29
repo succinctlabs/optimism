@@ -709,16 +709,14 @@ type BackendGroup struct {
 	Backends         []*Backend
 	WeightedRouting  bool
 	Consensus        *ConsensusPoller
-	FallbackBackends []string
+	FallbackBackends map[string]bool
 }
 
 func (bg *BackendGroup) Fallbacks() []*Backend {
 	fallbacks := []*Backend{}
 	for _, a := range bg.Backends {
-		for _, name := range bg.FallbackBackends {
-			if a.Name == name {
-				fallbacks = append(fallbacks, a)
-			}
+		if fallback, ok := bg.FallbackBackends[a.Name]; ok && fallback {
+			fallbacks = append(fallbacks, a)
 		}
 	}
 	return fallbacks
@@ -726,20 +724,12 @@ func (bg *BackendGroup) Fallbacks() []*Backend {
 
 func (bg *BackendGroup) Primaries() []*Backend {
 	primaries := []*Backend{}
-	fallbackMap := make(map[string]bool)
-
-	// Populate the map with fallback backend names
-	for _, name := range bg.FallbackBackends {
-		fallbackMap[name] = true
-	}
-
-	// Filter out backends that are in the fallback list
 	for _, a := range bg.Backends {
-		if !fallbackMap[a.Name] {
+		fallback, ok := bg.FallbackBackends[a.Name]
+		if ok && !fallback {
 			primaries = append(primaries, a)
 		}
 	}
-
 	return primaries
 }
 
