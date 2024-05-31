@@ -150,7 +150,9 @@ func (ah *PollerAsyncHandler) Init() {
 
 				log.Info("Number of healthy primary canidates", ":", len(healthyCandidates))
 				if len(healthyCandidates) == 0 {
-					log.Info("Zero Healthy Candidates, Updating Fallback Backends", ":", len(healthyCandidates))
+					log.Info("Zero healthy candidates, querying fallback backend",
+						"fallbackBackend", be.Name,
+						"heathyCandidates", len(healthyCandidates))
 					ah.cp.UpdateBackend(ah.ctx, be)
 				}
 
@@ -395,6 +397,7 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
+	// NOTE: Maybe add a metrics if there are zero candidates (health or fallback)
 
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
