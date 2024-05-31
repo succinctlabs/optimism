@@ -349,8 +349,8 @@ func Start(config *Config) (*Server, func(), error) {
 			if bgcfg.ConsensusPollerInterval > 0 {
 				copts = append(copts, WithPollerInterval(time.Duration(bgcfg.ConsensusPollerInterval)))
 			}
-			if bgcfg.ConsensusPollerRetry {
-				copts = append(copts, WithPollerRetry(true))
+			if bgcfg.ConsensusMaxRetries > 0 {
+				copts = append(copts, WithConsensusMaxRetries(bgcfg.ConsensusMaxRetries))
 			}
 
 			var tracker ConsensusTracker
