@@ -261,7 +261,7 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		backendGroup: bg,
 		backendState: state,
 
-		banPeriod:          1 * time.Minute,
+		banPeriod:          5 * time.Minute,
 		maxUpdateThreshold: 30 * time.Second,
 		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
 		minPeerCount:       3,
@@ -397,7 +397,6 @@ func (cp *ConsensusPoller) UpdateBackendGroupConsensus(ctx context.Context) {
 
 	// get the candidates for the consensus group
 	candidates := cp.getConsensusCandidates()
-	// NOTE: Maybe add a metrics if there are zero candidates (health or fallback)
 
 	// update the lowest latest block number and hash
 	//        the lowest safe block number
@@ -550,7 +549,7 @@ func (cp *ConsensusPoller) Unban(be *Backend) {
 	bs.bannedUntil = time.Now().Add(-10 * time.Hour)
 }
 
-// Reset reset all backend states, and the existing consensus group
+// Reset reset all backend states
 func (cp *ConsensusPoller) Reset() {
 	for _, be := range cp.backendGroup.Backends {
 		cp.backendState[be] = &backendState{}
@@ -669,7 +668,7 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 
 	healthyPrimaries := cp.FilterCandidates(cp.backendGroup.Primaries())
 
-	RecordFallbackOccurance(cp.backendGroup, len(healthyPrimaries) == 0)
+	RecordHealthyCandidates(cp.backendGroup, len(healthyPrimaries))
 	if len(healthyPrimaries) > 0 {
 		return healthyPrimaries
 	}

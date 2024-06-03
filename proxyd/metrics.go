@@ -411,10 +411,10 @@ var (
 		"backend_name",
 	})
 
-	fallbackEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	healthyPrimaryCandidates = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
-		Name:      "fallback_enabled",
-		Help:      "Bool gauge for if fallback has been enabled",
+		Name:      "healthy_candidates",
+		Help:      "Record the number of healthy primary candidates",
 	}, []string{
 		"backend_group_name",
 	})
@@ -559,8 +559,8 @@ func RecordConsensusBackendBanned(b *Backend, banned bool) {
 	consensusBannedBackends.WithLabelValues(b.Name).Set(boolToFloat64(banned))
 }
 
-func RecordFallbackOccurance(b *BackendGroup, failover bool) {
-	fallbackEnabled.WithLabelValues(b.Name).Set(boolToFloat64(failover))
+func RecordHealthyCandidates(b *BackendGroup, candidates int) {
+	healthyPrimaryCandidates.WithLabelValues(b.Name).Set(float64(candidates))
 }
 
 func RecordConsensusBackendPeerCount(b *Backend, peerCount uint64) {
