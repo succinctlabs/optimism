@@ -414,9 +414,19 @@ var (
 	fallbackEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: MetricsNamespace,
 		Name:      "fallback_enabled",
-		Help:      "Bool gauge for if failover has been enabled",
+		Help:      "Bool gauge for if fallback has been enabled",
 	}, []string{
 		"backend_group_name",
+	})
+
+	backendGroupFallbackBackend = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "backend_group_fallback_backenend",
+		Help:      "Bool gauge for if a backend is a fallback for a backend group",
+	}, []string{
+		"backend_group",
+		"backend_name",
+		"fallback",
 	})
 )
 
@@ -577,6 +587,10 @@ func RecordBackendNetworkLatencyAverageSlidingWindow(b *Backend, avgLatency time
 
 func RecordBackendNetworkErrorRateSlidingWindow(b *Backend, rate float64) {
 	networkErrorRateBackend.WithLabelValues(b.Name).Set(rate)
+}
+
+func RecordBackendGroupFallbacks(bg *BackendGroup, name string, fallback bool) {
+	backendGroupFallbackBackend.WithLabelValues(bg.Name, name, strconv.FormatBool(fallback)).Set(boolToFloat64(fallback))
 }
 
 func boolToFloat64(b bool) float64 {

@@ -356,7 +356,7 @@ func Start(config *Config) (*Server, func(), error) {
 					log.Crit("Error Backend Not Found in Backend Fallback Configurations", "Fallback Name", be)
 				} else {
 					log.Debug("Configuring new backend for group", "Group", bgName, "Backend", be, "fallback", fallback)
-
+					RecordBackendGroupFallbacks(bg, be, fallback)
 				}
 			}
 
