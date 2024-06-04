@@ -21,6 +21,64 @@ func RandomData(rng *rand.Rand, size int) []byte {
 	return out
 }
 
+// TestAdvanceL1Origin test advance l1 origin when there are multiple commitments in the same block
+func TestAdvanceL1Origin(t *testing.T) {
+	var (
+		logger          = testlog.Logger(t, log.LevelDebug)
+		ctx             = context.Background()
+		bn              uint64
+		challengeWindow uint64 = 1
+		l1F                    = &mockL1Fetcher{}
+		err             error
+	)
+
+	l1F.ExpectFetchReceipts(common.HexToHash(""), nil, types.Receipts{}, nil)
+	// simulate one block has multiple commitments,
+	// commitments block number are 1
+	// finalized should move to 1 when advanced to block number 2
+	state := NewState(logger, &NoopMetrics{})
+	state.SetInputCommitment([]byte("0x1"), 1, challengeWindow)
+	state.SetInputCommitment([]byte("0x2"), 1, challengeWindow)
+
+	da := NewPlasmaDAWithState(logger, Config{}, NewMockDAClient(logger), &NoopMetrics{}, state)
+	bn = 1
+	// advance block number 1, finalized should not move due to challenge window = 1
+	l1F.ExpectL1BlockRefByNumber(1, eth.L1BlockRef{Number: 1}, nil)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+
+	bn = 2
+	// advance to block number 2, finalized should move to 1
+	l1F.ExpectL1BlockRefByNumber(2, eth.L1BlockRef{Number: 2}, nil)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+	require.Equal(t, da.state.finalized, uint64(1))
+
+	// simulate another block with no commitments, finalize should not moved due to no commitments
+	bn = 3
+	l1F.ExpectL1BlockRefByNumber(3, eth.L1BlockRef{Number: 3}, nil)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+	require.Equal(t, da.state.finalized, uint64(1))
+
+	// simulate another block with one commitment, finalize should not moved due to challenge window = 1
+	bn = 4
+	l1F.ExpectL1BlockRefByNumber(4, eth.L1BlockRef{Number: 4}, nil)
+	state.SetInputCommitment([]byte("0x3"), bn, challengeWindow)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+	require.Equal(t, da.state.finalized, uint64(1))
+
+	// advance to block number 5, finalized should move to 4
+	bn = 5
+	l1F.ExpectL1BlockRefByNumber(5, eth.L1BlockRef{Number: 5}, nil)
+	err = da.AdvanceL1Origin(ctx, l1F, eth.BlockID{Number: bn})
+	require.NoError(t, err)
+	require.Equal(t, da.state.finalized, uint64(4))
+}
+
 // TestDAChallengeState is a simple test with small values to verify the finalized head logic
 func TestDAChallengeState(t *testing.T) {
 	logger := testlog.Logger(t, log.LvlDebug)
@@ -269,7 +327,7 @@ func (m *mockL1Fetcher) InfoAndTxsByHash(ctx context.Context, hash common.Hash) 
 }
 
 func (m *mockL1Fetcher) ExpectInfoAndTxsByHash(hash common.Hash, info eth.BlockInfo, transactions types.Transactions, err error) {
-	m.Mock.On("InfoAndTxsByHash", hash).Once().Return(info, transactions, err)
+	m.Mock.On("InfoAndTxsByHash", hash).Return(info, transactions, err)
 }
 
 func (m *mockL1Fetcher) FetchReceipts(ctx context.Context, blockHash common.Hash) (eth.BlockInfo, types.Receipts, error) {
@@ -278,7 +336,7 @@ func (m *mockL1Fetcher) FetchReceipts(ctx context.Context, blockHash common.Hash
 }
 
 func (m *mockL1Fetcher) ExpectFetchReceipts(hash common.Hash, info eth.BlockInfo, receipts types.Receipts, err error) {
-	m.Mock.On("FetchReceipts", hash).Once().Return(&info, receipts, err)
+	m.Mock.On("FetchReceipts", hash).Return(&info, receipts, err)
 }
 
 func (m *mockL1Fetcher) L1BlockRefByNumber(ctx context.Context, num uint64) (eth.L1BlockRef, error) {
@@ -287,7 +345,7 @@ func (m *mockL1Fetcher) L1BlockRefByNumber(ctx context.Context, num uint64) (eth
 }
 
 func (m *mockL1Fetcher) ExpectL1BlockRefByNumber(num uint64, ref eth.L1BlockRef, err error) {
-	m.Mock.On("L1BlockRefByNumber", num).Once().Return(ref, err)
+	m.Mock.On("L1BlockRefByNumber", num).Return(ref, err)
 }
 
 func TestFilterInvalidBlockNumber(t *testing.T) {
