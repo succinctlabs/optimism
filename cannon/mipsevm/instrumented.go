@@ -13,7 +13,6 @@ type PreimageOracle interface {
 type Debug struct {
 	stack  []uint32
 	caller []uint32
-	meta   *Metadata
 }
 
 type InstrumentedState struct {
@@ -35,7 +34,7 @@ type InstrumentedState struct {
 	// offset we last read from, or max uint32 if nothing is read this step
 	lastPreimageOffset uint32
 
-	debug        Debug
+	meta         *Metadata
 	debugEnabled bool
 }
 
@@ -49,9 +48,11 @@ const (
 	fdPreimageWrite = 6
 )
 
+// See src/syscall/zerrors_linux_mips.go
 const (
 	MipsEBADF  = 0x9
 	MipsEINVAL = 0x16
+	MipsEAGAIN = 0xb
 )
 
 func NewInstrumentedState(state *State, po PreimageOracle, stdOut, stdErr io.Writer) *InstrumentedState {
@@ -68,7 +69,7 @@ func (m *InstrumentedState) InitDebug(meta *Metadata) error {
 		return errors.New("metadata is nil")
 	}
 	m.debugEnabled = true
-	m.debug.meta = meta
+	m.meta = meta
 	return nil
 }
 
@@ -77,8 +78,10 @@ func (m *InstrumentedState) Step(proof bool) (wit *StepWitness, err error) {
 	m.lastMemAccess = ^uint32(0)
 	m.lastPreimageOffset = ^uint32(0)
 
+	preThreadCount := len(m.state.Threads)
 	if proof {
-		insnProof := m.state.Memory.MerkleProof(m.state.PC)
+		insnProof := m.state.Memory.MerkleProof(m.state.Threads[m.state.CurrentThread].State.PC)
+		// TODO: current-thread witness
 		wit = &StepWitness{
 			State:    m.state.EncodeWitness(),
 			MemProof: insnProof[:],
@@ -95,6 +98,10 @@ func (m *InstrumentedState) Step(proof bool) (wit *StepWitness, err error) {
 			wit.PreimageOffset = m.lastPreimageOffset
 			wit.PreimageKey = m.lastPreimageKey
 			wit.PreimageValue = m.lastPreimage
+		}
+		// if more threads than pre-instruction, add new-thread proof
+		if len(m.state.Threads) > preThreadCount {
+			// TODO: add proof for last merkle branch, so we can append a new thread state
 		}
 	}
 	return
