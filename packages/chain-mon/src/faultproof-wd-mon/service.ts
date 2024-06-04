@@ -33,6 +33,8 @@ type Options = {
 type Metrics = {
   highestCheckedBlockNumber: Gauge
   highestKnownBlockNumber: Gauge
+  highestCheckedBlockTimestamp: Gauge
+  highestKnownBlockTimestamp: Gauge
   withdrawalsValidated: Gauge
   invalidProposalWithdrawals: Gauge
   invalidProofWithdrawals: Gauge
@@ -50,11 +52,13 @@ type State = {
     withdrawalHash: string
     senderAddress: string
     disputeGame: ethers.Contract
+    event: ethers.Event
   }>
   invalidProofWithdrawals: Array<{
     withdrawalHash: string
     senderAddress: string
     disputeGame: ethers.Contract
+    event: ethers.Event
   }>
 }
 
@@ -133,11 +137,22 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
           desc: 'Highest L1 block number that we have searched.',
           labels: ['type'],
         },
+        highestCheckedBlockTimestamp: {
+          type: Gauge,
+          desc: 'Timestamp of the highest L1 block number that we have searched.',
+          labels: ['type'],
+        },
         highestKnownBlockNumber: {
           type: Gauge,
           desc: 'Highest L1 block number that we have seen.',
           labels: ['type'],
         },
+        highestKnownBlockTimestamp: {
+          type: Gauge,
+          desc: 'Timestamp of the highest L1 block number that we have seen.',
+          labels: ['type'],
+        },
+
         invalidProposalWithdrawals: {
           type: Gauge,
           desc: 'Number of withdrawals against invalid proposals.',
@@ -247,6 +262,13 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
       const disputeGameAddress = disputeGame.address
       const isGameBlacklisted =
         this.state.portal.disputeGameBlacklist(disputeGameAddress)
+      const event = disputeGameData.event
+      const block = await event.getBlock()
+      const ts = `${dateformat(
+        new Date(block.timestamp * 1000),
+        'mmmm dS, yyyy, h:MM:ss TT',
+        true
+      )} UTC`
 
       if (isGameBlacklisted) {
         this.state.invalidProposalWithdrawals.splice(i, 1)
@@ -254,18 +276,57 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
         const status = await disputeGame.status()
         if (status === GameStatus.CHALLENGER_WINS) {
           this.state.invalidProposalWithdrawals.splice(i, 1)
+          this.logger.info(
+            `withdrawalHash not seen on L2 - game correctly resolved`,
+            {
+              withdrawalHash: event.args.withdrawalHash,
+              provenAt: ts,
+              disputeGameAddress: disputeGame.address,
+              blockNumber: block.number,
+              transaction: event.transactionHash,
+            }
+          )
         } else if (status === GameStatus.DEFENDER_WINS) {
+          this.logger.error(
+            `withdrawalHash not seen on L2 - forgery detected`,
+            {
+              withdrawalHash: event.args.withdrawalHash,
+              provenAt: ts,
+              disputeGameAddress: disputeGame.address,
+              blockNumber: block.number,
+              transaction: event.transactionHash,
+            }
+          )
           this.state.forgeryDetected = true
           this.metrics.isDetectingForgeries.set(
             Number(this.state.forgeryDetected)
           )
+        } else {
+          this.logger.warn(
+            `withdrawalHash not seen on L2 - game still IN_PROGRESS`,
+            {
+              withdrawalHash: event.args.withdrawalHash,
+              provenAt: ts,
+              disputeGameAddress: disputeGame.address,
+              blockNumber: block.number,
+              transaction: event.transactionHash,
+            }
+          )
         }
       }
     }
-    // Get the latest L1 block number.
     let latestL1BlockNumber: number
+    let latestL1Block: ethers.providers.Block
+    let highestUncheckedBlock: ethers.providers.Block
     try {
+      // Get the latest L1 block number.
       latestL1BlockNumber = await this.options.l1RpcProvider.getBlockNumber()
+      latestL1Block = await this.options.l1RpcProvider.getBlock(
+        latestL1BlockNumber
+      )
+      highestUncheckedBlock = await this.options.l1RpcProvider.getBlock(
+        this.state.highestUncheckedBlockNumber
+      )
     } catch (err) {
       // Log the issue so we can debug it.
       this.logger.error(`got error when connecting to node`, {
@@ -285,9 +346,21 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
     }
 
     // Update highest block number metrics so we can keep track of how the service is doing.
-    this.metrics.highestKnownBlockNumber.set(latestL1BlockNumber)
     this.metrics.highestCheckedBlockNumber.set(
+      { type: 'L1' },
       this.state.highestUncheckedBlockNumber
+    )
+    this.metrics.highestKnownBlockNumber.set(
+      { type: 'L1' },
+      latestL1BlockNumber
+    )
+    this.metrics.highestCheckedBlockTimestamp.set(
+      { type: 'L1' },
+      highestUncheckedBlock.timestamp
+    )
+    this.metrics.highestKnownBlockTimestamp.set(
+      { type: 'L1' },
+      latestL1Block.timestamp
     )
 
     // Check if the RPC provider is behind us for some reason. Can happen occasionally,
@@ -371,6 +444,10 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
             // Unlike below we don't grab the timestamp here because it adds an unnecessary request.
             this.logger.info(`valid withdrawal`, {
               withdrawalHash: event.args.withdrawalHash,
+              provenAt: ts,
+              disputeGameAddress: disputeGame.address,
+              blockNumber: block.number,
+              transaction: event.transactionHash,
             })
 
             // Bump the withdrawals metric so we can keep track.
@@ -379,10 +456,16 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
             this.state.invalidProofWithdrawals.push(disputeGameData)
 
             // Uh oh!
-            this.logger.error(`withdrawalHash not seen on L2`, {
-              withdrawalHash: event.args.withdrawalHash,
-              provenAt: ts,
-            })
+            this.logger.error(
+              `withdrawalHash not seen on L2 - forgery detected`,
+              {
+                withdrawalHash: event.args.withdrawalHash,
+                provenAt: ts,
+                disputeGameAddress: disputeGame.address,
+                blockNumber: block.number,
+                transaction: event.transactionHash,
+              }
+            )
 
             // Change to forgery state.
             this.state.forgeryDetected = true
@@ -392,9 +475,10 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
           }
         } else {
           this.state.invalidProposalWithdrawals.push(disputeGameData)
-          this.logger.info(`invalid proposal`, {
+          this.logger.warn(`invalid proposal`, {
             withdrawalHash: event.args.withdrawalHash,
             provenAt: ts,
+            disputeGameAddress: disputeGame.address,
           })
         }
       }
@@ -410,18 +494,20 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
    * @param event The event containing the withdrawal hash.
    * @returns An array of objects containing the withdrawal hash, sender address, and dispute game address.
    */
-  async getWithdrawalDisputeGames(event: ethers.Event): Promise<
+  async getWithdrawalDisputeGames(event_in: ethers.Event): Promise<
     Array<{
       withdrawalHash: string
       senderAddress: string
       disputeGame: ethers.Contract
+      event: ethers.Event
     }>
   > {
-    const withdrawalHash = event.args.withdrawalHash
+    const withdrawalHash = event_in.args.withdrawalHash
     const disputeGameMap: Array<{
       withdrawalHash: string
       senderAddress: string
       disputeGame: ethers.Contract
+      event: ethers.Event
     }> = []
 
     const numProofSubmitter = await this.state.portal.numProofSubmitters(
@@ -450,6 +536,7 @@ export class FaultProofWithdrawalMonitor extends BaseServiceV2<
           withdrawalHash,
           senderAddress: proofSubmitter,
           disputeGame: disputeGame_,
+          event: event_in,
         })
       })
     )
