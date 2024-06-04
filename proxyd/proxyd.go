@@ -188,6 +188,7 @@ func Start(config *Config) (*Server, func(), error) {
 	for bgName, bg := range config.BackendGroups {
 		backends := make([]*Backend, 0)
 		fallbackBackends := make(map[string]bool)
+		fallbackCount := 0
 		for _, bName := range bg.Backends {
 			if backendsByName[bName] == nil {
 				return nil, nil, fmt.Errorf("backend %s is not defined", bName)
@@ -201,6 +202,7 @@ func Start(config *Config) (*Server, func(), error) {
 						"backend_name", bName,
 						"backend_group", bgName,
 					)
+					fallbackCount++
 				}
 			}
 
@@ -211,6 +213,14 @@ func Start(config *Config) (*Server, func(), error) {
 					"backend_group", bgName,
 				)
 			}
+		}
+
+		if fallbackCount != len(bg.Fallbacks) {
+			return nil, nil,
+				fmt.Errorf(
+					"error: number of fallbacks instantiated (%d) did not match configured (%d) for backend group %s",
+					fallbackCount, len(bg.Fallbacks), bgName,
+				)
 		}
 
 		backendGroups[bgName] = &BackendGroup{
