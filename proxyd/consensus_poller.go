@@ -148,11 +148,10 @@ func (ah *PollerAsyncHandler) Init() {
 
 				healthyCandidates := ah.cp.FilterCandidates(ah.cp.backendGroup.Primaries())
 
-				log.Info("number of healthy primary candidates", "healthyCandidates", len(healthyCandidates))
+				log.Info("number of healthy primary candidates", "healthy_candidates", len(healthyCandidates))
 				if len(healthyCandidates) == 0 {
 					log.Info("zero healthy candidates, querying fallback backend",
-						"fallbackBackend", be.Name,
-						"heathyCandidates", len(healthyCandidates))
+						"backend_name", be.Name)
 					ah.cp.UpdateBackend(ah.ctx, be)
 				}
 
