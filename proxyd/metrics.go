@@ -264,6 +264,47 @@ var (
 		"backend_group_name",
 	})
 
+	consensusCandidateLag = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "group_consensus_candidate_lag",
+		Help:      "Consensus candidate lag",
+	}, []string{
+		"backend_group_name",
+		"backend_name",
+	})
+
+	consensusRequestedBlock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "group_consensus_requested_block",
+		Help:      "Consensus requested block",
+	}, []string{
+		"origin",
+	})
+
+	consensusCurrentConsensusBlock = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "group_consensus_current_consensus_block",
+		Help:      "Consensus currently known consensus block",
+	}, []string{
+		"origin",
+	})
+
+	consensusBlockUpdateRetries = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "group_consensus_block_update_retries",
+		Help:      "Consensus block update retries",
+	}, []string{
+		"origin",
+	})
+
+	consensusBlockUpdateTotalSleepMs = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "group_consensus_block_update_total_sleep_ms",
+		Help:      "Consensus block update total sleep millis",
+	}, []string{
+		"origin",
+	})
+
 	consensusHAError = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: MetricsNamespace,
 		Name:      "group_consensus_ha_error",
@@ -565,6 +606,26 @@ func RecordBackendNetworkLatencyAverageSlidingWindow(b *Backend, avgLatency time
 
 func RecordBackendNetworkErrorRateSlidingWindow(b *Backend, rate float64) {
 	networkErrorRateBackend.WithLabelValues(b.Name).Set(rate)
+}
+
+func RecordConsensusCandidateLag(group *BackendGroup, b *Backend, candidateLag uint64) {
+	consensusCandidateLag.WithLabelValues(group.Name, b.Name).Set(float64(candidateLag))
+}
+
+func RecordConsensusRequestedBlock(origin string, blockNumber hexutil.Uint64) {
+	consensusRequestedBlock.WithLabelValues(origin).Set(float64(blockNumber))
+}
+
+func RecordConsensusCurrentConsensusBlock(origin string, blockNumber hexutil.Uint64) {
+	consensusCurrentConsensusBlock.WithLabelValues(origin).Set(float64(blockNumber))
+}
+
+func RecordConsensusBlockUpdateRetries(origin string, retries hexutil.Uint64) {
+	consensusBlockUpdateRetries.WithLabelValues(origin).Set(float64(retries))
+}
+
+func RecordConsensusBlockUpdateTotalSleepMs(origin string, totalSleepMs hexutil.Uint64) {
+	consensusBlockUpdateTotalSleepMs.WithLabelValues(origin).Set(float64(totalSleepMs))
 }
 
 func boolToFloat64(b bool) float64 {

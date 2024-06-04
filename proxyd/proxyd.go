@@ -349,6 +349,9 @@ func Start(config *Config) (*Server, func(), error) {
 			if bgcfg.ConsensusPollerInterval > 0 {
 				copts = append(copts, WithPollerInterval(time.Duration(bgcfg.ConsensusPollerInterval)))
 			}
+			if bgcfg.ConsensusMaxRetries > 0 {
+				copts = append(copts, WithConsensusMaxRetries(bgcfg.ConsensusMaxRetries))
+			}
 
 			var tracker ConsensusTracker
 			if bgcfg.ConsensusHA {
@@ -375,6 +378,7 @@ func Start(config *Config) (*Server, func(), error) {
 			bg.Consensus = cp
 
 			if bgcfg.ConsensusHA {
+				bg.Consensus.consensusHA = true
 				tracker.(*RedisConsensusTracker).Init()
 			}
 		}

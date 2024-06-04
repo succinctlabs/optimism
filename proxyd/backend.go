@@ -727,10 +727,12 @@ func (bg *BackendGroup) Forward(ctx context.Context, rpcReqs []*RPCReq, isBatch 
 
 		// We also rewrite block tags to enforce compliance with consensus
 		rctx := RewriteContext{
-			latest:        bg.Consensus.GetLatestBlockNumber(),
-			safe:          bg.Consensus.GetSafeBlockNumber(),
-			finalized:     bg.Consensus.GetFinalizedBlockNumber(),
-			maxBlockRange: bg.Consensus.maxBlockRange,
+			latest:              bg.Consensus.GetLatestBlockNumber(),
+			safe:                bg.Consensus.GetSafeBlockNumber(),
+			finalized:           bg.Consensus.GetFinalizedBlockNumber(),
+			maxBlockRange:       bg.Consensus.maxBlockRange,
+			cp:                  bg.Consensus,
+			consensusMaxRetries: bg.Consensus.consensusMaxRetries,
 		}
 
 		for i, req := range rpcReqs {

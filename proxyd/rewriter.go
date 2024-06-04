@@ -1,18 +1,26 @@
 package proxyd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
+	"github.com/ethereum-optimism/optimism/op-service/retry"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/redis/go-redis/v9"
 )
 
 type RewriteContext struct {
-	latest        hexutil.Uint64
-	safe          hexutil.Uint64
-	finalized     hexutil.Uint64
-	maxBlockRange uint64
+	latest              hexutil.Uint64
+	safe                hexutil.Uint64
+	finalized           hexutil.Uint64
+	maxBlockRange       uint64
+	cp                  *ConsensusPoller
+	consensusMaxRetries int
 }
 
 type RewriteResult uint8
@@ -273,8 +281,9 @@ func rewriteTag(rctx RewriteContext, current string) (string, bool, error) {
 	case rpc.LatestBlockNumber:
 		return rctx.latest.String(), true, nil
 	default:
-		if bnh.BlockNumber.Int64() > int64(rctx.latest) {
-			return "", false, ErrRewriteBlockOutOfRange
+		err := tryConsensusBlockUpdate(bnh.BlockNumber.Int64(), int64(rctx.latest), rctx.cp, rctx.consensusMaxRetries)
+		if err != nil {
+			return "", false, err
 		}
 	}
 
@@ -301,10 +310,70 @@ func rewriteTagBlockNumberOrHash(rctx RewriteContext, current *rpc.BlockNumberOr
 		bn := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(rctx.latest))
 		return &bn, true, nil
 	default:
-		if current.BlockNumber.Int64() > int64(rctx.latest) {
-			return nil, false, ErrRewriteBlockOutOfRange
+		err := tryConsensusBlockUpdate(current.BlockNumber.Int64(), int64(rctx.latest), rctx.cp, rctx.consensusMaxRetries)
+		if err != nil {
+			return nil, false, err
 		}
 	}
 
 	return current, false, nil
+}
+
+func tryConsensusBlockUpdate(requestedBlock int64, consensusBlock int64, cp *ConsensusPoller, consensusMaxRetries int) error {
+	totalSleepMs := 0
+	retries := 0
+	if requestedBlock > consensusBlock {
+		if consensusMaxRetries == 0 {
+			trackMetrics(retries, totalSleepMs, requestedBlock, consensusBlock)
+			return ErrRewriteBlockOutOfRange
+		}
+
+		startMs := time.Now().UnixMilli()
+
+		// consensusHA mode
+		// try to re-read the current state from redis and update in-memory
+		if cp.consensusHA {
+			ct := cp.tracker.(*RedisConsensusTracker)
+			// nothing to do if this is the leader
+			if ct.leader {
+				trackMetrics(retries, totalSleepMs, requestedBlock, consensusBlock)
+				return ErrRewriteBlockOutOfRange
+			}
+
+			key := ct.key("mutex")
+			val, err := ct.client.Get(ct.ctx, key).Result()
+			if err != nil && err != redis.Nil {
+				log.Error("failed to read the lock", "err", err)
+				RecordGroupConsensusError(ct.backendGroup, "read_lock", err)
+			}
+			ct.updateRemote(val)
+		}
+
+		ctx := context.Background()
+		bOff := retry.Exponential()
+		retry.Do(ctx, consensusMaxRetries, bOff, func() (bool, error) {
+			retries += 1
+			consensusBlock = int64(cp.GetLatestBlockNumber())
+			if requestedBlock > consensusBlock {
+				return false, fmt.Errorf("requested block is greater than consensus block (%d, %d)", requestedBlock, consensusBlock)
+			}
+			return true, nil
+		})
+		totalSleepMs = int(time.Now().UnixMilli()) - int(startMs)
+	}
+
+	trackMetrics(retries, totalSleepMs, requestedBlock, consensusBlock)
+	// return an error if the consensus block is still too small
+	if requestedBlock > consensusBlock {
+		return ErrRewriteBlockOutOfRange
+	}
+	return nil
+}
+
+func trackMetrics(retries int, totalSleepMs int, requestedBlock int64, consensusBlock int64) {
+	// track requested values
+	RecordConsensusBlockUpdateRetries("rewriteTag", hexutil.Uint64(retries))
+	RecordConsensusBlockUpdateTotalSleepMs("rewriteTag", hexutil.Uint64(totalSleepMs))
+	RecordConsensusRequestedBlock("rewriteTag", hexutil.Uint64(requestedBlock))
+	RecordConsensusCurrentConsensusBlock("rewriteTag", hexutil.Uint64(consensusBlock))
 }

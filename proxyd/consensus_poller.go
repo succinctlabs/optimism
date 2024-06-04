@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	DefaultPollerInterval = 1 * time.Second
+	DefaultPollerInterval      = 1 * time.Second
+	DefaultConsensusMaxRetries = 0
 )
 
 type OnConsensusBroken func()
@@ -35,12 +36,14 @@ type ConsensusPoller struct {
 	tracker      ConsensusTracker
 	asyncHandler ConsensusAsyncHandler
 
-	minPeerCount       uint64
-	banPeriod          time.Duration
-	maxUpdateThreshold time.Duration
-	maxBlockLag        uint64
-	maxBlockRange      uint64
-	interval           time.Duration
+	minPeerCount        uint64
+	banPeriod           time.Duration
+	maxUpdateThreshold  time.Duration
+	maxBlockLag         uint64
+	maxBlockRange       uint64
+	interval            time.Duration
+	consensusMaxRetries int
+	consensusHA         bool
 }
 
 type backendState struct {
@@ -222,6 +225,12 @@ func WithPollerInterval(interval time.Duration) ConsensusOpt {
 	}
 }
 
+func WithConsensusMaxRetries(consensusMaxRetries int) ConsensusOpt {
+	return func(cp *ConsensusPoller) {
+		cp.consensusMaxRetries = consensusMaxRetries
+	}
+}
+
 func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
@@ -233,11 +242,12 @@ func NewConsensusPoller(bg *BackendGroup, opts ...ConsensusOpt) *ConsensusPoller
 		backendGroup: bg,
 		backendState: state,
 
-		banPeriod:          5 * time.Minute,
-		maxUpdateThreshold: 30 * time.Second,
-		maxBlockLag:        8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
-		minPeerCount:       3,
-		interval:           DefaultPollerInterval,
+		banPeriod:           5 * time.Minute,
+		maxUpdateThreshold:  30 * time.Second,
+		maxBlockLag:         8, // 8*12 seconds = 96 seconds ~ 1.6 minutes
+		minPeerCount:        3,
+		interval:            DefaultPollerInterval,
+		consensusMaxRetries: DefaultConsensusMaxRetries,
 	}
 
 	for _, opt := range opts {
@@ -677,7 +687,9 @@ func (cp *ConsensusPoller) getConsensusCandidates() map[*Backend]*backendState {
 	lagging := make([]*Backend, 0, len(candidates))
 	for be, bs := range candidates {
 		// check if backend is lagging behind the highest block
-		if uint64(highestLatestBlock-bs.latestBlockNumber) > cp.maxBlockLag {
+		candidateLag := uint64(highestLatestBlock - bs.latestBlockNumber)
+		RecordConsensusCandidateLag(cp.backendGroup, be, candidateLag)
+		if candidateLag > cp.maxBlockLag {
 			lagging = append(lagging, be)
 		}
 	}
