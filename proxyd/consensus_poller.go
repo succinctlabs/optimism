@@ -123,8 +123,8 @@ func NewPollerAsyncHandler(ctx context.Context, cp *ConsensusPoller) ConsensusAs
 }
 func (ah *PollerAsyncHandler) Init() {
 	// create the individual backend pollers.
-	log.Info("Number of primary canidates", ":", len(ah.cp.backendGroup.Primaries()))
-	log.Info("Number of fallback canidates", ":", len(ah.cp.backendGroup.Fallbacks()))
+	log.Info("total number of primary candidates", "primaries", len(ah.cp.backendGroup.Primaries()))
+	log.Info("total number of fallback candidates", "fallbacks", len(ah.cp.backendGroup.Fallbacks()))
 
 	for _, be := range ah.cp.backendGroup.Primaries() {
 		go func(be *Backend) {
@@ -148,9 +148,9 @@ func (ah *PollerAsyncHandler) Init() {
 
 				healthyCandidates := ah.cp.FilterCandidates(ah.cp.backendGroup.Primaries())
 
-				log.Info("Number of healthy primary canidates", ":", len(healthyCandidates))
+				log.Info("number of healthy primary candidates", "healthyCandidates", len(healthyCandidates))
 				if len(healthyCandidates) == 0 {
-					log.Info("Zero healthy candidates, querying fallback backend",
+					log.Info("zero healthy candidates, querying fallback backend",
 						"fallbackBackend", be.Name,
 						"heathyCandidates", len(healthyCandidates))
 					ah.cp.UpdateBackend(ah.ctx, be)
@@ -170,7 +170,7 @@ func (ah *PollerAsyncHandler) Init() {
 	go func() {
 		for {
 			timer := time.NewTimer(ah.cp.interval)
-			log.Info("Updating Backend Group Consensus")
+			log.Info("updating backend group consensus")
 			ah.cp.UpdateBackendGroupConsensus(ah.ctx)
 
 			select {

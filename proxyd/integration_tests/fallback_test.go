@@ -174,15 +174,6 @@ func TestFallback(t *testing.T) {
 
 		normalTimestamps = []time.Time{}
 		fallbackTimestamps = []time.Time{}
-		// 	// Require starting without a fallback node, and fallback is false
-		// 	require.Equal(t, false, containsFallbackNode(bg.Consensus.GetConsensusGroup()))
-		// 	require.Equal(t, false, bg.Consensus.GetFallbackMode())
-
-		// 	consensusGroup := bg.Consensus.GetConsensusGroup()
-		// 	require.Equal(t, "fallback", nodes["fallback"].backend.Name)
-		// 	require.Equal(t, "normal", nodes["normal"].backend.Name)
-		// 	require.Contains(t, consensusGroup, nodes["normal"].backend)
-		// 	require.NotContains(t, consensusGroup, nodes["fallback"].backend)
 	}
 
 	/*

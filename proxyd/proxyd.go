@@ -187,18 +187,37 @@ func Start(config *Config) (*Server, func(), error) {
 	backendGroups := make(map[string]*BackendGroup)
 	for bgName, bg := range config.BackendGroups {
 		backends := make([]*Backend, 0)
+		fallbackBackends := make(map[string]bool)
 		for _, bName := range bg.Backends {
 			if backendsByName[bName] == nil {
 				return nil, nil, fmt.Errorf("backend %s is not defined", bName)
 			}
 			backends = append(backends, backendsByName[bName])
+
+			for _, fb := range bg.Fallbacks {
+				if bName == fb {
+					fallbackBackends[bName] = true
+					log.Info("configured backend as fallback",
+						"backend_name", bName,
+						"backend_group", bgName,
+					)
+				}
+			}
+
+			if _, ok := fallbackBackends[bName]; !ok {
+				fallbackBackends[bName] = false
+				log.Info("configured backend as primary",
+					"backend_name", bName,
+					"backend_group", bgName,
+				)
+			}
 		}
 
 		backendGroups[bgName] = &BackendGroup{
 			Name:             bgName,
 			Backends:         backends,
 			WeightedRouting:  bg.WeightedRouting,
-			FallbackBackends: bg.FallbackBackends,
+			FallbackBackends: fallbackBackends,
 		}
 	}
 
@@ -352,10 +371,10 @@ func Start(config *Config) (*Server, func(), error) {
 			}
 
 			for _, be := range bgcfg.Backends {
-				if fallback, ok := bgcfg.FallbackBackends[be]; !ok {
-					log.Crit("Error Backend Not Found in Backend Fallback Configurations", "Fallback Name", be)
+				if fallback, ok := bg.FallbackBackends[be]; !ok {
+					log.Crit("error backend not found in backend fallback configurations", "backend_name", be)
 				} else {
-					log.Debug("Configuring new backend for group", "Group", bgName, "Backend", be, "fallback", fallback)
+					log.Debug("configuring new backend for group", "backend_group", bgName, "backend", be, "fallback", fallback)
 					RecordBackendGroupFallbacks(bg, be, fallback)
 				}
 			}
