@@ -34,7 +34,7 @@ library GameTypes {
     GameType internal constant ASTERISC = GameType.wrap(2);
 
     /// @notice A dispute game type that uses SP1 for Optimistic ZK proofs.
-    GameType internal constant OPTIMISTIC_SP1 = GameType.wrap(3);
+    GameType internal constant OPTIMISTIC_ZK = GameType.wrap(3);
 
     /// @notice A dispute game type with short game duration for testing withdrawals.
     ///         Not intended for production use.

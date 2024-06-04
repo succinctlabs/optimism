@@ -266,7 +266,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         // The proposer is claiming that left (proposed block minus 1) transition to right (proposed block).
         // The challenger must prove that left (proposed block minus 1) transitions to something else.
         } else {
-            require(challenge.right.outputRoot.root.raw() != _alternateRoot, "need diff root to prove that left => !right");
+            if (challenge.right.outputRoot.root.raw() == _alternateRoot) revert InvalidRoot();
             bytes memory publicValues = abi.encode(challenge.left.outputRoot.l2BlockNumber, _alternateRoot, _blockTxData);
             verifyProof(_vkey, publicValues, _proofBytes);
         }
