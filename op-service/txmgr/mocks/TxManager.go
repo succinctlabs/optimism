@@ -4,10 +4,13 @@ package mocks
 
 import (
 	context "context"
+	big "math/big"
 
 	common "github.com/ethereum/go-ethereum/common"
 
 	mock "github.com/stretchr/testify/mock"
+
+	time "time"
 
 	txmgr "github.com/ethereum-optimism/optimism/op-service/txmgr"
 
@@ -43,6 +46,20 @@ func (_m *TxManager) BlockNumber(ctx context.Context) (uint64, error) {
 	return r0, r1
 }
 
+// CancelPendingTx provides a mock function with given fields: _a0
+func (_m *TxManager) CancelPendingTx(_a0 uint64) error {
+	ret := _m.Called(_a0)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(uint64) error); ok {
+		r0 = rf(_a0)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Close provides a mock function with given fields:
 func (_m *TxManager) Close() {
 	_m.Called()
@@ -58,6 +75,110 @@ func (_m *TxManager) From() common.Address {
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	return r0
+}
+
+// GetBumpFeeRetryTime provides a mock function with given fields:
+func (_m *TxManager) GetBumpFeeRetryTime() time.Duration {
+	ret := _m.Called()
+
+	var r0 time.Duration
+	if rf, ok := ret.Get(0).(func() time.Duration); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(time.Duration)
+	}
+
+	return r0
+}
+
+// GetFeeThreshold provides a mock function with given fields:
+func (_m *TxManager) GetFeeThreshold() *big.Int {
+	ret := _m.Called()
+
+	var r0 *big.Int
+	if rf, ok := ret.Get(0).(func() *big.Int); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
+	}
+
+	return r0
+}
+
+// GetMinBaseFee provides a mock function with given fields:
+func (_m *TxManager) GetMinBaseFee() *big.Int {
+	ret := _m.Called()
+
+	var r0 *big.Int
+	if rf, ok := ret.Get(0).(func() *big.Int); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
+	}
+
+	return r0
+}
+
+// GetMinBlobFee provides a mock function with given fields:
+func (_m *TxManager) GetMinBlobFee() *big.Int {
+	ret := _m.Called()
+
+	var r0 *big.Int
+	if rf, ok := ret.Get(0).(func() *big.Int); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
+	}
+
+	return r0
+}
+
+// GetPendingTxs provides a mock function with given fields: _a0, _a1
+func (_m *TxManager) GetPendingTxs(_a0 bool, _a1 bool) ([]txmgr.PendingTxRPC, error) {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 []txmgr.PendingTxRPC
+	var r1 error
+	if rf, ok := ret.Get(0).(func(bool, bool) ([]txmgr.PendingTxRPC, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(bool, bool) []txmgr.PendingTxRPC); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]txmgr.PendingTxRPC)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(bool, bool) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetPriorityFee provides a mock function with given fields:
+func (_m *TxManager) GetPriorityFee() *big.Int {
+	ret := _m.Called()
+
+	var r0 *big.Int
+	if rf, ok := ret.Get(0).(func() *big.Int); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
 		}
 	}
 
@@ -102,6 +223,31 @@ func (_m *TxManager) Send(ctx context.Context, candidate txmgr.TxCandidate) (*ty
 	}
 
 	return r0, r1
+}
+
+// SetBumpFeeRetryTime provides a mock function with given fields: _a0
+func (_m *TxManager) SetBumpFeeRetryTime(_a0 time.Duration) {
+	_m.Called(_a0)
+}
+
+// SetFeeThreshold provides a mock function with given fields: _a0
+func (_m *TxManager) SetFeeThreshold(_a0 *big.Int) {
+	_m.Called(_a0)
+}
+
+// SetMinBaseFee provides a mock function with given fields: _a0
+func (_m *TxManager) SetMinBaseFee(_a0 *big.Int) {
+	_m.Called(_a0)
+}
+
+// SetMinBlobFee provides a mock function with given fields: _a0
+func (_m *TxManager) SetMinBlobFee(_a0 *big.Int) {
+	_m.Called(_a0)
+}
+
+// SetPriorityFee provides a mock function with given fields: _a0
+func (_m *TxManager) SetPriorityFee(_a0 *big.Int) {
+	_m.Called(_a0)
 }
 
 type mockConstructorTestingTNewTxManager interface {
