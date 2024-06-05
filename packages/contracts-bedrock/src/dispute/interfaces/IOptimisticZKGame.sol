@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.15;
 
-import { IDisputeGame } from "./IDisputeGame.sol";
+import { IBlockDisputeGame } from "./IBlockDisputeGame.sol";
 import "src/dispute/lib/Types.sol";
 
-interface IOptimisticZKGame is IDisputeGame {
+interface IOptimisticZKGame is IBlockDisputeGame {
     enum IntermediateClaimStatus {
         NONE,
         ACCEPTED,

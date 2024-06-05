@@ -2,14 +2,13 @@
 pragma solidity ^0.8.15;
 
 import { IDisputeGame } from "./interfaces/IDisputeGame.sol";
-import { IFaultDisputeGame }  from "./interfaces/IFaultDisputeGame.sol";
+import { IBlockDisputeGame }  from "./interfaces/IBlockDisputeGame.sol";
 import { IDelayedWETH } from "./interfaces/IDelayedWETH.sol";
 import { IInitializable } from "./interfaces/IInitializable.sol";
 import { IOptimisticZKGame } from "./interfaces/IOptimisticZKGame.sol";
+import { IDisputeGameFactory } from "./interfaces/IDisputeGameFactory.sol";
 
-import { DisputeGameFactory } from "./DisputeGameFactory.sol";
-import { OutputRoot, GameStatus, Timestamp, Clock, Duration, GameType, Claim, Hash } from "src/dispute/lib/Types.sol";
-import { LibClock, LibDuration, LibTimestamp } from "./lib/LibUDT.sol";
+import "src/dispute/lib/Types.sol";
 
 import { Clone } from "@solady/utils/Clone.sol";
 import { SP1Verifier } from "@sp1-contracts/SP1Verifier.sol";
@@ -27,7 +26,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     uint constant GLOBAL_CHALLENGE_ID = type(uint64).max;
 
     /// @notice The DisputeGameFactory contract.
-    DisputeGameFactory immutable FACTORY;
+    IDisputeGameFactory immutable FACTORY;
 
     /// @notice The game type ID.
     GameType immutable GAME_TYPE;
@@ -97,7 +96,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         if (_maxGameDuration.raw() != _maxProposerDuration.raw() * 2) revert InvalidDurations();
 
         // Set all the immutable values in the implementation contract.
-        FACTORY = DisputeGameFactory(_factory);
+        FACTORY = IDisputeGameFactory(_factory);
         GAME_TYPE = _gameType;
         MAX_GAME_DURATION = _maxGameDuration;
         MAX_PROPOSER_DURATION = _maxProposerDuration;
@@ -117,7 +116,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
 
         // Pull the L2 block number from the previous game.
         // @audit this is a hack because it's not fault dispute game. why isn't this is core interface?
-        uint prevL2BlockNumber = IFaultDisputeGame(address(prevGame)).l2BlockNumber();
+        uint prevL2BlockNumber = IBlockDisputeGame(address(prevGame)).l2BlockNumber();
 
         // Set the anchorStateRoot to the previous game's root.
         anchorStateRoot = OutputRoot({ root: Hash.wrap(prevGame.rootClaim().raw()), l2BlockNumber: prevL2BlockNumber });
@@ -375,6 +374,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     //                           BONDS                            //
     ////////////////////////////////////////////////////////////////
 
+    // Deposit the bond into the DelayedWETH contract and increment the total bonds for the given challenge.
     function _depositBond(uint _challengeId) internal {
         if (msg.value != getRequiredBond(_challengeId)) revert WrongBondAmount();
         if (_challengeId != GLOBAL_CHALLENGE_ID) challenges[_challengeId].totalBonds += msg.value;
@@ -485,6 +485,22 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @return proposerAddr_ The address of the proposer for this game.
     function proposer() public pure returns (address proposerAddr_) {
         proposerAddr_ = _getArgAddress(0x94);
+    }
+
+    /// @notice Starting output root and block number of the game.
+    function startingOutputRoot() external view returns (Hash startingRoot_, uint256 l2BlockNumber_) {
+        startingRoot_ = Hash.wrap(anchorStateRoot.root.raw());
+        l2BlockNumber_ = anchorStateRoot.l2BlockNumber;
+    }
+
+    /// @notice Only the starting block number of the game.
+    function startingBlockNumber() external view returns (uint256 startingBlockNumber_) {
+        startingBlockNumber_ = anchorStateRoot.l2BlockNumber;
+    }
+
+    /// @notice Only the starting output root of the game.
+    function startingRootHash() external view returns (Hash startingRootHash_) {
+        startingRootHash_ = Hash.wrap(anchorStateRoot.root.raw());
     }
 
     /// @inheritdoc IDisputeGame
