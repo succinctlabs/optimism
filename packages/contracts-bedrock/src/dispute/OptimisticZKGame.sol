@@ -51,6 +51,9 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @notice The largest allowed gap between the reference block and the block being proved.
     uint immutable MAX_BLOCK_GAP;
 
+    /// @notice The verification key used by the SP1Verifier contract.
+    bytes32 immutable VKEY;
+
     /// @notice The timestamp at which the game was created.
     Timestamp public createdAt;
 
@@ -80,7 +83,16 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @param _weth The DelayedWETH contract.
     /// @param _originBlock The earliest block number that can be proved against.
     /// @param _maxBlockGap The largest allowed gap between the reference block and the block being proved.
-    constructor(address _factory, GameType _gameType, Duration _maxGameDuration, Duration _maxProposerDuration, IDelayedWETH _weth, uint _originBlock, uint _maxBlockGap) {
+    constructor(
+        address _factory,
+        GameType _gameType,
+        Duration _maxGameDuration,
+        Duration _maxProposerDuration,
+        IDelayedWETH _weth,
+        uint _originBlock,
+        uint _maxBlockGap,
+        bytes32 _vkey
+    ) {
         // The challenger's time will be equal to _maxGameDuration - _maxProposerDuration, so ensure that it is equal to the proposer's time.
         if (_maxGameDuration.raw() != _maxProposerDuration.raw() * 2) revert InvalidDurations();
 
@@ -92,6 +104,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         WETH = _weth;
         ECOTONE_ORIGIN_BLOCK = _originBlock;
         MAX_BLOCK_GAP = _maxBlockGap;
+        VKEY = _vkey;
     }
 
     /// @inheritdoc IInitializable
@@ -242,7 +255,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     //                        RESOLUTION                          //
     ////////////////////////////////////////////////////////////////
 
-    function proveStep(uint _challengeId, bytes32 _vkey, bytes memory _proofBytes, bytes memory _blockTxData, bytes32 _alternateRoot) public payable {
+    function proveStep(uint _challengeId, bytes memory _proofBytes, bytes memory _blockTxData, bytes32 _alternateRoot) public payable {
         // Use the _challengeId to access the correct challenge struct.
         if (_challengeId >= challenges.length) revert InvalidChallengeId();
         Challenge memory challenge = challenges[_challengeId];
@@ -260,7 +273,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         if (challenge.right.status == IntermediateClaimStatus.CHALLENGED) {
             // @todo how do we pull in the compressed tx data from blob?
             bytes memory publicValues = abi.encode(challenge.left.outputRoot.root, challenge.right.outputRoot.root, _blockTxData);
-            verifyProof(_vkey, publicValues, _proofBytes);
+            verifyProof(VKEY, publicValues, _proofBytes);
 
         // If the right root is accepted, it means nothing has been challenged.
         // The proposer is claiming that left (proposed block minus 1) transition to right (proposed block).
@@ -268,7 +281,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         } else {
             if (challenge.right.outputRoot.root.raw() == _alternateRoot) revert InvalidRoot();
             bytes memory publicValues = abi.encode(challenge.left.outputRoot.l2BlockNumber, _alternateRoot, _blockTxData);
-            verifyProof(_vkey, publicValues, _proofBytes);
+            verifyProof(VKEY, publicValues, _proofBytes);
         }
 
         // Once the proof has been completed, resolve the game.
