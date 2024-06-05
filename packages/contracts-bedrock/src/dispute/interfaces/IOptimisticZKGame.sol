@@ -2,6 +2,7 @@
 pragma solidity ^0.8.15;
 
 import { IDisputeGame } from "./IDisputeGame.sol";
+import "src/dispute/lib/Types.sol";
 
 interface IOptimisticZKGame is IDisputeGame {
     enum IntermediateClaimStatus {

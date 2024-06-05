@@ -369,7 +369,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     }
 
     // Calculate the amount that should be distributed to the winner.
-    function _calculateBonds(uint _challengeId) internal returns (uint) {
+    function _calculateBonds(uint _challengeId) internal view returns (uint) {
         if (_challengeId == GLOBAL_CHALLENGE_ID) return getRequiredBond(GLOBAL_CHALLENGE_ID);
 
         return challenges[_challengeId].totalBonds;
@@ -424,7 +424,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @return requiredBond_ The amount of ETH required to bond for the given challenge.
     /// @dev It is important that the sum of totalBonds on a challenge is enough to justify the ZK work.
     ///      Otherwise, the proposer could frontrun the proof to claim the larger bond back.
-    function getRequiredBond(uint _challengeId) public view returns (uint requiredBond_) {
+    function getRequiredBond(uint _challengeId) public pure returns (uint requiredBond_) {
         // @todo think more about how to fairly calculate this so incentives are right
         // keeping in mind that the proposer could frontrun all the disputes up to the proof?
         // and that there might be games where there are no bisections
