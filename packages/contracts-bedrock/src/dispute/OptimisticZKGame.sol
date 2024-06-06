@@ -273,24 +273,25 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         // Require that the left and right roots are adjacent and ready to prove.
         if (challenge.left.outputRoot.l2BlockNumber + 1 != challenge.right.outputRoot.l2BlockNumber) revert NotReadyToProve();
 
-        // If the right root has been challenged by the proposer, the challenger must prove that we can transition from left to right.
+        // Validate public values passed to the verifier: The real left root of the game matches the passed l2PreRoot.
+        if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+
+        // Validate public values passed to the verifier: The real L1 block root matches the passed l1Root.
+        // @todo verify relevant L1 block root matches _publicValues.l1Root
+
+        // Validate public values passed to the verifier: The real commitment to the blob matches the passed blobKzgCommitment.
+        // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
+
         if (challenge.right.status == IntermediateClaimStatus.CHALLENGED) {
-            if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+            // If the right root has been challenged by the proposer, the challenger must prove that we CAN transition from left to right.
+            // Therefore, prove that the real right root matches the passed l2PostRoot.
             if (challenge.right.outputRoot.root.raw() != _publicValues.l2PostRoot) revert InvalidRoot();
-            // @todo verify relevant L1 block root matches _publicValues.l1Root
-            // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
-
             verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
-
-        // If the right root is accepted, it means nothing has been challenged.
-        // The proposer is claiming that left (proposed block minus 1) transition to right (proposed block).
-        // The challenger must prove that left (proposed block minus 1) transitions to something else.
         } else {
-            if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+            // If the right root is ACCEPTED, it means nothing has been challenged.
+            // The proposer is claiming that left (proposed block minus 1) DOES transition to right (proposed block).
+            // Therefore, the challenger must prove a block with an l2PostRoot that does NOT match the right root in the game.
             if (challenge.right.outputRoot.root.raw() == _publicValues.l2PostRoot) revert InvalidRoot();
-            // @todo verify relevant L1 block root matches _publicValues.l1Root
-            // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
-
             verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
         }
 
