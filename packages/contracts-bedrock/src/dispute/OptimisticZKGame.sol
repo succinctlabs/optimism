@@ -25,6 +25,12 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @notice An ID used for the proposer's initial bond, since it doesn't fall into a specific challenge.
     uint constant GLOBAL_CHALLENGE_ID = type(uint64).max;
 
+    /// @notice The initial bond required to start a game.
+    uint constant INITIAL_BOND = 1 ether;
+
+    /// @notice The bond required for each bisection.
+    uint constant BISECTION_BOND = 0.1 ether;
+
     /// @notice The DisputeGameFactory contract.
     IDisputeGameFactory immutable FACTORY;
 
@@ -115,7 +121,6 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         if (prevGame.status() != GameStatus.DEFENDER_WINS) revert PreviousGameNotResolved();
 
         // Pull the L2 block number from the previous game.
-        // @audit this is a hack because it's not fault dispute game. why isn't this is core interface?
         uint prevL2BlockNumber = IBlockDisputeGame(address(prevGame)).l2BlockNumber();
 
         // Set the anchorStateRoot to the previous game's root.
@@ -254,7 +259,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     //                        RESOLUTION                          //
     ////////////////////////////////////////////////////////////////
 
-    function proveStep(uint _challengeId, bytes memory _proofBytes, bytes memory _blockTxData, bytes32 _alternateRoot) public payable {
+    function proveStep(uint _challengeId, bytes memory _proofBytes, PublicValuesStruct memory _publicValues) public payable {
         // Use the _challengeId to access the correct challenge struct.
         if (_challengeId >= challenges.length) revert InvalidChallengeId();
         Challenge memory challenge = challenges[_challengeId];
@@ -270,17 +275,23 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
 
         // If the right root has been challenged by the proposer, the challenger must prove that we can transition from left to right.
         if (challenge.right.status == IntermediateClaimStatus.CHALLENGED) {
-            // @todo how do we pull in the compressed tx data from blob?
-            bytes memory publicValues = abi.encode(challenge.left.outputRoot.root, challenge.right.outputRoot.root, _blockTxData);
-            verifyProof(VKEY, publicValues, _proofBytes);
+            if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+            if (challenge.right.outputRoot.root.raw() != _publicValues.l2PostRoot) revert InvalidRoot();
+            // @todo verify relevant L1 block root matches _publicValues.l1Root
+            // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
+
+            verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
 
         // If the right root is accepted, it means nothing has been challenged.
         // The proposer is claiming that left (proposed block minus 1) transition to right (proposed block).
         // The challenger must prove that left (proposed block minus 1) transitions to something else.
         } else {
-            if (challenge.right.outputRoot.root.raw() == _alternateRoot) revert InvalidRoot();
-            bytes memory publicValues = abi.encode(challenge.left.outputRoot.l2BlockNumber, _alternateRoot, _blockTxData);
-            verifyProof(VKEY, publicValues, _proofBytes);
+            if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+            if (challenge.right.outputRoot.root.raw() == _publicValues.l2PostRoot) revert InvalidRoot();
+            // @todo verify relevant L1 block root matches _publicValues.l1Root
+            // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
+
+            verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
         }
 
         // Once the proof has been completed, resolve the game.
@@ -291,8 +302,8 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         _resolveInternal(_challengeIds, msg.sender);
     }
 
-    /// @notice This function is called by the proposer to end the game if they were not successfully challenged.
-    // @audit this is a bit different from optimism functionality but matched it to match the interface
+    /// @notice This function is called to end the game in favor of the proposer if they were not successfully challenged.
+    /// @dev Unlike the Fraud Proof Game, this can't be called to settle to CHALLENGER_WINS, only DEFENDER_WINS.
     function resolve() public returns (GameStatus status_) {
         // We can only resolve an in progress game where the full game clock has run out.
         // If the proposer clock had run out or a ZK proof succeeded, the status would have been updated.
@@ -438,10 +449,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @dev It is important that the sum of totalBonds on a challenge is enough to justify the ZK work.
     ///      Otherwise, the proposer could frontrun the proof to claim the larger bond back.
     function getRequiredBond(uint _challengeId) public pure returns (uint requiredBond_) {
-        // @todo think more about how to fairly calculate this so incentives are right
-        // keeping in mind that the proposer could frontrun all the disputes up to the proof?
-        // and that there might be games where there are no bisections
-        requiredBond_ = _challengeId == GLOBAL_CHALLENGE_ID ? 1 ether : 0.1 ether;
+        requiredBond_ = _challengeId == GLOBAL_CHALLENGE_ID ? INITIAL_BOND : BISECTION_BOND;
     }
 
     /// @inheritdoc IDisputeGame
@@ -471,9 +479,11 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         extraData_ = _getArgBytes(0x54, 0x60);
     }
 
-    /// @return l2BlockNumber_ The block number that the game claiming is proving.
-    function l2BlockNumber() public pure returns (uint256 l2BlockNumber_) {
-        l2BlockNumber_ = _getArgUint256(0x54);
+    /// @inheritdoc IDisputeGame
+    function gameData() external view returns (GameType gameType_, Claim rootClaim_, bytes memory extraData_) {
+        gameType_ = gameType();
+        rootClaim_ = rootClaim();
+        extraData_ = extraData();
     }
 
 
@@ -487,26 +497,24 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         proposerAddr_ = _getArgAddress(0x94);
     }
 
-    /// @notice Starting output root and block number of the game.
+    /// @inheritdoc IBlockDisputeGame
+    function l2BlockNumber() public pure returns (uint256 l2BlockNumber_) {
+        l2BlockNumber_ = _getArgUint256(0x54);
+    }
+
+    /// @inheritdoc IBlockDisputeGame
     function startingOutputRoot() external view returns (Hash startingRoot_, uint256 l2BlockNumber_) {
         startingRoot_ = Hash.wrap(anchorStateRoot.root.raw());
         l2BlockNumber_ = anchorStateRoot.l2BlockNumber;
     }
 
-    /// @notice Only the starting block number of the game.
+    /// @inheritdoc IBlockDisputeGame
     function startingBlockNumber() external view returns (uint256 startingBlockNumber_) {
         startingBlockNumber_ = anchorStateRoot.l2BlockNumber;
     }
 
-    /// @notice Only the starting output root of the game.
+    /// @inheritdoc IBlockDisputeGame
     function startingRootHash() external view returns (Hash startingRootHash_) {
         startingRootHash_ = Hash.wrap(anchorStateRoot.root.raw());
-    }
-
-    /// @inheritdoc IDisputeGame
-    function gameData() external view returns (GameType gameType_, Claim rootClaim_, bytes memory extraData_) {
-        gameType_ = gameType();
-        rootClaim_ = rootClaim();
-        extraData_ = extraData();
     }
 }
