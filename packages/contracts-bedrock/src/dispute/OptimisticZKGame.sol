@@ -88,6 +88,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @param _weth The DelayedWETH contract.
     /// @param _originBlock The earliest block number that can be proved against.
     /// @param _maxBlockGap The largest allowed gap between the reference block and the block being proved.
+    /// @param _vkey The verification key used by the SP1Verifier contract.
     constructor(
         address _factory,
         GameType _gameType,
@@ -117,7 +118,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         if (msg.sender != address(FACTORY)) revert Unauthorized();
 
         // Query the factory to retrieve a game that has already been settled in favor of the defender.
-        (,, IDisputeGame prevGame) = FACTORY.gameAtIndex(startingRootIndex());
+        (,, IDisputeGame prevGame) = FACTORY.gameAtIndex(startingRootGameIndex());
         if (prevGame.status() != GameStatus.DEFENDER_WINS) revert PreviousGameNotResolved();
 
         // Pull the L2 block number from the previous game.
@@ -154,7 +155,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
 
         // Don't allow proposer to challenge themselves.
         // This is needed so that we can trust that the proposer address winning means the root is valid.
-        if (msg.sender == proposer()) revert ProposerIsChallenger();
+        if (msg.sender == gameCreator()) revert ProposerIsChallenger();
 
         // Create a new challenge.
         challenges.push(Challenge({
@@ -219,7 +220,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     /// @param _accepted Whether the proposer accepts the proposed root or rejects it.
     function respondToSplit(uint _challengeId, bool _accepted) public payable {
         // Only allow the proposer to respond to splits.
-        if (msg.sender != proposer()) revert Unauthorized();
+        if (msg.sender != gameCreator()) revert Unauthorized();
 
         // Use the _challengeId to access the correct challenge struct.
         if (_challengeId >= challenges.length) revert InvalidChallengeId();
@@ -320,7 +321,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         cIds[challenges.length] = GLOBAL_CHALLENGE_ID;
 
         // Resolve all challenges in favor of the proposer, and update the game status.
-        _resolveInternal(cIds, proposer());
+        _resolveInternal(cIds, gameCreator());
 
         // Return the resulting game status.
         return status;
@@ -377,7 +378,7 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
 
         // If this is the first challenge being resolved, update the game status and resolvedAt timestamp.
         if (status == GameStatus.IN_PROGRESS) {
-            status = _recipient == proposer() ? GameStatus.DEFENDER_WINS : GameStatus.CHALLENGER_WINS;
+            status = _recipient == gameCreator() ? GameStatus.DEFENDER_WINS : GameStatus.CHALLENGER_WINS;
             resolvedAt = Timestamp.wrap(uint64(block.timestamp));
         }
     }
@@ -488,14 +489,9 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
     }
 
 
-    /// @return startingRootIndex_ The index of the validated game we are proving from.
-    function startingRootIndex() public pure returns (uint256 startingRootIndex_) {
-        startingRootIndex_ = _getArgUint256(0x74);
-    }
-
-    /// @return proposerAddr_ The address of the proposer for this game.
-    function proposer() public pure returns (address proposerAddr_) {
-        proposerAddr_ = _getArgAddress(0x94);
+    /// @return startingRootGameIndex_ The index of the validated game we are proving from.
+    function startingRootGameIndex() public pure returns (uint256 startingRootGameIndex_) {
+        startingRootGameIndex_ = _getArgUint256(0x74);
     }
 
     /// @inheritdoc IBlockDisputeGame
@@ -503,18 +499,23 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         l2BlockNumber_ = _getArgUint256(0x54);
     }
 
-    /// @inheritdoc IBlockDisputeGame
+
+    /// @notice Starting output root and block number of the game.
+    /// @return startingRoot_ The root that the game claiming is proving.
+    /// @return l2BlockNumber_ The block number that the game claiming is proving.
     function startingOutputRoot() external view returns (Hash startingRoot_, uint256 l2BlockNumber_) {
         startingRoot_ = Hash.wrap(anchorStateRoot.root.raw());
         l2BlockNumber_ = anchorStateRoot.l2BlockNumber;
     }
 
-    /// @inheritdoc IBlockDisputeGame
+    /// @notice Only the starting block number of the game.
+    /// @return startingBlockNumber_ The block number that the game claiming is proving.
     function startingBlockNumber() external view returns (uint256 startingBlockNumber_) {
         startingBlockNumber_ = anchorStateRoot.l2BlockNumber;
     }
 
-    /// @inheritdoc IBlockDisputeGame
+    /// @notice Only the starting output root of the game.
+    /// @return startingRootHash_ The root that the game claiming is proving.
     function startingRootHash() external view returns (Hash startingRootHash_) {
         startingRootHash_ = Hash.wrap(anchorStateRoot.root.raw());
     }
