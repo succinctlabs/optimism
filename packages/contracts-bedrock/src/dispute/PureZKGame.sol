@@ -5,7 +5,7 @@ import { IDisputeGame } from "./interfaces/IDisputeGame.sol";
 import { IBlockDisputeGame }  from "./interfaces/IBlockDisputeGame.sol";
 import { IDelayedWETH } from "./interfaces/IDelayedWETH.sol";
 import { IInitializable } from "./interfaces/IInitializable.sol";
-import { IOptimisticZKGame } from "./interfaces/IOptimisticZKGame.sol";
+import { IPureZKGame } from "./interfaces/IOptimisticZKGame.sol";
 import { IDisputeGameFactory } from "./interfaces/IDisputeGameFactory.sol";
 
 import "src/dispute/lib/Types.sol";
