@@ -12,21 +12,9 @@ interface IPureZKGame is IBlockDisputeGame {
         bytes32 blobKzgCommitment;
     }
 
-    // error Unauthorized();
-    // error ProposerIsChallenger();
-    // error InvalidDurations();
-    // error PreviousGameNotResolved();
-    // error InvalidBlockNumber();
-    // error WrongTurn();
-    // error ReadyToProve();
-    // error NotReadyToProve();
-    // error InvalidChallengeId();
-    // error GameAlreadyResolved();
-    // error ChallengeAlreadyResolved();
-    // error ChallengeCantBeResolved();
-    // error WrongBondAmount();
-    // error TransferFailed();
-    // error ClockNotExpired();
-    // error InvalidRoot();
-    // error InvalidBlobCommitment();
+    error Unauthorized();
+    error PreviousGameNotResolved();
+    error InvalidBlockNumber();
+    error InvalidRoot();
+    error InvalidBlobCommitment();
 }

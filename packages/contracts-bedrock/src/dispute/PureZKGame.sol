@@ -98,7 +98,7 @@ contract PureZKGame is IPureZKGame, Clone, SP1Verifier {
         if (prevGame.rootClaim().raw() != _publicValues.l2PreRoot) revert InvalidRoot();
 
         // Validation #2: The claimed root of is passed as the l2PostRoot.
-        if (rootClaim() != _publicValues.l2PostRoot) revert InvalidRoot();
+        if (rootClaim().raw() != _publicValues.l2PostRoot) revert InvalidRoot();
 
         // Validation #3: The real L1 block root matches the passed l1Root.
         // @todo verify relevant L1 block root matches _publicValues.l1Root
@@ -117,6 +117,11 @@ contract PureZKGame is IPureZKGame, Clone, SP1Verifier {
 
         // Set the game's resolved timestamp to the time of initialization.
         resolvedAt = Timestamp.wrap(uint64(block.timestamp));
+    }
+
+    // no op to satisfy interface
+    function resolve() external view returns (GameStatus status_) {
+        status_ = status;
     }
 
     ////////////////////////////////////////////////////////////////
