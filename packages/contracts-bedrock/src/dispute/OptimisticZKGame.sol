@@ -171,7 +171,8 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
             }),
             current: OutputRoot({ root: Hash.wrap(bytes32(0)), l2BlockNumber: 0 }),
             totalBonds: 0,
-            resolved: false
+            resolved: false,
+            l1Head: blockhash(block.number - 1)
         }));
 
         // Perform the first split on this new challenge.
@@ -274,25 +275,27 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         // Require that the left and right roots are adjacent and ready to prove.
         if (challenge.left.outputRoot.l2BlockNumber + 1 != challenge.right.outputRoot.l2BlockNumber) revert NotReadyToProve();
 
-        // Validate public values passed to the verifier: The real left root of the game matches the passed l2PreRoot.
-        if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidRoot();
+        // Validate public values passed to the verifier...
 
-        // Validate public values passed to the verifier: The real L1 block root matches the passed l1Root.
-        // @todo verify relevant L1 block root matches _publicValues.l1Root
+        // 1) The real left root of the game matches the passed l2PreRoot.
+        if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidPublicInput();
 
-        // Validate public values passed to the verifier: The real commitment to the blob matches the passed blobKzgCommitment.
-        // @todo access correct kzg commitment to verify against _publicValues.blobKzgCommitment?
+        // 2) The real L1 block hash at challenge time matches the passed L1 block hash.
+        if (challenge.l1Head != _publicValues.l1Head) revert InvalidPublicInput();
+
+        // 3) The real L2 block number being proven matches the passed L2 block number.
+        if (challenge.right.outputRoot.l2BlockNumber != _publicValues.l2BlockNumber) revert InvalidPublicInput();
 
         if (challenge.right.status == IntermediateClaimStatus.CHALLENGED) {
-            // If the right root has been challenged by the proposer, the challenger must prove that we CAN transition from left to right.
+            // 4a) If the right root has been challenged by the proposer, the challenger must prove that we CAN transition from left to right.
             // Therefore, prove that the real right root matches the passed l2PostRoot.
-            if (challenge.right.outputRoot.root.raw() != _publicValues.l2PostRoot) revert InvalidRoot();
+            if (challenge.right.outputRoot.root.raw() != _publicValues.l2PostRoot) revert InvalidPublicInput();
             verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
         } else {
-            // If the right root is ACCEPTED, it means nothing has been challenged.
+            // 4b) If the right root is ACCEPTED, it means nothing has been challenged.
             // The proposer is claiming that left (proposed block minus 1) DOES transition to right (proposed block).
             // Therefore, the challenger must prove a block with an l2PostRoot that does NOT match the right root in the game.
-            if (challenge.right.outputRoot.root.raw() == _publicValues.l2PostRoot) revert InvalidRoot();
+            if (challenge.right.outputRoot.root.raw() == _publicValues.l2PostRoot) revert InvalidPublicInput();
             verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
         }
 

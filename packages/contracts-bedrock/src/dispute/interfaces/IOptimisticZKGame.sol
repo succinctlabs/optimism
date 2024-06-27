@@ -24,13 +24,14 @@ interface IOptimisticZKGame is IBlockDisputeGame {
         OutputRoot current;
         uint totalBonds;
         bool resolved;
+        bytes32 l1Head;
     }
 
     struct PublicValuesStruct {
-        bytes32 l1Root;
+        bytes32 l1Head;
         bytes32 l2PreRoot;
         bytes32 l2PostRoot;
-        bytes32 blobKzgCommitment;
+        bytes32 l2BlockNumber;
     }
 
     error Unauthorized();
@@ -48,6 +49,5 @@ interface IOptimisticZKGame is IBlockDisputeGame {
     error WrongBondAmount();
     error TransferFailed();
     error ClockNotExpired();
-    error InvalidRoot();
-    error InvalidBlobCommitment();
+    error InvalidPublicInput();
 }
