@@ -276,7 +276,6 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         if (challenge.left.outputRoot.l2BlockNumber + 1 != challenge.right.outputRoot.l2BlockNumber) revert NotReadyToProve();
 
         // Validate public values passed to the verifier...
-
         // 1) The real left root of the game matches the passed l2PreRoot.
         if (challenge.left.outputRoot.root.raw() != _publicValues.l2PreRoot) revert InvalidPublicInput();
 
