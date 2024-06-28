@@ -32,6 +32,7 @@ interface IOptimisticZKGame is IBlockDisputeGame {
         bytes32 l2PreRoot;
         bytes32 l2PostRoot;
         uint256 l2BlockNumber;
+        uint256 chainId;
     }
 
     error Unauthorized();

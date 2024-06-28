@@ -285,13 +285,16 @@ contract OptimisticZKGame is IOptimisticZKGame, Clone, SP1Verifier {
         // 3) The real L2 block number being proven matches the passed L2 block number.
         if (challenge.right.outputRoot.l2BlockNumber != _publicValues.l2BlockNumber) revert InvalidPublicInput();
 
+        // 4) The real chain ID matches the passed chain ID.
+        if (block.chainId != _publicValues.chainId) revert InvalidPublicInput();
+
         if (challenge.right.status == IntermediateClaimStatus.CHALLENGED) {
-            // 4a) If the right root has been challenged by the proposer, the challenger must prove that we CAN transition from left to right.
+            // 5a) If the right root has been challenged by the proposer, the challenger must prove that we CAN transition from left to right.
             // Therefore, prove that the real right root matches the passed l2PostRoot.
             if (challenge.right.outputRoot.root.raw() != _publicValues.l2PostRoot) revert InvalidPublicInput();
             verifyProof(VKEY, abi.encode(_publicValues), _proofBytes);
         } else {
-            // 4b) If the right root is ACCEPTED, it means nothing has been challenged.
+            // 5b) If the right root is ACCEPTED, it means nothing has been challenged.
             // The proposer is claiming that left (proposed block minus 1) DOES transition to right (proposed block).
             // Therefore, the challenger must prove a block with an l2PostRoot that does NOT match the right root in the game.
             if (challenge.right.outputRoot.root.raw() == _publicValues.l2PostRoot) revert InvalidPublicInput();
