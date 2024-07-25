@@ -25,7 +25,10 @@ contract CommonTest is Test, Setup, Events {
     bool useZK;
     bytes32 zkVKey;
     bytes32 zkStartingL2OutputRoot;
-
+    uint256 zkStartingL2OutputTimestamp;
+    uint256 zkStartingL2OutputBlockNumber;
+    uint256 zkSubmissionInterval;
+    address zkVerifierGateway;
 
     function setUp() public virtual override {
         alice = makeAddr("alice");
@@ -49,7 +52,15 @@ contract CommonTest is Test, Setup, Events {
             deploy.cfg().setUseInterop(true);
         }
         if (useZK) {
-            deploy.cfg().setUseZK(true, zkVKey, zkStartingL2OutputRoot);
+            deploy.cfg().setUseZK(
+                true,
+                zkVKey,
+                zkStartingL2OutputRoot,
+                zkStartingL2OutputTimestamp,
+                zkStartingL2OutputBlockNumber,
+                zkSubmissionInterval,
+                zkVerifierGateway
+            );
         }
 
         vm.etch(address(ffi), vm.getDeployedCode("FFIInterface.sol:FFIInterface"));
@@ -157,7 +168,14 @@ contract CommonTest is Test, Setup, Events {
         useInteropOverride = true;
     }
 
-    function enableZK(bytes32 _zkVKey, bytes32 _startingL2OutputRoot) public {
+    function enableZK(
+        bytes32 _zkVKey,
+        bytes32 _startingL2OutputRoot,
+        uint256 _startingL2OutputTimestamp,
+        uint256 _startingL2OutputBlockNumber,
+        uint256 _submissionInterval,
+        address _verifierGateway
+    ) public {
         // Check if the system has already been deployed, based off of the heuristic that alice and bob have not been
         // set by the `setUp` function yet.
         if (!(alice == address(0) && bob == address(0))) {
@@ -171,5 +189,9 @@ contract CommonTest is Test, Setup, Events {
         useZK = true;
         zkVKey = _zkVKey;
         zkStartingL2OutputRoot = _startingL2OutputRoot;
+        zkStartingL2OutputTimestamp = _startingL2OutputTimestamp;
+        zkStartingL2OutputBlockNumber = _startingL2OutputBlockNumber;
+        zkSubmissionInterval = _submissionInterval;
+        zkVerifierGateway = _verifierGateway;
     }
 }

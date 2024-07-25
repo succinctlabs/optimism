@@ -45,7 +45,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
     uint public chainId;
 
     bytes32 public vkey;
-    SP1VerifierGateway public verifier;
+    SP1VerifierGateway public verifierGateway;
 
     mapping (uint => bytes32) public historicBlockHashes;
 
@@ -88,7 +88,8 @@ contract ZKL2OutputOracle is Initializable, ISemver {
             _finalizationPeriodSeconds: 0,
             _chainId: 0,
             _vkey: bytes32(0),
-            _startingOutputRoot: bytes32(0)
+            _startingOutputRoot: bytes32(0),
+            _verifierGateway: address(0)
         });
     }
 
@@ -105,16 +106,17 @@ contract ZKL2OutputOracle is Initializable, ISemver {
     /// @param _vkey                The verification key of the SP1 program.
     /// @param _startingOutputRoot  The output root of the starting block.
     function initialize(
-        uint256 _submissionInterval, // 1800 = once per hour
-        uint256 _l2BlockTime, // 2
-        uint256 _startingBlockNumber, // ecotone genesis?
-        uint256 _startingTimestamp, // ecotone genesis?
-        address _proposer, // set to addr 0 to make permissionless
-        address _challenger, // set to addr 0 to remove safeguard
-        uint256 _finalizationPeriodSeconds, // 0
-        uint256 _chainId, // 10
+        uint256 _submissionInterval,
+        uint256 _l2BlockTime,
+        uint256 _startingBlockNumber,
+        uint256 _startingTimestamp,
+        address _proposer,
+        address _challenger,
+        uint256 _finalizationPeriodSeconds,
+        uint256 _chainId,
         bytes32 _vkey,
-        bytes32 _startingOutputRoot
+        bytes32 _startingOutputRoot,
+        address _verifierGateway
     )
         public
         initializer
@@ -135,6 +137,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
         finalizationPeriodSeconds = _finalizationPeriodSeconds;
         chainId = _chainId;
         vkey = _vkey;
+        verifierGateway = SP1VerifierGateway(_verifierGateway);
 
         l2Outputs.push(
             Types.OutputProposal({
@@ -143,11 +146,6 @@ contract ZKL2OutputOracle is Initializable, ISemver {
                 l2BlockNumber: uint128(_startingBlockNumber)
             })
         );
-    }
-
-    function upgradeVerifier(SP1VerifierGateway _newVerifier) external {
-        require(msg.sender == proposer, "L2OutputOracle: only the proposer address can upgrade the verifier");
-        verifier = _newVerifier;
     }
 
     /// @notice Getter for the submissionInterval.
@@ -235,9 +233,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
         external
         payable
     {
-        if (proposer != address(0)) {
-            require(msg.sender == proposer, "L2OutputOracle: only the proposer address can propose new outputs");
-        }
+        require(msg.sender == proposer || proposer == address(0), "L2OutputOracle: only the proposer address can propose new outputs");
 
         require(
             _l2BlockNumber == nextBlockNumber(),
@@ -257,14 +253,14 @@ contract ZKL2OutputOracle is Initializable, ISemver {
         );
 
         PublicValuesStruct memory publicValues = PublicValuesStruct({
-            l1Head: _l1BlockHash, // either current
-            l2PreRoot: l2Outputs[nextOutputIndex() - 1].outputRoot, // last one submitted
-            claimRoot: _outputRoot, // anything they want
-            claimBlockNum: _l2BlockNumber, // constrained to last block number + 1800
+            l1Head: _l1BlockHash,
+            l2PreRoot: l2Outputs[nextOutputIndex() - 1].outputRoot,
+            claimRoot: _outputRoot,
+            claimBlockNum: _l2BlockNumber,
             chainId: chainId
         });
 
-        verifier.verifyProof(vkey, abi.encode(publicValues), _proof);
+        verifierGateway.verifyProof(vkey, abi.encode(publicValues), _proof);
 
         emit OutputProposed(_outputRoot, nextOutputIndex(), _l2BlockNumber, block.timestamp);
 

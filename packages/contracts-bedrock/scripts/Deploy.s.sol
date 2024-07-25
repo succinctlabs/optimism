@@ -1277,7 +1277,8 @@ contract Deploy is Deployer {
                     cfg.finalizationPeriodSeconds(),
                     cfg.l2ChainID(),
                     cfg.zkVKey(),
-                    cfg.l2OutputOracleStartingOutputRoot()
+                    cfg.l2OutputOracleStartingOutputRoot(),
+                    cfg.verifierGateway()
                 )
             )
         });

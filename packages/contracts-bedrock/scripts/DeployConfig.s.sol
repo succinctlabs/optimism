@@ -78,6 +78,7 @@ address public superchainConfigGuardian;
     bool public useZK;
     bytes32 public zkVKey;
     bytes32 public l2OutputOracleStartingOutputRoot;
+    address public verifierGateway;
 
     bool public useCustomGasToken;
     address public customGasTokenAddress;
@@ -142,6 +143,7 @@ address public superchainConfigGuardian;
         useZK = _readOr(_json, "$.useZK", false);
         zkVKey = _readOr(_json, "$.zkVKey", bytes32(0));
         l2OutputOracleStartingOutputRoot = _readOr(_json, "$.l2OutputOracleStartingOutputRoot", bytes32(0));
+        verifierGateway = _readOr(_json, "$.verifierGateway", 0x3B6041173B80E77f038f3F2C0f9744f04837185e);
 
         faultGameAbsolutePrestate = stdJson.readUint(_json, "$.faultGameAbsolutePrestate");
         faultGameMaxDepth = stdJson.readUint(_json, "$.faultGameMaxDepth");
@@ -212,15 +214,26 @@ address public superchainConfigGuardian;
     }
 
     /// @notice Allow the `useZK` config to be overridden in testing environments
-    function setUseZK(bool _useZK, bytes32 _zkVKey, bytes32 _startingL2OutputRoot) public {
+    function setUseZK(
+        bool _useZK,
+        bytes32 _zkVKey,
+        bytes32 _startingL2OutputRoot,
+        uint256 _startingL2OutputTimestamp,
+        uint256 _startingL2OutputBlockNumber,
+        uint256 _submissionInterval,
+        address _verifierGateway
+    ) public {
         useZK = _useZK;
         zkVKey = _zkVKey;
-        l2OutputOracleStartingOutputRoot = _startingL2OutputRoot;
-        finalizationPeriodSeconds = 0;
-        l2OutputOracleSubmissionInterval = 900;
-        _l2OutputOracleStartingTimestamp = 1721925325;
-        l2OutputOracleStartingBlockNumber = 123163274;
 
+        l2OutputOracleStartingOutputRoot = _startingL2OutputRoot;
+        _l2OutputOracleStartingTimestamp = int256(_startingL2OutputTimestamp);
+        l2OutputOracleStartingBlockNumber = _startingL2OutputBlockNumber;
+
+        l2OutputOracleSubmissionInterval = _submissionInterval;
+        verifierGateway = _verifierGateway;
+
+        finalizationPeriodSeconds = 0;
     }
 
     /// @notice Allow the `fundDevAccounts` config to be overridden.
