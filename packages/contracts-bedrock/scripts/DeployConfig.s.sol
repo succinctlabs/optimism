@@ -16,7 +16,7 @@ contract DeployConfig is Script {
     string internal _json;
 
     address public finalSystemOwner;
-address public superchainConfigGuardian;
+    address public superchainConfigGuardian;
     uint256 public l1ChainID;
     uint256 public l2ChainID;
     uint256 public l2BlockTime;
