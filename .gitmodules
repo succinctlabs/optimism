@@ -28,4 +28,4 @@
 	url = https://github.com/gelatodigital/automate
 [submodule "packages/contracts-bedrock/lib/sp1-contracts"]
 	path = packages/contracts-bedrock/lib/sp1-contracts
-	url = https://github.com/succinctlabs/sp1-contracts
+	url = https://github.com/zobront/sp1-contracts

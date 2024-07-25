@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.15;
+pragma solidity 0.8.15;
 
 // Testing utilities
 import { stdError, console } from "forge-std/Test.sol";
@@ -28,7 +28,7 @@ contract ZKL2OutputOracle_Init is CommonTest {
 
     function setUp() public virtual override {
         address sp1Verifier = address(new SP1Verifier());
-        SP1VerifierGateway verifierGateway = new SP1VerifierGateway(address(this));
+        SP1VerifierGateway verifierGateway = new SP1VerifierGateway();
         verifierGateway.addRoute(sp1Verifier);
 
         super.enableZK(
