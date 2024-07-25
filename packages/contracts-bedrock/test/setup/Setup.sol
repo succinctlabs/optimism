@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity ^0.8.15;
 
 import { console2 as console } from "forge-std/console2.sol";
 import { Predeploys } from "src/libraries/Predeploys.sol";
@@ -28,6 +28,7 @@ import { DeployConfig } from "scripts/DeployConfig.s.sol";
 import { Deploy } from "scripts/Deploy.s.sol";
 import { L2Genesis, L1Dependencies, OutputMode } from "scripts/L2Genesis.s.sol";
 import { L2OutputOracle } from "src/L1/L2OutputOracle.sol";
+import { ZKL2OutputOracle } from "src/L1/ZKL2OutputOracle.sol";
 import { ProtocolVersions } from "src/L1/ProtocolVersions.sol";
 import { SystemConfig } from "src/L1/SystemConfig.sol";
 import { L1StandardBridge } from "src/L1/L1StandardBridge.sol";
@@ -64,6 +65,7 @@ contract Setup {
     DisputeGameFactory disputeGameFactory;
     DelayedWETH delayedWeth;
     L2OutputOracle l2OutputOracle;
+    ZKL2OutputOracle zkL2OutputOracle;
     SystemConfig systemConfig;
     L1StandardBridge l1StandardBridge;
     L1CrossDomainMessenger l1CrossDomainMessenger;
@@ -127,7 +129,11 @@ contract Setup {
         optimismPortal2 = OptimismPortal2(deploy.mustGetAddress("OptimismPortalProxy"));
         disputeGameFactory = DisputeGameFactory(deploy.mustGetAddress("DisputeGameFactoryProxy"));
         delayedWeth = DelayedWETH(deploy.mustGetAddress("DelayedWETHProxy"));
-        l2OutputOracle = L2OutputOracle(deploy.mustGetAddress("L2OutputOracleProxy"));
+        if (deploy.cfg().useZK()) {
+            zkL2OutputOracle = ZKL2OutputOracle(deploy.mustGetAddress("L2OutputOracleProxy"));
+        } else {
+            l2OutputOracle = L2OutputOracle(deploy.mustGetAddress("L2OutputOracleProxy"));
+        }
         systemConfig = SystemConfig(deploy.mustGetAddress("SystemConfigProxy"));
         l1StandardBridge = L1StandardBridge(deploy.mustGetAddress("L1StandardBridgeProxy"));
         l1CrossDomainMessenger = L1CrossDomainMessenger(deploy.mustGetAddress("L1CrossDomainMessengerProxy"));

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity ^0.8.15;
 
 import { Script } from "forge-std/Script.sol";
 import { console2 as console } from "forge-std/console2.sol";
@@ -16,7 +16,7 @@ contract DeployConfig is Script {
     string internal _json;
 
     address public finalSystemOwner;
-    address public superchainConfigGuardian;
+address public superchainConfigGuardian;
     uint256 public l1ChainID;
     uint256 public l2ChainID;
     uint256 public l2BlockTime;
@@ -75,6 +75,9 @@ contract DeployConfig is Script {
     uint256 public daResolveWindow;
     uint256 public daBondSize;
     uint256 public daResolverRefundPercentage;
+    bool public useZK;
+    bytes32 public zkVKey;
+    bytes32 public l2OutputOracleStartingOutputRoot;
 
     bool public useCustomGasToken;
     address public customGasTokenAddress;
@@ -121,8 +124,8 @@ contract DeployConfig is Script {
         governanceTokenSymbol = stdJson.readString(_json, "$.governanceTokenSymbol");
         governanceTokenOwner = stdJson.readAddress(_json, "$.governanceTokenOwner");
         l2GenesisBlockGasLimit = stdJson.readUint(_json, "$.l2GenesisBlockGasLimit");
-        basefeeScalar = uint32(_readOr(_json, "$.gasPriceOracleBaseFeeScalar", 1368));
-        blobbasefeeScalar = uint32(_readOr(_json, "$.gasPriceOracleBlobBaseFeeScalar", 810949));
+        basefeeScalar = uint32(_readOr(_json, "$.gasPriceOracleBaseFeeScalar", uint256(1368)));
+        blobbasefeeScalar = uint32(_readOr(_json, "$.gasPriceOracleBlobBaseFeeScalar", uint256(810949)));
 
         enableGovernance = stdJson.readBool(_json, "$.enableGovernance");
         eip1559Denominator = stdJson.readUint(_json, "$.eip1559Denominator");
@@ -132,9 +135,13 @@ contract DeployConfig is Script {
         recommendedProtocolVersion = stdJson.readUint(_json, "$.recommendedProtocolVersion");
 
         useFaultProofs = _readOr(_json, "$.useFaultProofs", false);
-        proofMaturityDelaySeconds = _readOr(_json, "$.proofMaturityDelaySeconds", 0);
-        disputeGameFinalityDelaySeconds = _readOr(_json, "$.disputeGameFinalityDelaySeconds", 0);
-        respectedGameType = _readOr(_json, "$.respectedGameType", 0);
+        proofMaturityDelaySeconds = _readOr(_json, "$.proofMaturityDelaySeconds", uint256(0));
+        disputeGameFinalityDelaySeconds = _readOr(_json, "$.disputeGameFinalityDelaySeconds", uint256(0));
+        respectedGameType = _readOr(_json, "$.respectedGameType", uint256(0));
+
+        useZK = _readOr(_json, "$.useZK", false);
+        zkVKey = _readOr(_json, "$.zkVKey", bytes32(0));
+        l2OutputOracleStartingOutputRoot = _readOr(_json, "$.l2OutputOracleStartingOutputRoot", bytes32(0));
 
         faultGameAbsolutePrestate = stdJson.readUint(_json, "$.faultGameAbsolutePrestate");
         faultGameMaxDepth = stdJson.readUint(_json, "$.faultGameMaxDepth");
@@ -149,11 +156,11 @@ contract DeployConfig is Script {
         preimageOracleChallengePeriod = stdJson.readUint(_json, "$.preimageOracleChallengePeriod");
 
         usePlasma = _readOr(_json, "$.usePlasma", false);
-        daCommitmentType = _readOr(_json, "$.daCommitmentType", "KeccakCommitment");
-        daChallengeWindow = _readOr(_json, "$.daChallengeWindow", 1000);
-        daResolveWindow = _readOr(_json, "$.daResolveWindow", 1000);
-        daBondSize = _readOr(_json, "$.daBondSize", 1000000000);
-        daResolverRefundPercentage = _readOr(_json, "$.daResolverRefundPercentage", 0);
+        daCommitmentType = _readOr(_json, "$.daCommitmentType", string("KeccakCommitment"));
+        daChallengeWindow = _readOr(_json, "$.daChallengeWindow", uint256(1000));
+        daResolveWindow = _readOr(_json, "$.daResolveWindow", uint256(1000));
+        daBondSize = _readOr(_json, "$.daBondSize", uint256(1000000000));
+        daResolverRefundPercentage = _readOr(_json, "$.daResolverRefundPercentage", uint256(0));
 
         useCustomGasToken = _readOr(_json, "$.useCustomGasToken", false);
         customGasTokenAddress = _readOr(_json, "$.customGasTokenAddress", address(0));
@@ -204,6 +211,18 @@ contract DeployConfig is Script {
         useInterop = _useInterop;
     }
 
+    /// @notice Allow the `useZK` config to be overridden in testing environments
+    function setUseZK(bool _useZK, bytes32 _zkVKey, bytes32 _startingL2OutputRoot) public {
+        useZK = _useZK;
+        zkVKey = _zkVKey;
+        l2OutputOracleStartingOutputRoot = _startingL2OutputRoot;
+        finalizationPeriodSeconds = 0;
+        l2OutputOracleSubmissionInterval = 900;
+        _l2OutputOracleStartingTimestamp = 1721925325;
+        l2OutputOracleStartingBlockNumber = 123163274;
+
+    }
+
     /// @notice Allow the `fundDevAccounts` config to be overridden.
     function setFundDevAccounts(bool _fundDevAccounts) public {
         fundDevAccounts = _fundDevAccounts;
@@ -234,6 +253,10 @@ contract DeployConfig is Script {
 
     function _readOr(string memory json, string memory key, address defaultValue) internal view returns (address) {
         return vm.keyExists(json, key) ? stdJson.readAddress(json, key) : defaultValue;
+    }
+
+    function _readOr(string memory json, string memory key, bytes32 defaultValue) internal view returns (bytes32) {
+        return vm.keyExists(json, key) ? stdJson.readBytes32(json, key) : defaultValue;
     }
 
     function _readOr(

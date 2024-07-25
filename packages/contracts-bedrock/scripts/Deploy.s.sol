@@ -26,6 +26,7 @@ import { L1ChugSplashProxy } from "src/legacy/L1ChugSplashProxy.sol";
 import { ResolvedDelegateProxy } from "src/legacy/ResolvedDelegateProxy.sol";
 import { L1CrossDomainMessenger } from "src/L1/L1CrossDomainMessenger.sol";
 import { L2OutputOracle } from "src/L1/L2OutputOracle.sol";
+import { ZKL2OutputOracle } from "src/L1/ZKL2OutputOracle.sol";
 import { OptimismMintableERC20Factory } from "src/universal/OptimismMintableERC20Factory.sol";
 import { SuperchainConfig } from "src/L1/SuperchainConfig.sol";
 import { SystemConfig } from "src/L1/SystemConfig.sol";
@@ -284,6 +285,7 @@ contract Deploy is Deployer {
 
     /// @notice Internal function containing the deploy logic.
     function _run() internal virtual {
+        require(!(cfg.useZK() && cfg.useFaultProofs()), "Deploy: ZK and Fault Proofs are mutually exclusive. Please update config json.");
         console.log("start of L1 Deploy!");
         deploySafe("SystemOwnerSafe");
         console.log("deployed Safe!");
@@ -384,6 +386,7 @@ contract Deploy is Deployer {
         deployL1ERC721Bridge();
         deployOptimismPortal();
         deployL2OutputOracle();
+        deployZKL2OutputOracle();
 
         // Fault proofs
         deployOptimismPortal2();
@@ -411,7 +414,12 @@ contract Deploy is Deployer {
         initializeL1ERC721Bridge();
         initializeOptimismMintableERC20Factory();
         initializeL1CrossDomainMessenger();
-        initializeL2OutputOracle();
+        if (cfg.useZK()) {
+            console.log("ZK enabled. Initializing the L2OutputOracle proxy with the ZKL2OutputOracle.");
+            initializeZKL2OutputOracle();
+        } else {
+            initializeL2OutputOracle();
+        }
         initializeDisputeGameFactory();
         initializeDelayedWETH();
         initializeAnchorStateRegistry();
@@ -691,6 +699,29 @@ contract Deploy is Deployer {
 
         save("L2OutputOracle", address(oracle));
         console.log("L2OutputOracle deployed at %s", address(oracle));
+
+        // Override the `L2OutputOracle` contract to the deployed implementation. This is necessary
+        // to check the `L2OutputOracle` implementation alongside dependent contracts, which
+        // are always proxies.
+        Types.ContractSet memory contracts = _proxiesUnstrict();
+        contracts.L2OutputOracle = address(oracle);
+        ChainAssertions.checkL2OutputOracle({
+            _contracts: contracts,
+            _cfg: cfg,
+            _l2OutputOracleStartingTimestamp: 0,
+            _isProxy: false
+        });
+
+        addr_ = address(oracle);
+    }
+
+    /// @notice Deploy the L2OutputOracle
+    function deployZKL2OutputOracle() public broadcast returns (address addr_) {
+        console.log("Deploying ZKL2OutputOracle implementation");
+        ZKL2OutputOracle oracle = new ZKL2OutputOracle{ salt: _implSalt() }();
+
+        save("ZKL2OutputOracle", address(oracle));
+        console.log("ZKL2OutputOracle deployed at %s", address(oracle));
 
         // Override the `L2OutputOracle` contract to the deployed implementation. This is necessary
         // to check the `L2OutputOracle` implementation alongside dependent contracts, which
@@ -1209,6 +1240,44 @@ contract Deploy is Deployer {
                     cfg.l2OutputOracleProposer(),
                     cfg.l2OutputOracleChallenger(),
                     cfg.finalizationPeriodSeconds()
+                )
+            )
+        });
+
+        L2OutputOracle oracle = L2OutputOracle(l2OutputOracleProxy);
+        string memory version = oracle.version();
+        console.log("L2OutputOracle version: %s", version);
+
+        ChainAssertions.checkL2OutputOracle({
+            _contracts: _proxies(),
+            _cfg: cfg,
+            _l2OutputOracleStartingTimestamp: cfg.l2OutputOracleStartingTimestamp(),
+            _isProxy: true
+        });
+    }
+
+    /// @notice Initialize the L2OutputOracle
+    function initializeZKL2OutputOracle() public broadcast {
+        console.log("Upgrading and initializing L2OutputOracle proxy");
+        address l2OutputOracleProxy = mustGetAddress("L2OutputOracleProxy");
+        address l2OutputOracle = mustGetAddress("ZKL2OutputOracle");
+
+        _upgradeAndCallViaSafe({
+            _proxy: payable(l2OutputOracleProxy),
+            _implementation: l2OutputOracle,
+            _innerCallData: abi.encodeCall(
+                ZKL2OutputOracle.initialize,
+                (
+                    cfg.l2OutputOracleSubmissionInterval(),
+                    cfg.l2BlockTime(),
+                    cfg.l2OutputOracleStartingBlockNumber(),
+                    cfg.l2OutputOracleStartingTimestamp(),
+                    cfg.l2OutputOracleProposer(),
+                    cfg.l2OutputOracleChallenger(),
+                    cfg.finalizationPeriodSeconds(),
+                    cfg.l2ChainID(),
+                    cfg.zkVKey(),
+                    cfg.l2OutputOracleStartingOutputRoot()
                 )
             )
         });

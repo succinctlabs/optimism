@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity ^0.8.15;
 
 import { Test } from "forge-std/Test.sol";
 import { Setup } from "test/setup/Setup.sol";
@@ -22,6 +22,10 @@ contract CommonTest is Test, Setup, Events {
     bool useFaultProofs;
     address customGasToken;
     bool useInteropOverride;
+    bool useZK;
+    bytes32 zkVKey;
+    bytes32 zkStartingL2OutputRoot;
+
 
     function setUp() public virtual override {
         alice = makeAddr("alice");
@@ -43,6 +47,9 @@ contract CommonTest is Test, Setup, Events {
         }
         if (useInteropOverride) {
             deploy.cfg().setUseInterop(true);
+        }
+        if (useZK) {
+            deploy.cfg().setUseZK(true, zkVKey, zkStartingL2OutputRoot);
         }
 
         vm.etch(address(ffi), vm.getDeployedCode("FFIInterface.sol:FFIInterface"));
@@ -148,5 +155,21 @@ contract CommonTest is Test, Setup, Events {
         }
 
         useInteropOverride = true;
+    }
+
+    function enableZK(bytes32 _zkVKey, bytes32 _startingL2OutputRoot) public {
+        // Check if the system has already been deployed, based off of the heuristic that alice and bob have not been
+        // set by the `setUp` function yet.
+        if (!(alice == address(0) && bob == address(0))) {
+            revert("CommonTest: Cannot enable ZK after deployment. Consider overriding `setUp`.");
+        }
+        // Check if the system already has Fault Proofs on, in which case ZK cannot be added.
+        if (useFaultProofs) {
+            revert("ZK and Fault Proofs are mutually exclusive");
+        }
+
+        useZK = true;
+        zkVKey = _zkVKey;
+        zkStartingL2OutputRoot = _startingL2OutputRoot;
     }
 }
