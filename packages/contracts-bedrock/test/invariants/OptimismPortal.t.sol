@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity ^0.8.15;
 
 import { StdUtils } from "forge-std/Test.sol";
 import { Vm } from "forge-std/Vm.sol";
@@ -73,82 +73,82 @@ contract OptimismPortal_Depositor is StdUtils, ResourceMetering {
 }
 
 contract OptimismPortal_Invariant_Harness is CommonTest {
-//     // Reusable default values for a test withdrawal
-//     Types.WithdrawalTransaction _defaultTx;
+    // Reusable default values for a test withdrawal
+    Types.WithdrawalTransaction _defaultTx;
 
-//     uint256 _proposedOutputIndex;
-//     uint256 _proposedBlockNumber;
-//     bytes32 _stateRoot;
-//     bytes32 _storageRoot;
-//     bytes32 _outputRoot;
-//     bytes32 _withdrawalHash;
-//     bytes[] _withdrawalProof;
-//     Types.OutputRootProof internal _outputRootProof;
+    uint256 _proposedOutputIndex;
+    uint256 _proposedBlockNumber;
+    bytes32 _stateRoot;
+    bytes32 _storageRoot;
+    bytes32 _outputRoot;
+    bytes32 _withdrawalHash;
+    bytes[] _withdrawalProof;
+    Types.OutputRootProof internal _outputRootProof;
 
-//     function setUp() public virtual override {
-//         super.setUp();
+    function setUp() public virtual override {
+        super.setUp();
 
-//         _defaultTx = Types.WithdrawalTransaction({
-//             nonce: 0,
-//             sender: alice,
-//             target: bob,
-//             value: 100,
-//             gasLimit: 100_000,
-//             data: hex""
-//         });
-//         // Get withdrawal proof data we can use for testing.
-//         (_stateRoot, _storageRoot, _outputRoot, _withdrawalHash, _withdrawalProof) =
-//             ffi.getProveWithdrawalTransactionInputs(_defaultTx);
+        _defaultTx = Types.WithdrawalTransaction({
+            nonce: 0,
+            sender: alice,
+            target: bob,
+            value: 100,
+            gasLimit: 100_000,
+            data: hex""
+        });
+        // Get withdrawal proof data we can use for testing.
+        (_stateRoot, _storageRoot, _outputRoot, _withdrawalHash, _withdrawalProof) =
+            ffi.getProveWithdrawalTransactionInputs(_defaultTx);
 
-//         // Setup a dummy output root proof for reuse.
-//         _outputRootProof = Types.OutputRootProof({
-//             version: bytes32(uint256(0)),
-//             stateRoot: _stateRoot,
-//             messagePasserStorageRoot: _storageRoot,
-//             latestBlockhash: bytes32(uint256(0))
-//         });
-//         _proposedBlockNumber = l2OutputOracle.nextBlockNumber();
-//         _proposedOutputIndex = l2OutputOracle.nextOutputIndex();
+        // Setup a dummy output root proof for reuse.
+        _outputRootProof = Types.OutputRootProof({
+            version: bytes32(uint256(0)),
+            stateRoot: _stateRoot,
+            messagePasserStorageRoot: _storageRoot,
+            latestBlockhash: bytes32(uint256(0))
+        });
+        _proposedBlockNumber = l2OutputOracle.nextBlockNumber();
+        _proposedOutputIndex = l2OutputOracle.nextOutputIndex();
 
-//         // Configure the oracle to return the output root we've prepared.
-//         vm.warp(l2OutputOracle.computeL2Timestamp(_proposedBlockNumber) + 1);
-//         vm.prank(l2OutputOracle.PROPOSER());
-//         l2OutputOracle.proposeL2Output(_outputRoot, _proposedBlockNumber, 0, 0);
+        // Configure the oracle to return the output root we've prepared.
+        vm.warp(l2OutputOracle.computeL2Timestamp(_proposedBlockNumber) + 1);
+        vm.prank(l2OutputOracle.PROPOSER());
+        l2OutputOracle.proposeL2Output(_outputRoot, _proposedBlockNumber, 0, 0);
 
-//         // Warp beyond the finalization period for the block we've proposed.
-//         vm.warp(
-//             l2OutputOracle.getL2Output(_proposedOutputIndex).timestamp + l2OutputOracle.FINALIZATION_PERIOD_SECONDS()
-//                 + 1
-//         );
-//         // Fund the portal so that we can withdraw ETH.
-//         vm.deal(address(optimismPortal), 0xFFFFFFFF);
-//     }
-// }
+        // Warp beyond the finalization period for the block we've proposed.
+        vm.warp(
+            l2OutputOracle.getL2Output(_proposedOutputIndex).timestamp + l2OutputOracle.FINALIZATION_PERIOD_SECONDS()
+                + 1
+        );
+        // Fund the portal so that we can withdraw ETH.
+        vm.deal(address(optimismPortal), 0xFFFFFFFF);
+    }
+}
 
-// contract OptimismPortal_Deposit_Invariant is CommonTest {
-//     OptimismPortal_Depositor internal actor;
+contract OptimismPortal_Deposit_Invariant is CommonTest {
+    OptimismPortal_Depositor internal actor;
 
-//     function setUp() public override {
-//         super.setUp();
-//         // Create a deposit actor.
-//         actor = new OptimismPortal_Depositor(vm, optimismPortal);
+    function setUp() public override {
+        super.setUp();
+        // Create a deposit actor.
+        actor = new OptimismPortal_Depositor(vm, optimismPortal);
 
-//         targetContract(address(actor));
+        targetContract(address(actor));
 
-//         bytes4[] memory selectors = new bytes4[](1);
-//         selectors[0] = actor.depositTransactionCompletes.selector;
-//         FuzzSelector memory selector = FuzzSelector({ addr: address(actor), selectors: selectors });
-//         targetSelector(selector);
-//     }
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = actor.depositTransactionCompletes.selector;
+        FuzzSelector memory selector = FuzzSelector({ addr: address(actor), selectors: selectors });
+        targetSelector(selector);
+    }
 
-//     /// @custom:invariant Deposits of any value should always succeed unless
-//     ///                   `_to` = `address(0)` or `_isCreation` = `true`.
-//     ///
-//     ///                   All deposits, barring creation transactions and transactions
-//     ///                   sent to `address(0)`, should always succeed.
-//     function invariant_deposit_completes() external view {
-//         assertEq(actor.failedToComplete(), false);
-//     }
+    /// @custom:invariant Deposits of any value should always succeed unless
+    ///                   `_to` = `address(0)` or `_isCreation` = `true`.
+    ///
+    ///                   All deposits, barring creation transactions and transactions
+    ///                   sent to `address(0)`, should always succeed.
+    function invariant_deposit_completes() external view {
+        assertEq(actor.failedToComplete(), false);
+    }
 }
 
 contract OptimismPortal_CannotTimeTravel is OptimismPortal_Invariant_Harness {
