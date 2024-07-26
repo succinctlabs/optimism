@@ -322,8 +322,8 @@ func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse, proof []byt
 		proof)
 }
 
-func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNum uint64, blockHash common.Hash) ([]byte, error) {
-	return l.l2ooABI.Pack("checkpointBlockHash", new(big.Int).SetUint64(blockNum), blockHash)
+func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNumber uint64, blockHash common.Hash) ([]byte, error) {
+	return l.l2ooABI.Pack("checkpointBlockHash", new(big.Int).SetUint64(blockNumber), blockHash)
 }
 
 func (l *L2OutputSubmitter) ProposeL2OutputDGFTxData(output *eth.OutputResponse) ([]byte, *big.Int, error) {
@@ -419,6 +419,31 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 	return nil
 }
 
+// sendTransaction creates & sends transactions through the underlying transaction manager.
+func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber uint64, blockHash common.Hash) error {
+	var receipt *types.Receipt
+	data, err := l.CheckpointBlockHashTxData(blockNumber, blockHash)
+	if err != nil {
+		return err
+	}
+	receipt, err = l.Txmgr.Send(ctx, txmgr.TxCandidate{
+		TxData:   data,
+		To:       l.Cfg.L2OutputOracleAddr,
+		GasLimit: 0,
+	})
+	if err != nil {
+		return err
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		l.Log.Error("checkpoint blockhash tx successfully published but reverted", "tx_hash", receipt.TxHash)
+	} else {
+		l.Log.Info("checkpoint blockhash tx successfully published",
+			"tx_hash", receipt.TxHash)
+	}
+	return nil
+}
+
 // loop is responsible for creating & submitting the next outputs
 func (l *L2OutputSubmitter) loop() {
 	defer l.wg.Done()
@@ -466,8 +491,11 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			if err != nil || !shouldPropose {
 				break
 			}
+
+			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+
 			// ZTODO: Replace this with the actual ZKVM call (confirm it's blocking and will wait).
-			cmd := exec.Command("ls", "-l")
+			cmd := exec.Command("ls", "-l", fmt.Sprintf("%d", blockNumber), fmt.Sprintf("%d", blockHash))
 			proof, err := cmd.Output()
 			if err != nil {
 				l.Log.Error("zkvm failed", err)
@@ -518,4 +546,17 @@ func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.Outpu
 		return
 	}
 	l.Metr.RecordL2BlocksProposed(output.BlockRef)
+}
+
+func (l *L2OutputSubmitter) checkpointBlockHash(ctx context.Context) (uint64, common.Hash, error) {
+	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	// ZTODO: Replace these with calls to L1 node.
+	blockNumber := uint64(400)
+	blockHash := common.Hash{}
+
+	err := l.sendCheckpointTransaction(cCtx, blockNumber, blockHash)
+
+	return blockNumber, blockHash, err
 }
