@@ -32,11 +32,7 @@ var (
 		Usage:   "HTTP provider URL for the rollup node. A comma-separated list enables the active rollup provider.",
 		EnvVars: prefixEnvVars("ROLLUP_RPC"),
 	}
-	ProverKeyFlag = &cli.StringFlag{
-		Name:    "prover-key",
-		Usage:   "Prover key for generating the ZK proof remotely",
-		EnvVars: prefixEnvVars("PROVER_KEY"),
-	}
+
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{
 		Name:    "l2oo-address",
