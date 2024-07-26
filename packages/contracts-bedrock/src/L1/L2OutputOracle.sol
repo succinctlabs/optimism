@@ -13,6 +13,16 @@ import { SP1VerifierGateway } from "@sp1-contracts/src/SP1VerifierGateway.sol";
 ///         commitment to the state of the L2 chain. Other contracts like the OptimismPortal use
 ///         these outputs to verify information about the state of L2.
 contract L2OutputOracle is Initializable, ISemver {
+
+    /// @notice Struct containing the public values committed to for the SP1 proof.
+    struct PublicValuesStruct {
+        bytes32 l1Head;
+        bytes32 l2PreRoot;
+        bytes32 claimRoot;
+        uint256 claimBlockNum;
+        uint256 chainId;
+    }
+
     /// @notice The number of the first L2 block recorded in this contract.
     uint256 public startingBlockNumber;
 
@@ -42,20 +52,17 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @custom:network-specific
     uint256 public finalizationPeriodSeconds;
 
+    /// @notice The chain ID of the L2 chain.
     uint public chainId;
 
+    /// @notice The verification key of the SP1 program.
     bytes32 public vkey;
+
+    /// @notice The deployed SP1VerifierGateway contract to request proofs from.
     SP1VerifierGateway public verifierGateway;
 
+    /// @notice A trusted mapping of block numbers to block hashes.
     mapping (uint => bytes32) public historicBlockHashes;
-
-    struct PublicValuesStruct {
-        bytes32 l1Head;
-        bytes32 l2PreRoot;
-        bytes32 claimRoot;
-        uint256 claimBlockNum;
-        uint256 chainId;
-    }
 
     /// @notice Emitted when an output is proposed.
     /// @param outputRoot    The output root.
@@ -72,8 +79,8 @@ contract L2OutputOracle is Initializable, ISemver {
     event OutputsDeleted(uint256 indexed prevNextOutputIndex, uint256 indexed newNextOutputIndex);
 
     /// @notice Semantic version.
-    /// @custom:semver 1.8.0
-    string public constant version = "1.0.0";
+    /// @custom:semver 2.0.0
+    string public constant version = "2.0.0";
 
     /// @notice Constructs the L2OutputOracle contract. Initializes variables to the same values as
     ///         in the getting-started config.
@@ -233,7 +240,10 @@ contract L2OutputOracle is Initializable, ISemver {
         external
         payable
     {
-        require(msg.sender == proposer || proposer == address(0), "L2OutputOracle: only the proposer address can propose new outputs");
+        require(
+            msg.sender == proposer || proposer == address(0),
+            "L2OutputOracle: only the proposer address can propose new outputs"
+        );
 
         require(
             _l2BlockNumber == nextBlockNumber(),
@@ -273,8 +283,10 @@ contract L2OutputOracle is Initializable, ISemver {
         );
     }
 
-    // TODO: This should be safe against reorgs because if the block is reorged out, this will be too.
-    // Think more about this to confirm.
+    /// @notice Checkpoints a block hash at a given block number.
+    /// @param _blockNumber Block number to checkpoint the hash at.
+    /// @param _blockHash   Hash of the block at the given block number.
+    /// @dev Block number must be in the past 256 blocks or this will revert.
     function checkpointBlockHash(uint256 _blockNumber, bytes32 _blockHash) external {
         require(
             blockhash(_blockNumber) == _blockHash,

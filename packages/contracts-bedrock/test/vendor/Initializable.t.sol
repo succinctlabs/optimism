@@ -113,7 +113,7 @@ contract Initializer_Test is Bridge_Initializer {
         contracts.push(
             InitializeableContract({
                 target: deploy.mustGetAddress("L2OutputOracle"),
-                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0)),
+                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0, 0, bytes32(0), bytes32(0), address(0))),
                 initializedSlotVal: deploy.loadInitializedSlot("L2OutputOracle")
             })
         );
@@ -121,7 +121,7 @@ contract Initializer_Test is Bridge_Initializer {
         contracts.push(
             InitializeableContract({
                 target: address(l2OutputOracle),
-                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0)),
+                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0, 0, bytes32(0), bytes32(0), address(0))),
                 initializedSlotVal: deploy.loadInitializedSlot("L2OutputOracleProxy")
             })
         );
