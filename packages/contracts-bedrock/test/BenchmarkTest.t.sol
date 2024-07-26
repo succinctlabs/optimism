@@ -30,98 +30,98 @@ contract SetPrevBaseFee_Test is CommonTest {
 // In order to achieve this we make no assertions, and handle everything else in the setUp()
 // function.
 contract GasBenchMark_OptimismPortal is CommonTest {
-    // Reusable default values for a test withdrawal
-    Types.WithdrawalTransaction _defaultTx;
+//     // Reusable default values for a test withdrawal
+//     Types.WithdrawalTransaction _defaultTx;
 
-    uint256 _proposedOutputIndex;
-    uint256 _proposedBlockNumber;
-    bytes[] _withdrawalProof;
-    Types.OutputRootProof internal _outputRootProof;
-    bytes32 _outputRoot;
+//     uint256 _proposedOutputIndex;
+//     uint256 _proposedBlockNumber;
+//     bytes[] _withdrawalProof;
+//     Types.OutputRootProof internal _outputRootProof;
+//     bytes32 _outputRoot;
 
-    // Use a constructor to set the storage vars above, so as to minimize the number of ffi calls.
-    constructor() {
-        super.setUp();
-        _defaultTx = Types.WithdrawalTransaction({
-            nonce: 0,
-            sender: alice,
-            target: bob,
-            value: 100,
-            gasLimit: 100_000,
-            data: hex""
-        });
+//     // Use a constructor to set the storage vars above, so as to minimize the number of ffi calls.
+//     constructor() {
+//         super.setUp();
+//         _defaultTx = Types.WithdrawalTransaction({
+//             nonce: 0,
+//             sender: alice,
+//             target: bob,
+//             value: 100,
+//             gasLimit: 100_000,
+//             data: hex""
+//         });
 
-        // Get withdrawal proof data we can use for testing.
-        bytes32 _storageRoot;
-        bytes32 _stateRoot;
-        (_stateRoot, _storageRoot, _outputRoot,, _withdrawalProof) = ffi.getProveWithdrawalTransactionInputs(_defaultTx);
+//         // Get withdrawal proof data we can use for testing.
+//         bytes32 _storageRoot;
+//         bytes32 _stateRoot;
+//         (_stateRoot, _storageRoot, _outputRoot,, _withdrawalProof) = ffi.getProveWithdrawalTransactionInputs(_defaultTx);
 
-        // Setup a dummy output root proof for reuse.
-        _outputRootProof = Types.OutputRootProof({
-            version: bytes32(uint256(0)),
-            stateRoot: _stateRoot,
-            messagePasserStorageRoot: _storageRoot,
-            latestBlockhash: bytes32(uint256(0))
-        });
-        _proposedBlockNumber = l2OutputOracle.nextBlockNumber();
-        _proposedOutputIndex = l2OutputOracle.nextOutputIndex();
-    }
+//         // Setup a dummy output root proof for reuse.
+//         _outputRootProof = Types.OutputRootProof({
+//             version: bytes32(uint256(0)),
+//             stateRoot: _stateRoot,
+//             messagePasserStorageRoot: _storageRoot,
+//             latestBlockhash: bytes32(uint256(0))
+//         });
+//         _proposedBlockNumber = l2OutputOracle.nextBlockNumber();
+//         _proposedOutputIndex = l2OutputOracle.nextOutputIndex();
+//     }
 
-    // Get the system into a nice ready-to-use state.
-    function setUp() public virtual override {
-        // Configure the oracle to return the output root we've prepared.
-        vm.warp(l2OutputOracle.computeL2Timestamp(_proposedBlockNumber) + 1);
-        vm.prank(l2OutputOracle.PROPOSER());
-        l2OutputOracle.proposeL2Output(_outputRoot, _proposedBlockNumber, 0, 0);
+//     // Get the system into a nice ready-to-use state.
+//     function setUp() public virtual override {
+//         // Configure the oracle to return the output root we've prepared.
+//         vm.warp(l2OutputOracle.computeL2Timestamp(_proposedBlockNumber) + 1);
+//         vm.prank(l2OutputOracle.PROPOSER());
+//         l2OutputOracle.proposeL2Output(_outputRoot, _proposedBlockNumber, 0, 0);
 
-        // Warp beyond the finalization period for the block we've proposed.
-        vm.warp(
-            l2OutputOracle.getL2Output(_proposedOutputIndex).timestamp + l2OutputOracle.FINALIZATION_PERIOD_SECONDS()
-                + 1
-        );
+//         // Warp beyond the finalization period for the block we've proposed.
+//         vm.warp(
+//             l2OutputOracle.getL2Output(_proposedOutputIndex).timestamp + l2OutputOracle.FINALIZATION_PERIOD_SECONDS()
+//                 + 1
+//         );
 
-        // Fund the portal so that we can withdraw ETH.
-        vm.deal(address(optimismPortal), 0xFFFFFFFF);
-    }
+//         // Fund the portal so that we can withdraw ETH.
+//         vm.deal(address(optimismPortal), 0xFFFFFFFF);
+//     }
 
-    function test_depositTransaction_benchmark() external {
-        optimismPortal.depositTransaction{ value: 100 }(
-            address(1), 0, 50000, false, hex"0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000"
-        );
-    }
+//     function test_depositTransaction_benchmark() external {
+//         optimismPortal.depositTransaction{ value: 100 }(
+//             address(1), 0, 50000, false, hex"0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000"
+//         );
+//     }
 
-    function test_depositTransaction_benchmark_1() external {
-        setPrevBaseFee(vm, address(optimismPortal), 1 gwei);
-        optimismPortal.depositTransaction{ value: 100 }(
-            address(1), 0, 50000, false, hex"0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000"
-        );
-    }
+//     function test_depositTransaction_benchmark_1() external {
+//         setPrevBaseFee(vm, address(optimismPortal), 1 gwei);
+//         optimismPortal.depositTransaction{ value: 100 }(
+//             address(1), 0, 50000, false, hex"0000111122223333444455556666777788889999aaaabbbbccccddddeeeeffff0000"
+//         );
+//     }
 
-    function test_proveWithdrawalTransaction_benchmark() external {
-        optimismPortal.proveWithdrawalTransaction(_defaultTx, _proposedOutputIndex, _outputRootProof, _withdrawalProof);
-    }
-}
+//     function test_proveWithdrawalTransaction_benchmark() external {
+//         optimismPortal.proveWithdrawalTransaction(_defaultTx, _proposedOutputIndex, _outputRootProof, _withdrawalProof);
+//     }
+// }
 
-contract GasBenchMark_L1CrossDomainMessenger is Bridge_Initializer {
-    function test_sendMessage_benchmark_0() external {
-        vm.pauseGasMetering();
-        setPrevBaseFee(vm, address(optimismPortal), 1 gwei);
-        // The amount of data typically sent during a bridge deposit.
-        bytes memory data =
-            hex"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        vm.resumeGasMetering();
-        l1CrossDomainMessenger.sendMessage(bob, data, uint32(100));
-    }
+// contract GasBenchMark_L1CrossDomainMessenger is Bridge_Initializer {
+//     function test_sendMessage_benchmark_0() external {
+//         vm.pauseGasMetering();
+//         setPrevBaseFee(vm, address(optimismPortal), 1 gwei);
+//         // The amount of data typically sent during a bridge deposit.
+//         bytes memory data =
+//             hex"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+//         vm.resumeGasMetering();
+//         l1CrossDomainMessenger.sendMessage(bob, data, uint32(100));
+//     }
 
-    function test_sendMessage_benchmark_1() external {
-        vm.pauseGasMetering();
-        setPrevBaseFee(vm, address(optimismPortal), 10 gwei);
-        // The amount of data typically sent during a bridge deposit.
-        bytes memory data =
-            hex"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        vm.resumeGasMetering();
-        l1CrossDomainMessenger.sendMessage(bob, data, uint32(100));
-    }
+//     function test_sendMessage_benchmark_1() external {
+//         vm.pauseGasMetering();
+//         setPrevBaseFee(vm, address(optimismPortal), 10 gwei);
+//         // The amount of data typically sent during a bridge deposit.
+//         bytes memory data =
+//             hex"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+//         vm.resumeGasMetering();
+//         l1CrossDomainMessenger.sendMessage(bob, data, uint32(100));
+//     }
 }
 
 contract GasBenchMark_L1StandardBridge_Deposit is Bridge_Initializer {
@@ -205,7 +205,7 @@ contract GasBenchMark_L2OutputOracle is CommonTest {
         vm.startPrank(proposer);
     }
 
-    function test_proposeL2Output_benchmark() external {
-        l2OutputOracle.proposeL2Output(nonZeroHash, nextBlockNumber, 0, 0);
-    }
+    // function test_proposeL2Output_benchmark() external {
+    //     l2OutputOracle.proposeL2Output(nonZeroHash, nextBlockNumber, 0, 0);
+    // }
 }

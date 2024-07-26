@@ -13,9 +13,9 @@
   "p2pSequencerAddress": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
   "batchInboxAddress": "0xff00000000000000000000000000000000000000",
   "batchSenderAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-  "l2OutputOracleSubmissionInterval": 6,
-  "l2OutputOracleStartingTimestamp": 1,
-  "l2OutputOracleStartingBlockNumber": 1,
+  "l2OutputOracleSubmissionInterval": 900,
+  "l2OutputOracleStartingTimestamp": 1721925325,
+  "l2OutputOracleStartingBlockNumber": 123163274,
   "gasPriceOracleBaseFeeScalar": 1368,
   "gasPriceOracleBlobBaseFeeScalar": 810949,
   "l2OutputOracleProposer": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
@@ -35,7 +35,7 @@
   "governanceTokenName": "Optimism",
   "governanceTokenSymbol": "OP",
   "governanceTokenOwner": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
-  "finalizationPeriodSeconds": 36,
+  "finalizationPeriodSeconds": 0,
   "eip1559Denominator": 50,
   "eip1559DenominatorCanyon": 250,
   "eip1559Elasticity": 10,
@@ -62,5 +62,8 @@
   "daChallengeWindow": 100,
   "daResolveWindow": 100,
   "daBondSize": 1000,
-  "daResolverRefundPercentage": 50
+  "daResolverRefundPercentage": 50,
+  "zkVKey": "0x003de3cfc15f7b7e2844f33380b8dde65e0cc65de4f7a27e8b3422d376d982f4",
+  "l2OutputOracleStartingOutputRoot": "0xd1e578c114d50dbb4431e81f737481b7d07204a35d5968c4b911ec55ba038ed6",
+  "verifierGateway": "0x0000000000000000000000000000000000000000"
 }

@@ -75,7 +75,6 @@ contract DeployConfig is Script {
     uint256 public daResolveWindow;
     uint256 public daBondSize;
     uint256 public daResolverRefundPercentage;
-    bool public useZK;
     bytes32 public zkVKey;
     bytes32 public l2OutputOracleStartingOutputRoot;
     address public verifierGateway;
@@ -140,7 +139,6 @@ contract DeployConfig is Script {
         disputeGameFinalityDelaySeconds = _readOr(_json, "$.disputeGameFinalityDelaySeconds", uint256(0));
         respectedGameType = _readOr(_json, "$.respectedGameType", uint256(0));
 
-        useZK = _readOr(_json, "$.useZK", false);
         zkVKey = _readOr(_json, "$.zkVKey", bytes32(0));
         l2OutputOracleStartingOutputRoot = _readOr(_json, "$.l2OutputOracleStartingOutputRoot", bytes32(0));
         verifierGateway = _readOr(_json, "$.verifierGateway", 0x3B6041173B80E77f038f3F2C0f9744f04837185e);
@@ -214,26 +212,8 @@ contract DeployConfig is Script {
     }
 
     /// @notice Allow the `useZK` config to be overridden in testing environments
-    function setUseZK(
-        bool _useZK,
-        bytes32 _zkVKey,
-        bytes32 _startingL2OutputRoot,
-        uint256 _startingL2OutputTimestamp,
-        uint256 _startingL2OutputBlockNumber,
-        uint256 _submissionInterval,
-        address _verifierGateway
-    ) public {
-        useZK = _useZK;
-        zkVKey = _zkVKey;
-
-        l2OutputOracleStartingOutputRoot = _startingL2OutputRoot;
-        _l2OutputOracleStartingTimestamp = int256(_startingL2OutputTimestamp);
-        l2OutputOracleStartingBlockNumber = _startingL2OutputBlockNumber;
-
-        l2OutputOracleSubmissionInterval = _submissionInterval;
+    function setVerifierGateway(address _verifierGateway) public {
         verifierGateway = _verifierGateway;
-
-        finalizationPeriodSeconds = 0;
     }
 
     /// @notice Allow the `fundDevAccounts` config to be overridden.
