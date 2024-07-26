@@ -52,7 +52,7 @@ contract L2OutputOracle_Test is L2OutputOracle_Init {
             l2PreRoot: lastOutputRoot,
             claimRoot: claimedOutputRoot,
             claimBlockNum: l2BlockNum,
-            chainId: 901
+            chainId: deploy.cfg().l2ChainID()
         });
 
         vm.prank(l2OutputOracle.PROPOSER());
