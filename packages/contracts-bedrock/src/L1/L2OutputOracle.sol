@@ -288,19 +288,12 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @param _blockHash   Hash of the block at the given block number.
     /// @dev Block number must be in the past 256 blocks or this will revert.
     /// @dev Passing both inputs as zero will automatically checkpoint the most recent blockhash.
-    function checkpointBlockHash(uint256 _blockNumber, bytes32 _blockHash) external returns (uint256, bytes32) {
-        if (_blockNumber == 0 && _blockHash == 0) {
-            _blockNumber = block.number - 1;
-            _blockHash = blockhash(_blockNumber);
-        } else {
-            require(
-                blockhash(_blockNumber) == _blockHash,
-                "L2OutputOracle: block hash does not match the hash at the expected height"
-            );
-        }
+    function checkpointBlockHash(uint256 _blockNumber, bytes32 _blockHash) external {
+        require(
+            blockhash(_blockNumber) == _blockHash,
+            "L2OutputOracle: block hash does not match the hash at the expected height"
+        );
         historicBlockHashes[_blockNumber] = _blockHash;
-
-        return (_blockNumber, _blockHash);
     }
 
     /// @notice Returns an output by index. Needed to return a struct instead of a tuple.

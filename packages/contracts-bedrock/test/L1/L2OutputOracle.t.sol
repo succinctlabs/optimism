@@ -44,8 +44,6 @@ contract L2OutputOracle_Test is L2OutputOracle_Init {
         vm.warp(block.timestamp + (l2OutputOracle.SUBMISSION_INTERVAL() * l2OutputOracle.L2_BLOCK_TIME()));
 
         uint l1BlockNum = deploy.cfg().l2OutputOracleStartingBlockNumber();
-        l2OutputOracle.checkpointBlockHash(l1BlockNum, l1Head);
-
         uint l2BlockNum = l1BlockNum + l2OutputOracle.SUBMISSION_INTERVAL();
         bytes32 lastOutputRoot = l2OutputOracle.getL2Output(l2OutputOracle.latestOutputIndex()).outputRoot;
 

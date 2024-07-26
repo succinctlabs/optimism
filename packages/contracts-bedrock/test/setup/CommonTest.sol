@@ -67,12 +67,15 @@ contract CommonTest is Test, Setup, Events {
         // Set sane initialize block numbers
         vm.warp(deploy.cfg().l2OutputOracleStartingTimestamp() + 1);
         vm.roll(deploy.cfg().l2OutputOracleStartingBlockNumber() + 1);
-        vm.setBlockhash(deploy.cfg().l2OutputOracleStartingBlockNumber(), l1Head);
 
         // Deploy L1
         Setup.L1();
         // Deploy L2
         Setup.L2();
+
+        // Set the block hash and cache in for ZK L2OutputOracle tests
+        vm.setBlockhash(deploy.cfg().l2OutputOracleStartingBlockNumber(), l1Head);
+        l2OutputOracle.checkpointBlockHash(deploy.cfg().l2OutputOracleStartingBlockNumber(), l1Head);
     }
 
     /// @dev Helper function that wraps `TransactionDeposited` event.
