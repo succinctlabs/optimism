@@ -444,7 +444,7 @@ contract OptimismPortal_Test is CommonTest {
         // warp past the finalization period
         vm.warp(finalizationHorizon + 1);
         // It should now be finalized.
-        // assertEq(optimismPortal.isOutputFinalized(nextOutputIndex), true);
+        assertEq(optimismPortal.isOutputFinalized(nextOutputIndex), true);
         // But not the block after it.
         vm.expectRevert(stdError.indexOOBError);
         assertEq(optimismPortal.isOutputFinalized(nextOutputIndex + 1), false);
