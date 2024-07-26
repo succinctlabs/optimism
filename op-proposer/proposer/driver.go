@@ -303,7 +303,6 @@ func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block *big.Int) (*e
 			"allow_non_finalized", l.Cfg.AllowNonFinalized)
 		return nil, false, nil
 	}
-
 	return output, true, nil
 }
 
