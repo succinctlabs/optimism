@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"math/big"
 	_ "net/http/pprof"
+	"os/exec"
 	"sync"
 	"time"
-	"os/exec"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -211,7 +211,7 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 
 // FetchNextOutputInfo gets the block number of the next proposal.
 // It returns: the next block number, if the proposal should be made, error
-func (l *L2OutputSubmitter) FetchNextOutputInfo(ctx context.Context) (*eth.OutputResponse, byte[], bool, error) {
+func (l *L2OutputSubmitter) FetchNextOutputInfo(ctx context.Context) (*eth.OutputResponse, bool, error) {
 	if l.l2ooContract == nil {
 		return nil, false, fmt.Errorf("L2OutputOracle contract not set, cannot fetch next output info")
 	}
@@ -270,7 +270,7 @@ func (l *L2OutputSubmitter) FetchCurrentBlockNumber(ctx context.Context) (*big.I
 	return currentBlockNumber, nil
 }
 
-func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block *big.Int) (*eth.OutputResponse, byte[], bool, error) {
+func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block *big.Int) (*eth.OutputResponse, bool, error) {
 	rollupClient, err := l.RollupProvider.RollupClient(ctx)
 	if err != nil {
 		l.Log.Error("proposer unable to get rollup client", "err", err)
@@ -283,19 +283,19 @@ func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block *big.Int) (*e
 	output, err := rollupClient.OutputAtBlock(cCtx, block.Uint64())
 	if err != nil {
 		l.Log.Error("failed to fetch output at block", "block", block, "err", err)
-		return nil, nil, false, err
+		return nil, false, err
 	}
 	if output.Version != supportedL2OutputVersion {
 		l.Log.Error("unsupported l2 output version", "output_version", output.Version, "supported_version", supportedL2OutputVersion)
-		return nil, nil, false, errors.New("unsupported l2 output version")
+		return nil, false, errors.New("unsupported l2 output version")
 	}
 	if output.BlockRef.Number != block.Uint64() { // sanity check, e.g. in case of bad RPC caching
 		l.Log.Error("invalid blockNumber", "next_block", block, "output_block", output.BlockRef.Number)
-		return nil, nil, false, errors.New("invalid blockNumber")
+		return nil, false, errors.New("invalid blockNumber")
 	}
 
 	// Always propose if it's part of the Finalized L2 chain. Or if allowed, if it's part of the safe L2 chain.
-	if output.BlockRef.Number > output.Status.FinalizedL2.Number || (l.Cfg.AllowNonFinalized && output.BlockRef.Number > output.Status.SafeL2.Number) {
+	if output.BlockRef.Number > output.Status.FinalizedL2.Number && (!l.Cfg.AllowNonFinalized || output.BlockRef.Number > output.Status.SafeL2.Number) {
 		l.Log.Debug("not proposing yet, L2 block is not ready for proposal",
 			"l2_proposal", output.BlockRef,
 			"l2_safe", output.Status.SafeL2,
@@ -304,15 +304,7 @@ func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block *big.Int) (*e
 		return nil, false, nil
 	}
 
-	// ZTODO: Replace this with the actual ZKVM call (confirm it's blocking and will wait).
-	cmd := exec.Command("ls", "-l")
-	proof, err := cmd.Output()
-	if err != nil {
-		l.Log.Error("zkvm failed", err);
-		return nil, nil, false, errors.New("zkvm failed")
-	}
-
-	return output, proof, true, nil
+	return output, true, nil
 }
 
 // ProposeL2OutputTxData creates the transaction data for the ProposeL2Output function
@@ -467,8 +459,15 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			output, proof, shouldPropose, err := l.FetchNextOutputInfo(ctx)
+			output, shouldPropose, err := l.FetchNextOutputInfo(ctx)
 			if err != nil || !shouldPropose {
+				break
+			}
+			// ZTODO: Replace this with the actual ZKVM call (confirm it's blocking and will wait).
+			cmd := exec.Command("ls", "-l")
+			proof, err := cmd.Output()
+			if err != nil {
+				l.Log.Error("zkvm failed", err)
 				break
 			}
 
