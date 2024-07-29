@@ -420,11 +420,11 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 }
 
 // sendTransaction creates & sends transactions through the underlying transaction manager.
-func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber uint64, blockHash common.Hash) error {
+func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber uint64, blockHash common.Hash) (uint64, common.Hash, error) {
 	var receipt *types.Receipt
 	data, err := l.CheckpointBlockHashTxData(blockNumber, blockHash)
 	if err != nil {
-		return err
+		return 0, common.Hash{}, err
 	}
 	receipt, err = l.Txmgr.Send(ctx, txmgr.TxCandidate{
 		TxData:   data,
@@ -432,7 +432,7 @@ func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, block
 		GasLimit: 0,
 	})
 	if err != nil {
-		return err
+		return 0, common.Hash{}, err
 	}
 
 	if receipt.Status == types.ReceiptStatusFailed {
@@ -441,7 +441,7 @@ func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, block
 		l.Log.Info("checkpoint blockhash tx successfully published",
 			"tx_hash", receipt.TxHash)
 	}
-	return nil
+	return blockNumber, blockHash, nil
 }
 
 // loop is responsible for creating & submitting the next outputs
@@ -493,6 +493,10 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			}
 
 			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+			if err != nil {
+				l.Log.Error("failed to checkpoint block hash", "err", err)
+				break
+			}
 
 			// ZTODO: Replace this with the actual ZKVM call (confirm it's blocking and will wait).
 			cmd := exec.Command("ls", "-l", fmt.Sprintf("%d", blockNumber), fmt.Sprintf("%d", blockHash))
@@ -552,11 +556,15 @@ func (l *L2OutputSubmitter) checkpointBlockHash(ctx context.Context) (uint64, co
 	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	// ZTODO: Replace these with calls to L1 node.
-	blockNumber := uint64(400)
-	blockHash := common.Hash{}
+	blockNumber, err := l.Txmgr.BlockNumber(cCtx)
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	header, err := l.Txmgr.BlockHeader(cCtx)
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	blockHash := header.Hash()
 
-	err := l.sendCheckpointTransaction(cCtx, blockNumber, blockHash)
-
-	return blockNumber, blockHash, err
+	return l.sendCheckpointTransaction(cCtx, blockNumber, blockHash)
 }
