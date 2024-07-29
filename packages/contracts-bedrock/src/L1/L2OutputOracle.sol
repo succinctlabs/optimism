@@ -155,6 +155,12 @@ contract L2OutputOracle is Initializable, ISemver {
         );
     }
 
+    function setVKey(bytes32 _vkey) external {
+        /// ZTODO: Use higher level admin role instead of proposer for this.
+        require(msg.sender == proposer, "L2OutputOracle: only the proposer address can set the vKey");
+        vkey = _vkey;
+    }
+
     /// @notice Getter for the submissionInterval.
     ///         Public getter is legacy and will be removed in the future. Use `submissionInterval` instead.
     /// @return Submission interval.
