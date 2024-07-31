@@ -94,7 +94,7 @@ contract CommonTest is Test, Setup, Events {
     /// @dev Helper function to propose an output.
     function proposeAnotherOutput() public {
         bytes32 proposedOutput2 = claimedOutputRoot;
-        uint256 nextBlockNumber = deploy.cfg().l2OutputOracleStartingBlockNumber() + l2OutputOracle.SUBMISSION_INTERVAL();
+        uint256 nextBlockNumber = l2OutputOracle.nextBlockNumber();
         uint256 nextOutputIndex = l2OutputOracle.nextOutputIndex();
         warpToProposeTime(nextBlockNumber);
         uint256 proposedNumber = l2OutputOracle.latestBlockNumber();
@@ -110,7 +110,7 @@ contract CommonTest is Test, Setup, Events {
 
         address proposer = deploy.cfg().l2OutputOracleProposer();
         vm.prank(proposer);
-        l2OutputOracle.proposeL2Output(proposedOutput2, nextBlockNumber, l1Head, deploy.cfg().l2OutputOracleStartingBlockNumber(), proof);
+        l2OutputOracle.proposeL2Output(proposedOutput2, nextBlockNumber, l1Head, proposedNumber, proof);
     }
 
     function enableFaultProofs() public {
