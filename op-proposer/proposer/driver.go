@@ -222,6 +222,7 @@ func (l *L2OutputSubmitter) FetchNextOutputInfo(ctx context.Context) (*eth.Outpu
 		From:    l.Txmgr.From(),
 		Context: cCtx,
 	}
+	// ZTODO: Add span batch logic here to decide whether it's time to propose.
 	nextCheckpointBlock, err := l.l2ooContract.NextBlockNumber(callOpts)
 	if err != nil {
 		l.Log.Error("proposer unable to get next block number", "err", err)

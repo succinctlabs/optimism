@@ -110,8 +110,7 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @param _finalizationPeriodSeconds The minimum time (in seconds) that must elapse before a withdrawal
     ///                                   can be finalized.
     /// @param _chainId             The chain ID of the L2 chain.
-    /// @param _vkey                The verification key of the SP1 program.
-    /// @param _startingOutputRoot  The output root of the starting block.
+    /// @param _verifierGateway     The deployed SP1VerifierGateway contract to request proofs from.
     function initialize(
         uint256 _submissionInterval,
         uint256 _l2BlockTime,
@@ -121,8 +120,6 @@ contract L2OutputOracle is Initializable, ISemver {
         address _challenger,
         uint256 _finalizationPeriodSeconds,
         uint256 _chainId,
-        bytes32 _vkey,
-        bytes32 _startingOutputRoot,
         address _verifierGateway
     )
         public
@@ -143,14 +140,18 @@ contract L2OutputOracle is Initializable, ISemver {
         challenger = _challenger;
         finalizationPeriodSeconds = _finalizationPeriodSeconds;
         chainId = _chainId;
-        vkey = _vkey;
         verifierGateway = SP1VerifierGateway(_verifierGateway);
+    }
+
+    function setInitialOutputRoot(bytes32 _outputRoot) external {
+        require(msg.sender == proposer, "L2OutputOracle: only the proposer address can set the initial output root");
+        require(l2Outputs.length == 0, "L2OutputOracle: initial output root can only be set once");
 
         l2Outputs.push(
             Types.OutputProposal({
-                outputRoot: _startingOutputRoot,
-                timestamp: uint128(_startingTimestamp),
-                l2BlockNumber: uint128(_startingBlockNumber)
+                outputRoot: _outputRoot,
+                timestamp: uint128(startingTimestamp),
+                l2BlockNumber: uint128(startingBlockNumber)
             })
         );
     }
@@ -252,8 +253,8 @@ contract L2OutputOracle is Initializable, ISemver {
         );
 
         require(
-            _l2BlockNumber == nextBlockNumber(),
-            "L2OutputOracle: block number must be equal to next expected block number"
+            _l2BlockNumber <= nextBlockNumber(),
+            "L2OutputOracle: block number must be less than or equal to next expected block number"
         );
 
         require(
@@ -262,6 +263,8 @@ contract L2OutputOracle is Initializable, ISemver {
         );
 
         require(_outputRoot != bytes32(0), "L2OutputOracle: L2 output proposal cannot be the zero hash");
+
+        require(vkey != bytes32(0), "L2OutputOracle: vkey must be set before proposing an output");
 
         require(
             historicBlockHashes[_l1BlockNumber] == _l1BlockHash,
