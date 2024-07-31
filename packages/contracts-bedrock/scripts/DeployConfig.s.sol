@@ -75,9 +75,6 @@ contract DeployConfig is Script {
     uint256 public daResolveWindow;
     uint256 public daBondSize;
     uint256 public daResolverRefundPercentage;
-    bytes32 public zkVKey;
-    bytes32 public l2OutputOracleStartingOutputRoot;
-    address public verifierGateway;
 
     bool public useCustomGasToken;
     address public customGasTokenAddress;
@@ -138,10 +135,6 @@ contract DeployConfig is Script {
         proofMaturityDelaySeconds = _readOr(_json, "$.proofMaturityDelaySeconds", uint256(0));
         disputeGameFinalityDelaySeconds = _readOr(_json, "$.disputeGameFinalityDelaySeconds", uint256(0));
         respectedGameType = _readOr(_json, "$.respectedGameType", uint256(0));
-
-        zkVKey = _readOr(_json, "$.zkVKey", bytes32(0));
-        l2OutputOracleStartingOutputRoot = _readOr(_json, "$.l2OutputOracleStartingOutputRoot", bytes32(0));
-        verifierGateway = _readOr(_json, "$.verifierGateway", 0x3B6041173B80E77f038f3F2C0f9744f04837185e);
 
         faultGameAbsolutePrestate = stdJson.readUint(_json, "$.faultGameAbsolutePrestate");
         faultGameMaxDepth = stdJson.readUint(_json, "$.faultGameMaxDepth");
@@ -209,11 +202,6 @@ contract DeployConfig is Script {
     /// @notice Allow the `useInterop` config to be overridden in testing environments
     function setUseInterop(bool _useInterop) public {
         useInterop = _useInterop;
-    }
-
-    /// @notice Allow the `useZK` config to be overridden in testing environments
-    function setVerifierGateway(address _verifierGateway) public {
-        verifierGateway = _verifierGateway;
     }
 
     /// @notice Allow the `fundDevAccounts` config to be overridden.

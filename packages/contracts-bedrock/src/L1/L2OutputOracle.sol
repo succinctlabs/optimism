@@ -93,10 +93,7 @@ contract L2OutputOracle is Initializable, ISemver {
             _proposer: address(0),
             _challenger: address(0),
             _finalizationPeriodSeconds: 0,
-            _chainId: 0,
-            _vkey: bytes32(0),
-            _startingOutputRoot: bytes32(0),
-            _verifierGateway: address(0)
+            _chainId: 0
         });
     }
 
@@ -110,7 +107,6 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @param _finalizationPeriodSeconds The minimum time (in seconds) that must elapse before a withdrawal
     ///                                   can be finalized.
     /// @param _chainId             The chain ID of the L2 chain.
-    /// @param _verifierGateway     The deployed SP1VerifierGateway contract to request proofs from.
     function initialize(
         uint256 _submissionInterval,
         uint256 _l2BlockTime,
@@ -119,8 +115,7 @@ contract L2OutputOracle is Initializable, ISemver {
         address _proposer,
         address _challenger,
         uint256 _finalizationPeriodSeconds,
-        uint256 _chainId,
-        address _verifierGateway
+        uint256 _chainId
     )
         public
         initializer
@@ -140,7 +135,6 @@ contract L2OutputOracle is Initializable, ISemver {
         challenger = _challenger;
         finalizationPeriodSeconds = _finalizationPeriodSeconds;
         chainId = _chainId;
-        verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
 
     function setInitialOutputRoot(bytes32 _outputRoot) external {
@@ -160,6 +154,11 @@ contract L2OutputOracle is Initializable, ISemver {
         /// ZTODO: Use higher level admin role instead of proposer for this.
         require(msg.sender == proposer, "L2OutputOracle: only the proposer address can set the vKey");
         vkey = _vkey;
+    }
+
+    function setVerifierGateway(address _verifierGateway) external {
+        require(msg.sender == proposer, "L2OutputOracle: only the proposer address can set the verifier gateway");
+        verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
 
     /// @notice Getter for the submissionInterval.

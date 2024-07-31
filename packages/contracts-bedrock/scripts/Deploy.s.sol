@@ -1209,10 +1209,7 @@ contract Deploy is Deployer {
                     cfg.l2OutputOracleProposer(),
                     cfg.l2OutputOracleChallenger(),
                     cfg.finalizationPeriodSeconds(),
-                    cfg.l2ChainID(),
-                    cfg.zkVKey(),
-                    cfg.l2OutputOracleStartingOutputRoot(),
-                    cfg.verifierGateway()
+                    cfg.l2ChainID()
                 )
             )
         });

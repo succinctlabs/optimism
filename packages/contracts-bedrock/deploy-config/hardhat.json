@@ -64,6 +64,5 @@
   "daBondSize": 1000,
   "daResolverRefundPercentage": 50,
   "zkVKey": "0x003de3cfc15f7b7e2844f33380b8dde65e0cc65de4f7a27e8b3422d376d982f4",
-  "l2OutputOracleStartingOutputRoot": "0xd1e578c114d50dbb4431e81f737481b7d07204a35d5968c4b911ec55ba038ed6",
   "verifierGateway": "0x0000000000000000000000000000000000000000"
 }
