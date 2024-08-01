@@ -17,7 +17,7 @@ require (
 	github.com/ethereum/go-ethereum v1.13.15
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-chi/chi/v5 v5.0.12
-	github.com/go-chi/docgen v1.2.0
+	github.com/go-chi/docgen v1.3.0
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb
 	github.com/google/go-cmp v0.6.0
 	github.com/google/gofuzz v1.2.1-0.20220503160820-4a35382e8fc8
