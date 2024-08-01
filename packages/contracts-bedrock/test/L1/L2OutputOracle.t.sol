@@ -33,8 +33,8 @@ contract L2OutputOracle_Init is CommonTest {
         vm.setBlockhash(deploy.cfg().l2OutputOracleStartingBlockNumber(), l1Head);
         l2OutputOracle.checkpointBlockHash(deploy.cfg().l2OutputOracleStartingBlockNumber(), l1Head);
 
-        l2OutputOracle.setVKey(0x003de3cfc15f7b7e2844f33380b8dde65e0cc65de4f7a27e8b3422d376d982f4);
-        l2OutputOracle.setInitialOutputRoot(0xd1e578c114d50dbb4431e81f737481b7d07204a35d5968c4b911ec55ba038ed6);
+        l2OutputOracle.setVKey(zkVKey);
+        l2OutputOracle.setInitialOutputRoot(startingOutputRoot);
         vm.stopPrank();
     }
 }
@@ -42,7 +42,7 @@ contract L2OutputOracle_Init is CommonTest {
 contract L2OutputOracle_Test is L2OutputOracle_Init {
     function test_startingL2OutputOracleValues_succeeds() external {
         Types.OutputProposal memory initialProposal = l2OutputOracle.getL2Output(0);
-        assertEq(initialProposal.outputRoot, 0xd1e578c114d50dbb4431e81f737481b7d07204a35d5968c4b911ec55ba038ed6);
+        assertEq(initialProposal.outputRoot, startingOutputRoot);
         assertEq(initialProposal.timestamp, deploy.cfg().l2OutputOracleStartingTimestamp());
         assertEq(initialProposal.l2BlockNumber, deploy.cfg().l2OutputOracleStartingBlockNumber());
     }
