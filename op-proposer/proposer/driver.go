@@ -7,6 +7,8 @@ import (
 	"math/big"
 	_ "net/http/pprof"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +77,8 @@ type L2OutputSubmitter struct {
 
 	dgfContract *bindings.DisputeGameFactoryCaller
 	dgfABI      *abi.ABI
+
+	db ProofDB
 }
 
 // NewL2OutputSubmitter creates a new L2 Output Submitter
@@ -96,6 +100,17 @@ func NewL2OutputSubmitter(setup DriverSetup) (_ *L2OutputSubmitter, err error) {
 	} else {
 		return nil, errors.New("neither the `L2OutputOracle` nor `DisputeGameFactory` addresses were provided")
 	}
+}
+
+func (l *L2OutputSubmitter) Close() error {
+	l.cancel()    // Cancel the context
+	close(l.done) // Signal all goroutines to stop
+	l.wg.Wait()   // Wait for all goroutines to finish
+
+	if l.db != nil {
+		return l.db.Close()
+	}
+	return nil
 }
 
 func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup DriverSetup) (*L2OutputSubmitter, error) {
@@ -120,6 +135,12 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 		return nil, err
 	}
 
+	db, err := InitDB("./proofs.db")
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
 	return &L2OutputSubmitter{
 		DriverSetup: setup,
 		done:        make(chan struct{}),
@@ -128,6 +149,8 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 
 		l2ooContract: l2ooContract,
 		l2ooABI:      parsed,
+
+		db: db,
 	}, nil
 }
 
@@ -205,42 +228,300 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 	close(l.done)
 	l.wg.Wait()
 
+	if l.db.db != nil {
+		if err := l.db.db.Close(); err != nil {
+			return fmt.Errorf("Error closing database: %w", err)
+		}
+	}
+
 	l.Log.Info("Proposer stopped")
 	return nil
 }
 
-// FetchNextOutputInfo gets the block number of the next proposal.
-// It returns: the next block number, if the proposal should be made, error
-func (l *L2OutputSubmitter) FetchNextOutputInfo(ctx context.Context) (*eth.OutputResponse, bool, error) {
-	if l.l2ooContract == nil {
-		return nil, false, fmt.Errorf("L2OutputOracle contract not set, cannot fetch next output info")
+func (l *L2OutputSubmitter) addNextSpanBatchesToDB(ctx context.Context) error {
+	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
+	lastEndBlock, err := l.db.getLatestEndRequested()
+	if err != nil {
+		l.Log.Error("failed to get latest end requested", "err", err)
+		return err
+	}
+	nextBlock := lastEndBlock + 1
+
+	// get the L1 origin based on the next block, which is where we'll start derivation
+	l1Origin, finalizedL1, err := l.fetchL1BlockRange(ctx, nextBlock)
+	if err != nil {
+		l.Log.Error("failed to fetch L1 block range", "err", err)
+		return err
 	}
 
+	// call the CLI tool to fetch all the channels from L1 origin to the current L1 head
+	cmd := exec.Command(
+		"go", "run", "main.go", "fetch",
+		"--start", strconv.FormatUint(l1Origin, 10),
+		"--end", strconv.FormatUint(finalizedL1, 10),
+		"--inbox", "0xFF00000000000000000000000000000000000010",
+		"--sender", "0x6887246668a3b87F54DeB3b94Ba47a6f63F32985",
+		"--l1", "https://mainnet-el.succinct.tools",
+		"--l1.beacon", "https://mainnet-cl.succinct.tools"
+	)
+	cmd.Dir = "../../op-node/cmd/batch-decoder"
+	err = cmd.Run()
+	if err != nil {
+		l.Log.Error("failed to fetch batches", "err", err)
+		return err
+	}
+
+	// call the CLI tool to reassembly the channels and determine the next span batch
+	cmd = exec.Command("go", "run", "main.go", "get-range", fmt.Sprintf("%d", nextBlock))
+	cmd.Dir = "../../op-node/cmd/batch-decoder"
+	spanBatchData, err := cmd.Output()
+	if err != nil {
+		l.Log.Error("failed to get span range", "err", err)
+		return err
+	}
+
+	for spanBatchData != nil {
+		start, end, err := parseSpanBatchResponse(spanBatchData)
+		if err != nil {
+			l.Log.Error("failed to parse span range", "err", err)
+			return err
+		}
+
+		// insert the new span into the db
+		proofReq := ProofRequest{
+			Type:       ProofTypeSPAN,
+			StartBlock: start,
+			EndBlock:   end,
+			Status:     ProofStatusUNREQ,
+		}
+		err = l.db.newEntry(proofReq)
+		if err != nil {
+			l.Log.Error("failed to insert proof request", "err", err)
+			return err
+		}
+
+		cmd = exec.Command("go", "run", "main.go", "get-range", fmt.Sprintf("%d", nextBlock))
+		cmd.Dir = "../../op-node/cmd/batch-decoder"
+		spanBatchData, err = cmd.Output()
+		if err != nil {
+			l.Log.Error("failed to get span range", "err", err)
+			return err
+		}
+	}
+
+	return nil
+}
+func (l *L2OutputSubmitter) fetchL1BlockRange(ctx context.Context, nextBlock uint64) (uint64, uint64, error) {
 	cCtx, cancel := context.WithTimeout(ctx, l.Cfg.NetworkTimeout)
 	defer cancel()
-	callOpts := &bind.CallOpts{
-		From:    l.Txmgr.From(),
-		Context: cCtx,
-	}
-	// ZTODO: Add span batch logic here to decide whether it's time to propose.
-	nextCheckpointBlock, err := l.l2ooContract.NextBlockNumber(callOpts)
+
+	rollupClient, err := l.RollupProvider.RollupClient(ctx)
 	if err != nil {
-		l.Log.Error("proposer unable to get next block number", "err", err)
-		return nil, false, err
-	}
-	// Fetch the current L2 heads
-	currentBlockNumber, err := l.FetchCurrentBlockNumber(ctx)
-	if err != nil {
-		return nil, false, err
+		l.Log.Error("proposer unable to get rollup client", "err", err)
+		return 0, 0, err
 	}
 
-	// Ensure that we do not submit a block in the future
-	if currentBlockNumber.Cmp(nextCheckpointBlock) < 0 {
-		l.Log.Debug("proposer submission interval has not elapsed", "currentBlockNumber", currentBlockNumber, "nextBlockNumber", nextCheckpointBlock)
-		return nil, false, nil
+	output, err := rollupClient.OutputAtBlock(cCtx, nextBlock)
+	if err != nil {
+		l.Log.Error("proposer unable to get sync status", "err", err)
+		return 0, 0, err
+	}
+	l1Origin := output.BlockRef.L1Origin.Number
+
+	// get the latest finalized L1
+	status, err := rollupClient.SyncStatus(cCtx)
+	if err != nil {
+		l.Log.Error("proposer unable to get sync status", "err", err)
+		return 0, 0, err
+	}
+	finalizedL1 := status.FinalizedL1.Number
+
+	return l1Origin, finalizedL1, nil
+}
+
+func parseSpanBatchResponse(data []byte) (uint64, uint64, error) {
+	parts := strings.Split(string(data), " ")
+	if len(parts) != 2 {
+		l.Log.Error("too many parts in span batch response", "span", spanBatchData)
+		return errors.New("failed to parse span range")
+	}
+	start, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing start value: %w", err)
+	}
+	end, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing end value: %w", err)
 	}
 
-	return l.FetchOutput(ctx, nextCheckpointBlock)
+	return start, end, nil
+}
+
+func (l *L2OutputSubmitter) updateRequestedProofs() error {
+	reqs, err := l.db.getRequestedProofs()
+	if err != nil {
+		return err
+	}
+	for _, req := range reqs {
+		// check prover network for req id status
+		// TODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
+		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
+		case "SUCCESS":
+			// validate that proof file was saved to disk
+			filename := fmt.Sprintf("%d-%d.bin", req.StartBlock, req.EndBlock)
+			var subfolder string
+			if req.Type == ProofTypeSPAN {
+				subfolder = "span"
+			} else {
+				subfolder = "agg"
+			}
+			path := filepath.Join(".", "zkvm", "proofs", subfolder, filename)
+
+			_, err := os.Stat(path)
+			if err != nil {
+				if os.IsNotExit(err) {
+					l.Log.Error("proof file not found", "path", path)
+				} else {
+					l.Log.Error("error checking proof file", "err", err)
+				}
+				return err
+			}
+
+			// update status in db to "COMPLETE"
+			err = l.db.updateProofStatus(req.ProverRequestID, ProofStatusCOMPLETE)
+			if err != nil {
+				l.Log.Error("failed to update completed proof status", "err", err)
+				return err
+			}
+
+		case "FAILED":
+			// update status in db to "FAILED"
+			err = l.db.updateProofStatus(req.ProverRequestID, ProofStatusFAILED)
+			if err != nil {
+				l.Log.Error("failed to update failed proof status", "err", err)
+				return err
+			}
+
+			if req.Type == ProofTypeAGG {
+				l.Log.Error("failed to get agg proof", "req", req)
+				return errors.New("failed to get agg proof")
+			}
+
+			// add two new entries for the request split in half
+			tmpStart := req.StartBlock
+			tmpEnd := start + ((req.EndBlock - start) / 2)
+			for i := 0; i < 2; i++ {
+				err = l.db.newEntry(ProofRequest{
+					Type:       ProofTypeSPAN,
+					StartBlock: tmpStart,
+					EndBlock:   tmpEnd,
+					Status:     ProofStatusUNREQ,
+				})
+				if err != nil {
+					l.Log.Error("failed to add new proof request", "err", err)
+					return err
+				}
+
+				tmpStart = tmpEnd + 1
+				tmpEnd = req.EndBlock
+			}
+		}
+	}
+}
+
+func (l *L2OutputSubmitter) generatePendingAggProofs(ctx context.Context) error {
+	// Get the latest L2OO output
+	from, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get latest L2OO output: %w", err)
+	}
+
+	minTo, err := l.l2ooContract.NextOutputIndex(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get next L2OO output: %w", err)
+	}
+
+	_, err := l.db.tryCreateAggProofFromSpanProofs(from, minTo)
+	if err != nil {
+		return fmt.Errorf("failed to create agg proof from span proofs: %w", err)
+	}
+
+	return nil
+}
+
+func (l *L2OutputSubmitter) requestUnrequestedProofs() error {
+	unrequestedProofs, err := l.db.getUnrequestedProofs()
+    if err != nil {
+        return fmt.Errorf("failed to get unrequested proofs: %w", err)
+    }
+
+    for _, proof := range unrequestedProofs {
+		if proof.Type == ProofTypeAGG {
+			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+			if err != nil {
+				l.Log.Error("failed to checkpoint block hash", "err", err)
+				return err
+			}
+			l.db.addL1BlockInfo(proof, blockNumber, blockHash)
+		}
+        go func(p ProofRequest) {
+			// TODO:
+			// - implement requestProofFromKonaSP1 function
+			// - figure out how to get proverReqId back
+			// - determine order of operations (can't wait too long on status but can't preempt)
+            proverRequestID, err := l.requestProofFromKonaSP1(ctx, p)
+            if err != nil {
+                l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
+                return
+            }
+
+            err = l.db.updateProofStatus(proverRequestID, ProofStatusREQ)
+            if err != nil {
+                l.Log.Error("failed to update proof status", "err", err, "proverRequestID", proverRequestID)
+            }
+        }(proof)
+    }
+
+    return nil
+}
+
+func (l *L2OutputSubmitter) submitAggProofs(ctx context.Context) error {
+    // Get the latest output index from the L2OutputOracle contract
+    latestOutputIndex, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+    if err != nil {
+        return fmt.Errorf("failed to get latest output index: %w", err)
+    }
+
+    // Check for a completed AGG proof starting at the next index
+	// TODO: Check for off by one?
+    proofReq, err := l.db.getCompletedAggProofRequest(latestOutputIndex)
+    if err != nil {
+        return fmt.Errorf("failed to query for completed AGG proof: %w", err)
+    }
+
+    if proofReq == nil {
+        return nil
+    }
+
+    // Read the proof file
+    proofFilePath := fmt.Sprintf("zkvm/proofs/agg/%d-%d.bin", proof.StartBlock, proof.EndBlock)
+    proofData, err := os.ReadFile(proofFilePath)
+    if err != nil {
+        return fmt.Errorf("failed to read proof file: %w", err)
+    }
+
+	// TODO: Off by one?
+	output, shouldPropose, err := l.FetchOutput(ctx, proof.EndBlock)
+	if err != nil {
+		return fmt.Errorf("failed to fetch output at block %d: %w", proof.EndBlock, err)
+	} else if !shouldPropose {
+		return fmt.Errorf("output at block %d is not ready for proposal", proof.EndBlock)
+	}
+
+	l.proposeOutput(ctx, output, proofData)
+    l.Log.Info("AGG proof submitted on-chain", "start", proof.StartBlock, "end", proof.EndBlock)
+
+    return nil
 }
 
 // FetchCurrentBlockNumber gets the current block number from the [L2OutputSubmitter]'s [RollupClient]. If the `AllowNonFinalized` configuration
@@ -458,8 +739,6 @@ func (l *L2OutputSubmitter) loop() {
 		}
 	}
 
-	// ZTODO: Connect to db.
-
 	if l.dgfContract == nil {
 		l.loopL2OO(ctx)
 	} else {
@@ -490,61 +769,45 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-
-			// db:
-			// 	- type (span / agg)
-			// 	- start block
-			// 	- end block
-			// 	- status (unreq / req / failed / complete)
-			// 	- prover request ID
-			// 	- l1 blockknum & blockhash (for agg only)
-
-			// 1) update block ranges to prove
-			// - next start block = db.endBlock.sortBy(blocknum).last() + 1
-			// - call cli `fetch` from next start block's L1 origin until l1 head
-			// - call cli `get-range` on the next start block
-			// - if we succeed, add db entry: { span, start, end, unreq, ... }
-			// - repeat until fails
-
-			// 2) update proof statuses
-			// - check db for all proofs with status "req"
-			// - if succeeded: validate that the proof file was saved, then status = "complete"
-			// - if failed: status = "failed" and create two new entries: { span, start, mid, unreq, ... } and { span, mid, end, unreq, ... }
-
-			// 3) request unrequested proofs
-			// - any proof that is "unreq", spawn new thread to call kona-sp1 with native on
-			// - update db status to "req"
-
-			// 4) submit proof on chain
-			// - check if db has any type = "agg", status = "complete", start = l2oo.last()
-			// - if so, use l1 block info from db and generated proof to submit on chain
-
-			// 5) request agg proof
-			// - require(no "agg" && "req" && start = l2oo.last())
-			// - require("span" && "complete" && start = l2oo.last()), looped where start = end from last, until at least l2oo.next()
-			// - if so, checkpoint { l1BlockNum, l1BlockHash } to l1 contract
-			// - then submit kona-sp1 request for agg proof & change db status to "req"
-
-			output, shouldPropose, err := l.FetchNextOutputInfo(ctx)
-			if err != nil || !shouldPropose {
-				break
-			}
-
-			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+			// 1) Queue up any span batches that are ready to prove.
+			// This is done by checking the chain for completed channels and pulling span batches out.
+			// We add them to the DB as "UNREQ" so they are queued up to request later.
+			err := l.addNextSpanBatchesToDB(ctx)
 			if err != nil {
-				l.Log.Error("failed to checkpoint block hash", "err", err)
+				l.Log.Error("failed to add next span batches to db", "err", err)
 				break
 			}
 
-			// ZTODO: Replace this with the actual ZKVM call (confirm it's blocking and will wait).
-			cmd := exec.Command("ls", "-l", fmt.Sprintf("%d", blockNumber), fmt.Sprintf("%d", blockHash))
-			proof, err := cmd.Output()
+			// 2) Check the statuses of all requested proofs.
+			// If it's successfully returned, we validate that we have it on disk and set status = "COMPLETE".
+			// If it fails, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
+			err = l.updateRequestedProofs()
 			if err != nil {
-				l.Log.Error("zkvm failed", err)
+				l.Log.Error("failed to update requested proofs", "err", err)
 				break
 			}
 
-			l.proposeOutput(ctx, output, proof)
+			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
+			// This is done by checking if we have contiguous span proofs from the last on chain
+			// output root through at least the submission interval.
+			err = l.generatePendingAggProofs()
+			if err != nil {
+				l.Log.Error("failed to generate pending agg proofs", "err", err)
+				break
+			}
+
+			// 4) Request all unrequested proofs from the prover network.
+			// Any DB entry with status = "UNREQ" means it's queued up and ready.
+			// We request all of these (both span and agg) from the prover network.
+			// For agg proofs, we also checkpoint the blockhash in advance.
+			err = l.requestUnrequestedProofs()
+			if err != nil {
+				l.Log.Error("failed to request unrequested proofs", "err", err)
+				break
+			}
+
+			// 5) Submit agg proofs on chain.
+			err = l.submitAggProofs(ctx)
 		case <-l.done:
 			return
 		}
