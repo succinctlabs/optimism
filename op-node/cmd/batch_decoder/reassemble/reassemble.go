@@ -92,8 +92,8 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 			log.Fatalf("no span batches in channel")
 		}
 
-		startBlock := TimestampToBlock(rollupCfg, ch.Batches[0].GetTimestamp())
 		for idx, b := range ch.Batches {
+			startBlock := TimestampToBlock(rollupCfg, b.GetTimestamp())
 			spanBatch, success := b.AsSpanBatch()
 			if !success {
 				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
