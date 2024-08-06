@@ -429,7 +429,7 @@ func (l *L2OutputSubmitter) updateRequestedProofs() error {
 	}
 }
 
-func (l *L2OutputSubmitter) generatePendingAggProofs(ctx context.Context) error {
+func (l *L2OutputSubmitter) queuePendingAggProofs(ctx context.Context) error {
 	// Get the latest L2OO output
 	from, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
 	if err != nil {
@@ -790,7 +790,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
 			// This is done by checking if we have contiguous span proofs from the last on chain
 			// output root through at least the submission interval.
-			err = l.generatePendingAggProofs()
+			err = l.queuePendingAggProofs()
 			if err != nil {
 				l.Log.Error("failed to generate pending agg proofs", "err", err)
 				break
