@@ -102,9 +102,9 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 			}
 			blockCount += spanBatch.GetBlockCount()
 		}
-		endBlock := l2Block + uint64(blockCount) - 1
+		endBlock := startBlock + uint64(blockCount) - 1
 		if l2Block >= startBlock && l2Block <= endBlock {
-			fmt.Printf("Start: %v, End: %v, Length: %v", startBlock, endBlock, blockCount)
+			fmt.Printf("Start: %v, End: %v, Length: %v\n", startBlock, endBlock, blockCount)
 		}
 	}
 }
