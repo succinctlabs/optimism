@@ -458,6 +458,8 @@ func (l *L2OutputSubmitter) loop() {
 		}
 	}
 
+	// ZTODO: Connect to db.
+
 	if l.dgfContract == nil {
 		l.loopL2OO(ctx)
 	} else {
@@ -488,6 +490,33 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+
+			// db: type (span / agg), start block, end block, status (unreq / req / failed / succeeded), prover ID
+
+			// 1) update block ranges to prove
+			// - call cli `fetch` from next start block's L1 origin until l1 head
+			// - call cli `get-range` on the next start block
+			// - if we succeed, (1) save start & end block in db and (2) update next start block = end block + 1
+			// - repeat until fails
+
+			// 2) check proof statuses
+			// - check db for all proofs with status "requested"
+			// - update to "failed" or "succeeded" based on result
+
+			// 3) break up failed span proofs
+			// - any span proof that is failed, rm range from db
+			// - break range in half, add both halves as "unrequested"
+
+			// 4) request unrequested proofs
+			// - any proof that is "unrequested", spanw new thread to call kona-sp1 with native on
+
+			// 5) submit agg
+			// - check if we have a succeeded agg proof that starts as l2oo.last(); if so, submit on chain
+
+			// 6) try propose agg
+			// - check if we have contiguous proofs from l2oo.last() to l2oo.next() AND no pending agg from l2oo.last()
+			// - if we do, submit kona-sp1 request for agg proof
+
 			output, shouldPropose, err := l.FetchNextOutputInfo(ctx)
 			if err != nil || !shouldPropose {
 				break
