@@ -93,7 +93,7 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 		}
 
 		// TODO: Will there ever be a block that isn't in a span batch by being skipped?
-		startBlock := TimestampToBlock(config, rollupCfg, ch.Batches[0].GetTimestamp())
+		startBlock := TimestampToBlock(rollupCfg, ch.Batches[0].GetTimestamp())
 		blockCount := 0
 		for idx, b := range ch.Batches {
 			spanBatch, success := b.AsSpanBatch()
@@ -109,8 +109,8 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 	}
 }
 
-func TimestampToBlock(config Config, rollupCfg *rollup.Config, l2Timestamp uint64) uint64 {
-	return ((l2Timestamp - rollupCfg.Genesis.L2Time) / config.L2BlockTime) + rollupCfg.Genesis.L2.Number
+func TimestampToBlock(rollupCfg *rollup.Config, l2Timestamp uint64) uint64 {
+	return ((l2Timestamp - rollupCfg.Genesis.L2Time) / rollupCfg.BlockTime) + rollupCfg.Genesis.L2.Number
 }
 
 func writeChannel(ch ChannelWithMetadata, filename string) error {
