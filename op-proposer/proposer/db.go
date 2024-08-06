@@ -64,7 +64,6 @@ func InitDB(dbPath string) (ProofDB, error) {
 	return ProofDB{db}, nil
 }
 
-// TODO: Flip this so it's an arg on the DB?
 func (db ProofDB) newEntry(pr ProofRequest) error {
 	_, err := db.db.Exec(`
         INSERT INTO proof_requests
