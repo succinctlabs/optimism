@@ -80,6 +80,39 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 	}
 }
 
+func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) {
+	frames := LoadFrames(config.InDirectory, config.BatchInbox)
+	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
+	for _, frame := range frames {
+		framesByChannel[frame.Frame.ID] = append(framesByChannel[frame.Frame.ID], frame)
+	}
+	for id, frames := range framesByChannel {
+		ch := processFrames(config, rollupCfg, id, frames)
+		if len(ch.Batches) == 0 {
+			log.Fatalf("no span batches in channel")
+		}
+
+		// TODO: Will there ever be a block that isn't in a span batch by being skipped?
+		startBlock := TimestampToBlock(config, rollupCfg, ch.Batches[0].GetTimestamp())
+		blockCount := 0
+		for idx, b := range ch.Batches {
+			spanBatch, success := b.AsSpanBatch()
+			if !success {
+				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
+			}
+			blockCount += spanBatch.GetBlockCount()
+		}
+		endBlock := l2Block + uint64(blockCount) - 1
+		if l2Block >= startBlock && l2Block <= endBlock {
+			fmt.Printf("Start: %v, End: %v, Length: %v", startBlock, endBlock, blockCount)
+		}
+	}
+}
+
+func TimestampToBlock(config Config, rollupCfg *rollup.Config, l2Timestamp uint64) uint64 {
+	return ((l2Timestamp - rollupCfg.Genesis.L2Time) / config.L2BlockTime) + rollupCfg.Genesis.L2.Number
+}
+
 func writeChannel(ch ChannelWithMetadata, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {

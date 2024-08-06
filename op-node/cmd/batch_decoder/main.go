@@ -187,6 +187,90 @@ func main() {
 			},
 		},
 		{
+			Name:  "get-range",
+			Usage: "For a given L2 block number, gets the full range of the span batch that it's a part of",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "in",
+					Value: "/tmp/batch_decoder/transactions_cache",
+					Usage: "Cache directory for the found transactions",
+				},
+				&cli.Uint64Flag{
+					Name:  "l2-chain-id",
+					Value: 10,
+					Usage: "L2 chain id for span batch derivation. Default value from op-mainnet.",
+				},
+				&cli.Uint64Flag{
+					Name:  "l2-genesis-timestamp",
+					Value: 1686068903,
+					Usage: "L2 genesis time for span batch derivation. Default value from op-mainnet. " +
+						"Superchain-registry prioritized when given value is inconsistent.",
+				},
+				&cli.Uint64Flag{
+					Name:  "l2-genesis-block",
+					Value: 105235063,
+					Usage: "L2 genesis block for span batch derivation. Default value from op-mainnet. " +
+						"Superchain-registry prioritized when given value is inconsistent.",
+				},
+				&cli.Uint64Flag{
+					Name:  "l2-block-time",
+					Value: 2,
+					Usage: "L2 block time for span batch derivation. Default value from op-mainnet. " +
+						"Superchain-registry prioritized when given value is inconsistent.",
+				},
+				&cli.StringFlag{
+					Name:  "inbox",
+					Value: "0xFF00000000000000000000000000000000000010",
+					Usage: "Batch Inbox Address. Default value from op-mainnet. " +
+						"Superchain-registry prioritized when given value is inconsistent.",
+				},
+				&cli.StringFlag{
+					Name:  "l2-block",
+					Usage: "L2 block number to get the span batch range for.",
+				},
+			},
+			Action: func(cliCtx *cli.Context) error {
+				var (
+					L2GenesisTime     uint64         = cliCtx.Uint64("l2-genesis-timestamp")
+					L2GenesisBlock    uint64         = cliCtx.Uint64("l2-genesis-block")
+					L2BlockTime       uint64         = cliCtx.Uint64("l2-block-time")
+					BatchInboxAddress common.Address = common.HexToAddress(cliCtx.String("inbox"))
+					L2Block           uint64         = cliCtx.Uint64("l2-block")
+				)
+				L2ChainID := new(big.Int).SetUint64(cliCtx.Uint64("l2-chain-id"))
+				rollupCfg, err := rollup.LoadOPStackRollupConfig(L2ChainID.Uint64())
+				if err == nil {
+					// prioritize superchain config
+					if L2GenesisTime != rollupCfg.Genesis.L2Time {
+						L2GenesisTime = rollupCfg.Genesis.L2Time
+						fmt.Printf("L2GenesisTime overridden: %v\n", L2GenesisTime)
+					}
+					if L2GenesisBlock != rollupCfg.Genesis.L2.Number {
+						L2GenesisBlock = rollupCfg.Genesis.L2.Number
+						fmt.Printf("L2GenesisBlock overridden: %v\n", L2GenesisBlock)
+					}
+					if L2BlockTime != rollupCfg.BlockTime {
+						L2BlockTime = rollupCfg.BlockTime
+						fmt.Printf("L2BlockTime overridden: %v\n", L2BlockTime)
+					}
+					if BatchInboxAddress != rollupCfg.BatchInboxAddress {
+						BatchInboxAddress = rollupCfg.BatchInboxAddress
+						fmt.Printf("BatchInboxAddress overridden: %v\n", BatchInboxAddress)
+					}
+				}
+				config := reassemble.Config{
+					BatchInbox:    BatchInboxAddress,
+					InDirectory:   cliCtx.String("in"),
+					OutDirectory:  "",
+					L2ChainID:     L2ChainID,
+					L2GenesisTime: L2GenesisTime,
+					L2BlockTime:   L2BlockTime,
+				}
+				reassemble.GetSpanBatchRange(config, rollupCfg, L2Block)
+				return nil
+			},
+		},
+		{
 			Name:  "force-close",
 			Usage: "Create the tx data which will force close a channel",
 			Flags: []cli.Flag{
