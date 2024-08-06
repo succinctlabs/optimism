@@ -92,20 +92,19 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 			log.Fatalf("no span batches in channel")
 		}
 
-		// TODO: Will there ever be a block that isn't in a span batch by being skipped?
 		startBlock := TimestampToBlock(rollupCfg, ch.Batches[0].GetTimestamp())
-		blockCount := 0
 		for idx, b := range ch.Batches {
 			spanBatch, success := b.AsSpanBatch()
 			if !success {
 				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
 			}
-			blockCount += spanBatch.GetBlockCount()
+			blockCount := spanBatch.GetBlockCount()
+			endBlock := startBlock + uint64(blockCount) - 1
+			if l2Block >= startBlock && l2Block <= endBlock {
+				fmt.Printf("Start: %v, End: %v, Length: %v\n", startBlock, endBlock, blockCount)
+			}
 		}
-		endBlock := startBlock + uint64(blockCount) - 1
-		if l2Block >= startBlock && l2Block <= endBlock {
-			fmt.Printf("Start: %v, End: %v, Length: %v\n", startBlock, endBlock, blockCount)
-		}
+
 	}
 }
 
