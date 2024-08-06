@@ -491,7 +491,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 		select {
 		case <-ticker.C:
 
-			// db: type (span / agg), start block, end block, status (unreq / req / failed / succeeded), prover ID
+			// db: type (span / agg), start block, end block, status (unreq / req / failed / succeeded), prover ID, l1 blockknum & blockhash
 
 			// 1) update block ranges to prove
 			// - call cli `fetch` from next start block's L1 origin until l1 head
@@ -511,10 +511,12 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// - any proof that is "unrequested", spanw new thread to call kona-sp1 with native on
 
 			// 5) submit agg
-			// - check if we have a succeeded agg proof that starts as l2oo.last(); if so, submit on chain
+			// - check if we have a succeeded agg proof that starts as l2oo.last()
+			// - if so, use l1 block info from db and generated proof to submit on chain
 
 			// 6) try propose agg
 			// - check if we have contiguous proofs from l2oo.last() to l2oo.next() AND no pending agg from l2oo.last()
+			// - if we do, checkpoint block hash to contract on L1
 			// - if we do, submit kona-sp1 request for agg proof
 
 			output, shouldPropose, err := l.FetchNextOutputInfo(ctx)
