@@ -191,6 +191,10 @@ func main() {
 			Usage: "For a given L2 block number, gets the full range of the span batch that it's a part of",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
+					Name:  "l2-block",
+					Usage: "L2 block number to get the span batch range for.",
+				},
+				&cli.StringFlag{
 					Name:  "in",
 					Value: "/tmp/batch_decoder/transactions_cache",
 					Usage: "Cache directory for the found transactions",
@@ -223,10 +227,6 @@ func main() {
 					Value: "0xFF00000000000000000000000000000000000010",
 					Usage: "Batch Inbox Address. Default value from op-mainnet. " +
 						"Superchain-registry prioritized when given value is inconsistent.",
-				},
-				&cli.StringFlag{
-					Name:  "l2-block",
-					Usage: "L2 block number to get the span batch range for.",
 				},
 			},
 			Action: func(cliCtx *cli.Context) error {
