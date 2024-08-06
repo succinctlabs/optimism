@@ -491,33 +491,39 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 		select {
 		case <-ticker.C:
 
-			// db: type (span / agg), start block, end block, status (unreq / req / failed / succeeded), prover ID, l1 blockknum & blockhash
+			// db:
+			// 	- type (span / agg)
+			// 	- start block
+			// 	- end block
+			// 	- status (unreq / req / failed / complete)
+			// 	- prover request ID
+			// 	- l1 blockknum & blockhash (for agg only)
 
 			// 1) update block ranges to prove
+			// - next start block = db.endBlock.sortBy(blocknum).last() + 1
 			// - call cli `fetch` from next start block's L1 origin until l1 head
 			// - call cli `get-range` on the next start block
-			// - if we succeed, (1) save start & end block in db and (2) update next start block = end block + 1
+			// - if we succeed, add db entry: { span, start, end, unreq, ... }
 			// - repeat until fails
 
-			// 2) check proof statuses
-			// - check db for all proofs with status "requested"
-			// - update to "failed" or "succeeded" based on result
+			// 2) update proof statuses
+			// - check db for all proofs with status "req"
+			// - if succeeded: validate that the proof file was saved, then status = "complete"
+			// - if failed: status = "failed" and create two new entries: { span, start, mid, unreq, ... } and { span, mid, end, unreq, ... }
 
-			// 3) break up failed span proofs
-			// - any span proof that is failed, rm range from db
-			// - break range in half, add both halves as "unrequested"
+			// 3) request unrequested proofs
+			// - any proof that is "unreq", spawn new thread to call kona-sp1 with native on
+			// - update db status to "req"
 
-			// 4) request unrequested proofs
-			// - any proof that is "unrequested", spanw new thread to call kona-sp1 with native on
-
-			// 5) submit agg
-			// - check if we have a succeeded agg proof that starts as l2oo.last()
+			// 4) submit proof on chain
+			// - check if db has any type = "agg", status = "complete", start = l2oo.last()
 			// - if so, use l1 block info from db and generated proof to submit on chain
 
-			// 6) try propose agg
-			// - check if we have contiguous proofs from l2oo.last() to l2oo.next() AND no pending agg from l2oo.last()
-			// - if we do, checkpoint block hash to contract on L1
-			// - if we do, submit kona-sp1 request for agg proof
+			// 5) request agg proof
+			// - require(no "agg" && "req" && start = l2oo.last())
+			// - require("span" && "complete" && start = l2oo.last()), looped where start = end from last, until at least l2oo.next()
+			// - if so, checkpoint { l1BlockNum, l1BlockHash } to l1 contract
+			// - then submit kona-sp1 request for agg proof & change db status to "req"
 
 			output, shouldPropose, err := l.FetchNextOutputInfo(ctx)
 			if err != nil || !shouldPropose {
