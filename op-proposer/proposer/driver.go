@@ -410,32 +410,25 @@ func (l *L2OutputSubmitter) submitAggProofs(ctx context.Context) error {
 
     // Check for a completed AGG proof starting at the next index
 	// TODO: Check for off by one?
-    proofReq, err := l.db.GetCompletedAggProofs(latestOutputIndex)
+    completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex)
     if err != nil {
         return fmt.Errorf("failed to query for completed AGG proof: %w", err)
     }
 
-    if proofReq == nil {
+    if len(completedAggProofs) == 0 {
         return nil
     }
 
-    // Read the proof file
-    proofFilePath := fmt.Sprintf("zkvm/proofs/agg/%d-%d.bin", proof.StartBlock, proof.EndBlock)
-    proofData, err := os.ReadFile(proofFilePath)
-    if err != nil {
-        return fmt.Errorf("failed to read proof file: %w", err)
-    }
+	for _, aggProof := range completedAggProofs {
+		// TODO: Off by one?
+		output, err := l.FetchOutput(ctx, aggProof.EndBlock)
+		if err != nil {
+			return fmt.Errorf("failed to fetch output at block %d: %w", aggProof.EndBlock, err)
+		}
 
-	// TODO: Off by one?
-	output, shouldPropose, err := l.FetchOutput(ctx, proof.EndBlock)
-	if err != nil {
-		return fmt.Errorf("failed to fetch output at block %d: %w", proof.EndBlock, err)
-	} else if !shouldPropose {
-		return fmt.Errorf("output at block %d is not ready for proposal", proof.EndBlock)
+		l.proposeOutput(ctx, output, aggProof.proof)
+		l.Log.Info("AGG proof submitted on-chain", "start", aggProof.StartBlock, "end", aggProof.EndBlock)
 	}
-
-	l.proposeOutput(ctx, output, proofData)
-    l.Log.Info("AGG proof submitted on-chain", "start", proof.StartBlock, "end", proof.EndBlock)
 
     return nil
 }

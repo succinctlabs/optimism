@@ -170,25 +170,9 @@ func (db *ProofDB) GetLatestEndRequested() (uint64, error) {
 }
 
 func (db *ProofDB) GetAllRequestedProofs() ([]*ent.ProofRequest, error) {
-	return db.client.ProofRequest.Query().
+	proofs, err := db.client.ProofRequest.Query().
 		Where(proofrequest.StatusEQ(proofrequest.StatusREQ)).
 		All(context.Background())
-}
-
-func (db *ProofDB) GetAllUnrequestedProofs() ([]*ent.ProofRequest, error) {
-	return db.client.ProofRequest.Query().
-		Where(proofrequest.StatusEQ(proofrequest.StatusUNREQ)).
-		All(context.Background())
-}
-
-func (db *ProofDB) GetCompletedAggProofs(startBlock uint64) (*ent.ProofRequest, error) {
-	proof, err := db.client.ProofRequest.Query().
-		Where(
-			proofrequest.TypeEQ(proofrequest.TypeAGG),
-			proofrequest.StartBlockEQ(startBlock),
-			proofrequest.StatusEQ(proofrequest.StatusCOMPLETE),
-		).
-		First(context.Background())
 
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -197,7 +181,41 @@ func (db *ProofDB) GetCompletedAggProofs(startBlock uint64) (*ent.ProofRequest, 
 		return nil, fmt.Errorf("failed to query completed AGG proof: %w", err)
 	}
 
-	return proof, nil
+	return proofs, nil
+}
+
+func (db *ProofDB) GetAllUnrequestedProofs() ([]*ent.ProofRequest, error) {
+	proofs, err := db.client.ProofRequest.Query().
+		Where(proofrequest.StatusEQ(proofrequest.StatusUNREQ)).
+		All(context.Background())
+
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query completed AGG proof: %w", err)
+	}
+
+	return proofs, nil
+}
+
+func (db *ProofDB) GetAllCompletedAggProofs(startBlock uint64) ([]*ent.ProofRequest, error) {
+	proofs, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.TypeEQ(proofrequest.TypeAGG),
+			proofrequest.StartBlockEQ(startBlock),
+			proofrequest.StatusEQ(proofrequest.StatusCOMPLETE),
+		).
+		All(context.Background())
+
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query completed AGG proof: %w", err)
+	}
+
+	return proofs, nil
 }
 
 func (db *ProofDB) TryCreateAggProofFromSpanProofs(latestOutputIndex, nextOutputIndex uint64) (bool, error) {
