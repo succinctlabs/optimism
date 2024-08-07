@@ -64,18 +64,7 @@ func (db *ProofDB) NewEntry(proofType string, start, end uint64) error {
 	return nil
 }
 
-func (db *ProofDB) UpdateProofStatus(identifier interface{}, newStatus string) error {
-	query := db.client.ProofRequest.Update()
-
-	switch id := identifier.(type) {
-	case int:
-		query = query.Where(proofrequest.ID(id))
-	case string:
-		query = query.Where(proofrequest.ProverRequestID(id))
-	default:
-		return fmt.Errorf("invalid identifier type: %T", identifier)
-	}
-
+func (db *ProofDB) UpdateProofStatus(id int, newStatus string) error {
 	// Convert string to proofrequest.Type
 	var pStatus proofrequest.Status
 	switch newStatus {
@@ -91,7 +80,11 @@ func (db *ProofDB) UpdateProofStatus(identifier interface{}, newStatus string) e
 		return fmt.Errorf("invalid proof status: %s", newStatus)
 	}
 
-	_, err := query.SetStatus(pStatus).Save(context.Background())
+	_, err := db.client.ProofRequest.Update().
+		Where(proofrequest.ID(id)).
+		SetStatus(pStatus).
+		Save(context.Background())
+
 	return err
 }
 
@@ -108,7 +101,7 @@ func (db *ProofDB) SetProverRequestID(id int, proverRequestID string) error {
 	return nil
 }
 
-func (db *ProofDB) AddProof(proverRequestID string, proof []byte) error {
+func (db *ProofDB) AddProof(id int, proof []byte) error {
 	// Start a transaction
 	tx, err := db.client.Tx(context.Background())
 	if err != nil {
@@ -119,24 +112,21 @@ func (db *ProofDB) AddProof(proverRequestID string, proof []byte) error {
 	// Query the existing proof request
 	existingProof, err := tx.ProofRequest.
 		Query().
-		Where(proofrequest.ProverRequestID(proverRequestID)).
+		Where(proofrequest.ID(id)).
 		Only(context.Background())
 
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return fmt.Errorf("no proof request found with ProverRequestID: %s", proverRequestID)
-		}
-		return fmt.Errorf("failed to query existing proof: %w", err)
+		return fmt.Errorf("failed to find existing proof: %w", err)
 	}
 
 	// Check if the status is REQ
 	if existingProof.Status != proofrequest.StatusREQ {
-		return fmt.Errorf("proof request status is not REQ for ProverRequestID: %s", proverRequestID)
+		return fmt.Errorf("proof request status is not REQ: %v", id)
 	}
 
 	// Check if the proof is already set
 	if existingProof.Proof != nil {
-		return fmt.Errorf("proof is already set for ProverRequestID: %s", proverRequestID)
+		return fmt.Errorf("proof is already set: %v", id)
 	}
 
 	// Update the proof and status
@@ -307,4 +297,43 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 	}
 
 	return true, nil
+}
+
+func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([]*ent.ProofRequest, error) {
+	ctx := context.Background()
+	client := db.client
+
+	// Start the query
+	query := client.ProofRequest.Query().
+		Where(
+			proofrequest.TypeEQ(proofrequest.TypeSPAN),
+			proofrequest.StatusEQ(proofrequest.StatusCOMPLETE),
+			proofrequest.StartBlockGTE(aggProof.StartBlock),
+			proofrequest.EndBlockLTE(aggProof.EndBlock),
+		).
+		Order(ent.Asc(proofrequest.FieldStartBlock))
+
+	// Execute the query
+	spans, err := query.All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query span proofs: %w", err)
+	}
+
+	// Check if we have a valid chain of proofs
+	var result []*ent.ProofRequest
+	currentBlock := aggProof.StartBlock
+
+	for _, span := range spans {
+		if span.StartBlock != currentBlock {
+			return nil, fmt.Errorf("gap in proof chain: expected start block %d, got %d", currentBlock, span.StartBlock)
+		}
+		result = append(result, span)
+		currentBlock = span.EndBlock + 1
+	}
+
+	if currentBlock-1 != aggProof.EndBlock {
+		return nil, fmt.Errorf("incomplete proof chain: ends at block %d, expected %d", currentBlock-1, aggProof.EndBlock)
+	}
+
+	return result, nil
 }

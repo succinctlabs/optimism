@@ -2,7 +2,6 @@ package proposer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/ava-labs/coreth/accounts/abi/bind"
@@ -17,36 +16,46 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 	}
 	for _, req := range reqs {
 		// check prover network for req id status
-		// ZTODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
+		// ZTODO: communicate with server to get this response
+		// it'll come back as json
+		// parse into status & proof & proof req time
 		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
 		case "SUCCESS":
 			// get the completed proof from the network
-			// ZTODO
 			proof := []byte("proof")
 
 			// update the proof to the DB and update status to "COMPLETE"
-			err = l.db.AddProof(req.ProverRequestID, proof)
+			err = l.db.AddProof(req.ID, proof)
 			if err != nil {
 				l.Log.Error("failed to update completed proof status", "err", err)
 				return err
 			}
 
 		// ZTODO: insert timeout logic using l.DriverSetup.Cfg.MaxProofTime.
+		// this needs to be adapted so we have all requested proofs included those without proverRequestID
+		// then we can accurately see if they have timed out in native mode
 		case "FAILED", "TIMEOUT":
 			// update status in db to "FAILED"
-			err = l.db.UpdateProofStatus(req.ProverRequestID, "FAILED")
+			err = l.db.UpdateProofStatus(req.ID, "FAILED")
 			if err != nil {
 				l.Log.Error("failed to update failed proof status", "err", err)
 				return err
 			}
 
+			// If an AGG proof failed, we're in trouble.
+			// Try again.
 			if req.Type == proofrequest.TypeAGG {
-				l.Log.Error("failed to get agg proof", "req", req)
-				return errors.New("failed to get agg proof")
-				// ZTODO: Should we default to trying again or will it be same result?
+				l.Log.Error("failed to get agg proof, adding to db to retry", "req", req)
+
+				err = l.db.NewEntry("AGG", req.StartBlock, req.EndBlock)
+				if err != nil {
+					l.Log.Error("failed to add new proof request", "err")
+					return err
+				}
 			}
 
-			// add two new entries for the request split in half
+			// If a SPAN proof failed, assume it was too big.
+			// Therefore, create two new entries for the original proof split in half.
 			tmpStart := req.StartBlock
 			tmpEnd := tmpStart + ((req.EndBlock - tmpStart) / 2)
 			for i := 0; i < 2; i++ {
@@ -91,7 +100,7 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 			if err != nil {
 				err = l.db.UpdateProofStatus(proof.ID, "FAILED")
 				if err != nil {
-					l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", proverRequestID)
+					l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", proof.ID)
 				}
 				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
 			}
@@ -125,8 +134,12 @@ func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
 }
 
 func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
+	subproofs, err := l.db.GetSubproofs(p.StartBlock, p.EndBlock)
+
 	// TODO:
-	// - implement requestProofFromKonaSP1 function
+	// - request using l.DriverSetup.Cfg.KonaServerURL
 	// - start block is first to prove, so we need output root to be at start - 1
-	// - pass db path so kona can update directly
+	// - the response will be the proof ID, so save that in the DB
+
+	return nil
 }
