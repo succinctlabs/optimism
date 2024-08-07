@@ -134,12 +134,43 @@ func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
 }
 
 func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
-	subproofs, err := l.db.GetSubproofs(p.StartBlock, p.EndBlock)
+	prevConfirmedBlock := p.StartBlock - 1
+	var proofId string
+	var err error
 
-	// TODO:
-	// - request using l.DriverSetup.Cfg.KonaServerURL
-	// - start block is first to prove, so we need output root to be at start - 1
-	// - the response will be the proof ID, so save that in the DB
+	if p.Type == proofrequest.TypeAGG {
+		subproofs, err := l.db.GetSubproofs(p.StartBlock, p.EndBlock)
+		if err != nil {
+			return fmt.Errorf("failed to get subproofs: %w", err)
+		}
+
+		proofId, err = l.RequestAggProof(prevConfirmedBlock, p.EndBlock, subproofs)
+		if err != nil {
+			return fmt.Errorf("failed to request AGG proof: %w", err)
+		}
+	} else if p.Type == proofrequest.TypeSPAN {
+		proofId, err = l.RequestSpanProof(prevConfirmedBlock, p.EndBlock)
+		if err != nil {
+			return fmt.Errorf("failed to request SPAN proof: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unknown proof type: %d", p.Type)
+	}
+
+	err = l.db.SetProverRequestID(p.ID, proofId)
+	if err != nil {
+		return fmt.Errorf("failed to set prover request ID: %w", err)
+	}
 
 	return nil
+}
+
+func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) {
+	// use l.DriverSetup.Cfg.KonaServerURL
+	return "", nil
+}
+
+func (l *L2OutputSubmitter) RequestAggProof(start, end uint64, subproofs []*ent.ProofRequest) (string, error) {
+	// use l.DriverSetup.Cfg.KonaServerURL
+	return "", nil
 }
