@@ -303,28 +303,12 @@ func (l *L2OutputSubmitter) updateRequestedProofs() error {
 		// TODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
 		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
 		case "SUCCESS":
-			// validate that proof file was saved to disk
-			filename := fmt.Sprintf("%d-%d.bin", req.StartBlock, req.EndBlock)
-			var subfolder string
-			if req.Type == ProofTypeSPAN {
-				subfolder = "span"
-			} else {
-				subfolder = "agg"
-			}
-			path := filepath.Join(".", "zkvm", "proofs", subfolder, filename)
+			// get the completed proof from the network
+			// ZTODO
+			proof := []byte("proof")
 
-			_, err := os.Stat(path)
-			if err != nil {
-				if os.IsNotExit(err) {
-					l.Log.Error("proof file not found", "path", path)
-				} else {
-					l.Log.Error("error checking proof file", "err", err)
-				}
-				return err
-			}
-
-			// update status in db to "COMPLETE"
-			err = l.db.UpdateProofStatus(req.ProverRequestID, "COMPLETE")
+			// update the proof to the DB and update status to "COMPLETE"
+			err = l.db.AddProof(req.ProverRequestID, proof)
 			if err != nil {
 				l.Log.Error("failed to update completed proof status", "err", err)
 				return err
@@ -341,6 +325,7 @@ func (l *L2OutputSubmitter) updateRequestedProofs() error {
 			if req.Type == ProofTypeAGG {
 				l.Log.Error("failed to get agg proof", "req", req)
 				return errors.New("failed to get agg proof")
+				// ZTODO: Should we default to trying again or will it be same result?
 			}
 
 			// add two new entries for the request split in half

@@ -87,6 +87,56 @@ func (db *ProofDB) UpdateProofStatus(proverRequestID string, newStatus string) e
 	return err
 }
 
+func (db *ProofDB) AddProof(proverRequestID string, proof []byte) error {
+	// Start a transaction
+	tx, err := db.client.Tx(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Query the existing proof request
+	existingProof, err := tx.ProofRequest.
+		Query().
+		Where(proofrequest.ProverRequestID(proverRequestID)).
+		Only(context.Background())
+
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("no proof request found with ProverRequestID: %s", proverRequestID)
+		}
+		return fmt.Errorf("failed to query existing proof: %w", err)
+	}
+
+	// Check if the status is REQ
+	if existingProof.Status != proofrequest.StatusREQ {
+		return fmt.Errorf("proof request status is not REQ for ProverRequestID: %s", proverRequestID)
+	}
+
+	// Check if the proof is already set
+	if existingProof.Proof != nil {
+		return fmt.Errorf("proof is already set for ProverRequestID: %s", proverRequestID)
+	}
+
+	// Update the proof and status
+	_, err = tx.ProofRequest.
+		UpdateOne(existingProof).
+		SetProof(proof).
+		SetStatus(proofrequest.StatusCOMPLETE).
+		Save(context.Background())
+
+	if err != nil {
+		return fmt.Errorf("failed to update proof and status: %w", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumber uint64, l1BlockHash string) error {
 	_, err := db.client.ProofRequest.Update().
 		Where(

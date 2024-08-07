@@ -19,6 +19,7 @@ var (
 		{Name: "proof_request_time", Type: field.TypeInt64, Nullable: true},
 		{Name: "l1_block_number", Type: field.TypeUint64, Nullable: true},
 		{Name: "l1_block_hash", Type: field.TypeString, Nullable: true},
+		{Name: "proof", Type: field.TypeBytes, Nullable: true},
 	}
 	// ProofRequestsTable holds the schema information for the "proof_requests" table.
 	ProofRequestsTable = &schema.Table{

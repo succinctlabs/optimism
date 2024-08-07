@@ -31,7 +31,9 @@ type ProofRequest struct {
 	// L1BlockNumber holds the value of the "l1_block_number" field.
 	L1BlockNumber uint64 `json:"l1_block_number,omitempty"`
 	// L1BlockHash holds the value of the "l1_block_hash" field.
-	L1BlockHash  string `json:"l1_block_hash,omitempty"`
+	L1BlockHash string `json:"l1_block_hash,omitempty"`
+	// Proof holds the value of the "proof" field.
+	Proof        []byte `json:"proof,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -40,6 +42,8 @@ func (*ProofRequest) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case proofrequest.FieldProof:
+			values[i] = new([]byte)
 		case proofrequest.FieldID, proofrequest.FieldStartBlock, proofrequest.FieldEndBlock, proofrequest.FieldProofRequestTime, proofrequest.FieldL1BlockNumber:
 			values[i] = new(sql.NullInt64)
 		case proofrequest.FieldType, proofrequest.FieldStatus, proofrequest.FieldProverRequestID, proofrequest.FieldL1BlockHash:
@@ -113,6 +117,12 @@ func (pr *ProofRequest) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				pr.L1BlockHash = value.String
 			}
+		case proofrequest.FieldProof:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field proof", values[i])
+			} else if value != nil {
+				pr.Proof = *value
+			}
 		default:
 			pr.selectValues.Set(columns[i], values[i])
 		}
@@ -172,6 +182,9 @@ func (pr *ProofRequest) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("l1_block_hash=")
 	builder.WriteString(pr.L1BlockHash)
+	builder.WriteString(", ")
+	builder.WriteString("proof=")
+	builder.WriteString(fmt.Sprintf("%v", pr.Proof))
 	builder.WriteByte(')')
 	return builder.String()
 }

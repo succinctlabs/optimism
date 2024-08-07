@@ -45,6 +45,8 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		fmt.Println("L1 Beacon endpoint not set. Unable to fetch post-ecotone channel frames")
 		return err
 	}
+	// ZTODO: This won't work for untracked / new / test chains.
+	// How do we want to handle that? Optional config all the way up? Sane defaults?
 	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID)
 
 	fetchConfig := fetch.Config{

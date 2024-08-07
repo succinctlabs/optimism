@@ -29,6 +29,8 @@ const (
 	FieldL1BlockNumber = "l1_block_number"
 	// FieldL1BlockHash holds the string denoting the l1_block_hash field in the database.
 	FieldL1BlockHash = "l1_block_hash"
+	// FieldProof holds the string denoting the proof field in the database.
+	FieldProof = "proof"
 	// Table holds the table name of the proofrequest in the database.
 	Table = "proof_requests"
 )
@@ -44,6 +46,7 @@ var Columns = []string{
 	FieldProofRequestTime,
 	FieldL1BlockNumber,
 	FieldL1BlockHash,
+	FieldProof,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

@@ -99,6 +99,12 @@ func (prc *ProofRequestCreate) SetNillableL1BlockHash(s *string) *ProofRequestCr
 	return prc
 }
 
+// SetProof sets the "proof" field.
+func (prc *ProofRequestCreate) SetProof(b []byte) *ProofRequestCreate {
+	prc.mutation.SetProof(b)
+	return prc
+}
+
 // Mutation returns the ProofRequestMutation object of the builder.
 func (prc *ProofRequestCreate) Mutation() *ProofRequestMutation {
 	return prc.mutation
@@ -212,6 +218,10 @@ func (prc *ProofRequestCreate) createSpec() (*ProofRequest, *sqlgraph.CreateSpec
 	if value, ok := prc.mutation.L1BlockHash(); ok {
 		_spec.SetField(proofrequest.FieldL1BlockHash, field.TypeString, value)
 		_node.L1BlockHash = value
+	}
+	if value, ok := prc.mutation.Proof(); ok {
+		_spec.SetField(proofrequest.FieldProof, field.TypeBytes, value)
+		_node.Proof = value
 	}
 	return _node, _spec
 }

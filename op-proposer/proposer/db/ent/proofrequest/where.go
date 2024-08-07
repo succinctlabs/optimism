@@ -82,6 +82,11 @@ func L1BlockHash(v string) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldEQ(FieldL1BlockHash, v))
 }
 
+// Proof applies equality check predicate on the "proof" field. It's identical to ProofEQ.
+func Proof(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldEQ(FieldProof, v))
+}
+
 // TypeEQ applies the EQ predicate on the "type" field.
 func TypeEQ(v Type) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldEQ(FieldType, v))
@@ -450,6 +455,56 @@ func L1BlockHashEqualFold(v string) predicate.ProofRequest {
 // L1BlockHashContainsFold applies the ContainsFold predicate on the "l1_block_hash" field.
 func L1BlockHashContainsFold(v string) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldContainsFold(FieldL1BlockHash, v))
+}
+
+// ProofEQ applies the EQ predicate on the "proof" field.
+func ProofEQ(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldEQ(FieldProof, v))
+}
+
+// ProofNEQ applies the NEQ predicate on the "proof" field.
+func ProofNEQ(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldNEQ(FieldProof, v))
+}
+
+// ProofIn applies the In predicate on the "proof" field.
+func ProofIn(vs ...[]byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldIn(FieldProof, vs...))
+}
+
+// ProofNotIn applies the NotIn predicate on the "proof" field.
+func ProofNotIn(vs ...[]byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldNotIn(FieldProof, vs...))
+}
+
+// ProofGT applies the GT predicate on the "proof" field.
+func ProofGT(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldGT(FieldProof, v))
+}
+
+// ProofGTE applies the GTE predicate on the "proof" field.
+func ProofGTE(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldGTE(FieldProof, v))
+}
+
+// ProofLT applies the LT predicate on the "proof" field.
+func ProofLT(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldLT(FieldProof, v))
+}
+
+// ProofLTE applies the LTE predicate on the "proof" field.
+func ProofLTE(v []byte) predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldLTE(FieldProof, v))
+}
+
+// ProofIsNil applies the IsNil predicate on the "proof" field.
+func ProofIsNil() predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldIsNull(FieldProof))
+}
+
+// ProofNotNil applies the NotNil predicate on the "proof" field.
+func ProofNotNil() predicate.ProofRequest {
+	return predicate.ProofRequest(sql.FieldNotNull(FieldProof))
 }
 
 // And groups predicates with the AND operator between them.

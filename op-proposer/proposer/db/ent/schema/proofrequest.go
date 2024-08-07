@@ -21,5 +21,6 @@ func (ProofRequest) Fields() []ent.Field {
 		field.Int64("proof_request_time").Optional(),
 		field.Uint64("l1_block_number").Optional(),
 		field.String("l1_block_hash").Optional(),
+		field.Bytes("proof").Optional(),
 	}
 }

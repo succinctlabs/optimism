@@ -44,6 +44,7 @@ type ProofRequestMutation struct {
 	l1_block_number       *uint64
 	addl1_block_number    *int64
 	l1_block_hash         *string
+	proof                 *[]byte
 	clearedFields         map[string]struct{}
 	done                  bool
 	oldValue              func(context.Context) (*ProofRequest, error)
@@ -570,6 +571,55 @@ func (m *ProofRequestMutation) ResetL1BlockHash() {
 	delete(m.clearedFields, proofrequest.FieldL1BlockHash)
 }
 
+// SetProof sets the "proof" field.
+func (m *ProofRequestMutation) SetProof(b []byte) {
+	m.proof = &b
+}
+
+// Proof returns the value of the "proof" field in the mutation.
+func (m *ProofRequestMutation) Proof() (r []byte, exists bool) {
+	v := m.proof
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProof returns the old "proof" field's value of the ProofRequest entity.
+// If the ProofRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProofRequestMutation) OldProof(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProof is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProof requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProof: %w", err)
+	}
+	return oldValue.Proof, nil
+}
+
+// ClearProof clears the value of the "proof" field.
+func (m *ProofRequestMutation) ClearProof() {
+	m.proof = nil
+	m.clearedFields[proofrequest.FieldProof] = struct{}{}
+}
+
+// ProofCleared returns if the "proof" field was cleared in this mutation.
+func (m *ProofRequestMutation) ProofCleared() bool {
+	_, ok := m.clearedFields[proofrequest.FieldProof]
+	return ok
+}
+
+// ResetProof resets all changes to the "proof" field.
+func (m *ProofRequestMutation) ResetProof() {
+	m.proof = nil
+	delete(m.clearedFields, proofrequest.FieldProof)
+}
+
 // Where appends a list predicates to the ProofRequestMutation builder.
 func (m *ProofRequestMutation) Where(ps ...predicate.ProofRequest) {
 	m.predicates = append(m.predicates, ps...)
@@ -604,7 +654,7 @@ func (m *ProofRequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProofRequestMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m._type != nil {
 		fields = append(fields, proofrequest.FieldType)
 	}
@@ -628,6 +678,9 @@ func (m *ProofRequestMutation) Fields() []string {
 	}
 	if m.l1_block_hash != nil {
 		fields = append(fields, proofrequest.FieldL1BlockHash)
+	}
+	if m.proof != nil {
+		fields = append(fields, proofrequest.FieldProof)
 	}
 	return fields
 }
@@ -653,6 +706,8 @@ func (m *ProofRequestMutation) Field(name string) (ent.Value, bool) {
 		return m.L1BlockNumber()
 	case proofrequest.FieldL1BlockHash:
 		return m.L1BlockHash()
+	case proofrequest.FieldProof:
+		return m.Proof()
 	}
 	return nil, false
 }
@@ -678,6 +733,8 @@ func (m *ProofRequestMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldL1BlockNumber(ctx)
 	case proofrequest.FieldL1BlockHash:
 		return m.OldL1BlockHash(ctx)
+	case proofrequest.FieldProof:
+		return m.OldProof(ctx)
 	}
 	return nil, fmt.Errorf("unknown ProofRequest field %s", name)
 }
@@ -742,6 +799,13 @@ func (m *ProofRequestMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetL1BlockHash(v)
+		return nil
+	case proofrequest.FieldProof:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProof(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ProofRequest field %s", name)
@@ -836,6 +900,9 @@ func (m *ProofRequestMutation) ClearedFields() []string {
 	if m.FieldCleared(proofrequest.FieldL1BlockHash) {
 		fields = append(fields, proofrequest.FieldL1BlockHash)
 	}
+	if m.FieldCleared(proofrequest.FieldProof) {
+		fields = append(fields, proofrequest.FieldProof)
+	}
 	return fields
 }
 
@@ -861,6 +928,9 @@ func (m *ProofRequestMutation) ClearField(name string) error {
 		return nil
 	case proofrequest.FieldL1BlockHash:
 		m.ClearL1BlockHash()
+		return nil
+	case proofrequest.FieldProof:
+		m.ClearProof()
 		return nil
 	}
 	return fmt.Errorf("unknown ProofRequest nullable field %s", name)
@@ -893,6 +963,9 @@ func (m *ProofRequestMutation) ResetField(name string) error {
 		return nil
 	case proofrequest.FieldL1BlockHash:
 		m.ResetL1BlockHash()
+		return nil
+	case proofrequest.FieldProof:
+		m.ResetProof()
 		return nil
 	}
 	return fmt.Errorf("unknown ProofRequest field %s", name)

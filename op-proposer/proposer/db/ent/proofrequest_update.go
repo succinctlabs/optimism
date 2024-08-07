@@ -191,6 +191,18 @@ func (pru *ProofRequestUpdate) ClearL1BlockHash() *ProofRequestUpdate {
 	return pru
 }
 
+// SetProof sets the "proof" field.
+func (pru *ProofRequestUpdate) SetProof(b []byte) *ProofRequestUpdate {
+	pru.mutation.SetProof(b)
+	return pru
+}
+
+// ClearProof clears the value of the "proof" field.
+func (pru *ProofRequestUpdate) ClearProof() *ProofRequestUpdate {
+	pru.mutation.ClearProof()
+	return pru
+}
+
 // Mutation returns the ProofRequestMutation object of the builder.
 func (pru *ProofRequestUpdate) Mutation() *ProofRequestMutation {
 	return pru.mutation
@@ -297,6 +309,12 @@ func (pru *ProofRequestUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	}
 	if pru.mutation.L1BlockHashCleared() {
 		_spec.ClearField(proofrequest.FieldL1BlockHash, field.TypeString)
+	}
+	if value, ok := pru.mutation.Proof(); ok {
+		_spec.SetField(proofrequest.FieldProof, field.TypeBytes, value)
+	}
+	if pru.mutation.ProofCleared() {
+		_spec.ClearField(proofrequest.FieldProof, field.TypeBytes)
 	}
 	if n, err = sqlgraph.UpdateNodes(ctx, pru.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -482,6 +500,18 @@ func (pruo *ProofRequestUpdateOne) ClearL1BlockHash() *ProofRequestUpdateOne {
 	return pruo
 }
 
+// SetProof sets the "proof" field.
+func (pruo *ProofRequestUpdateOne) SetProof(b []byte) *ProofRequestUpdateOne {
+	pruo.mutation.SetProof(b)
+	return pruo
+}
+
+// ClearProof clears the value of the "proof" field.
+func (pruo *ProofRequestUpdateOne) ClearProof() *ProofRequestUpdateOne {
+	pruo.mutation.ClearProof()
+	return pruo
+}
+
 // Mutation returns the ProofRequestMutation object of the builder.
 func (pruo *ProofRequestUpdateOne) Mutation() *ProofRequestMutation {
 	return pruo.mutation
@@ -618,6 +648,12 @@ func (pruo *ProofRequestUpdateOne) sqlSave(ctx context.Context) (_node *ProofReq
 	}
 	if pruo.mutation.L1BlockHashCleared() {
 		_spec.ClearField(proofrequest.FieldL1BlockHash, field.TypeString)
+	}
+	if value, ok := pruo.mutation.Proof(); ok {
+		_spec.SetField(proofrequest.FieldProof, field.TypeBytes, value)
+	}
+	if pruo.mutation.ProofCleared() {
+		_spec.ClearField(proofrequest.FieldProof, field.TypeBytes)
 	}
 	_node = &ProofRequest{config: pruo.config}
 	_spec.Assign = _node.assignValues
