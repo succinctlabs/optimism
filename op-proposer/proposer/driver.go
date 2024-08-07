@@ -43,6 +43,8 @@ type L1Client interface {
 type L2OOContract interface {
 	Version(*bind.CallOpts) (string, error)
 	NextBlockNumber(*bind.CallOpts) (*big.Int, error)
+	LatestOutputIndex(*bind.CallOpts) (*big.Int, error)
+	NextOutputIndex(*bind.CallOpts) (*big.Int, error)
 }
 
 type RollupClient interface {
@@ -228,197 +230,9 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 	l.Log.Info("Proposer stopped")
 	return nil
 }
-func (l *L2OutputSubmitter) addAvailableSpanBatchesToDB(ctx context.Context) error {
-	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
-	// ZTODO: think through off by ones
-	latestEndBlock, err := l.db.GetLatestEndBlock()
-	if err != nil {
-		l.Log.Error("failed to get latest end requested", "err", err)
-		return err
-	}
-	nextBlock := latestEndBlock + 1
 
-	// use batch decoder to pull all batches from next block's L1 Origin through Finalized L1 from chain to disk
-	err := l.FetchBatchesFromChain(ctx, nextBlock)
-	if err != nil {
-		l.Log.Error("failed to fetch batches from chain", "err", err)
-		return err
-	}
 
-	maxSpanBatchDeviation := l.DriverSetup.Cfg.MaxSpanBatchDeviation
-	maxBlockRangePerSpanProof := l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
-
-	for {
-		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
-		start, end, err := l.GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation)
-		if err == NoSpanBatchFoundError {
-			l.Log.Info("no span batch found", "nextBlock", nextBlock)
-			break
-		} else if err == MaxDeviationExceededError {
-			l.Log.Info("max deviation exceeded, autofilling", "end", end)
-		} else if err != nil {
-			l.Log.Error("failed to generate span batch range", "err", err)
-			return err
-		}
-
-		// the nextBlock should always be the start of a new span batch, warn if not
-		if start != nextBlock {
-			l.Log.Warn("start block does not match next block", "start", start, "nextBlock", nextBlock)
-		}
-
-		tmpStart := nextBlock
-		for {
-			tmpEnd = math.Min(tmpStart + maxBlockRangePerSpanProof, end)
-
-			// insert the new span into the db to be requested in the future
-			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
-			if err != nil {
-				l.Log.Error("failed to insert proof request", "err", err)
-				return err
-			}
-
-			if tmpEnd == end {
-				break
-			}
-
-			tmpStart = tmpEnd + 1
-		}
-
-		// ZTODO: think through off by ones
-		nextBlock = end + 1
-	}
-
-	return nil
-}
-
-func parseSpanBatchResponse(data []byte) (uint64, uint64, error) {
-	parts := strings.Split(string(data), " ")
-	if len(parts) != 2 {
-		l.Log.Error("too many parts in span batch response", "span", spanBatchData)
-		return errors.New("failed to parse span range")
-	}
-	start, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 64)
-	if err != nil {
-		return fmt.Errorf("error parsing start value: %w", err)
-	}
-	end, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
-	if err != nil {
-		return fmt.Errorf("error parsing end value: %w", err)
-	}
-
-	return start, end, nil
-}
-
-func (l *L2OutputSubmitter) updateRequestedProofs() error {
-	reqs, err := l.db.GetAllRequestedProofs()
-	if err != nil {
-		return err
-	}
-	for _, req := range reqs {
-		// check prover network for req id status
-		// TODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
-		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
-		case "SUCCESS":
-			// get the completed proof from the network
-			// ZTODO
-			proof := []byte("proof")
-
-			// update the proof to the DB and update status to "COMPLETE"
-			err = l.db.AddProof(req.ProverRequestID, proof)
-			if err != nil {
-				l.Log.Error("failed to update completed proof status", "err", err)
-				return err
-			}
-
-		// ZTODO: insert timeout logic using l.DriverSetup.Cfg.MaxProofTime.
-		case "FAILED" || "TIMEOUT":
-			// update status in db to "FAILED"
-			err = l.db.UpdateProofStatus(req.ProverRequestID, "FAILED")
-			if err != nil {
-				l.Log.Error("failed to update failed proof status", "err", err)
-				return err
-			}
-
-			if req.Type == ProofTypeAGG {
-				l.Log.Error("failed to get agg proof", "req", req)
-				return errors.New("failed to get agg proof")
-				// ZTODO: Should we default to trying again or will it be same result?
-			}
-
-			// add two new entries for the request split in half
-			tmpStart := req.StartBlock
-			tmpEnd := start + ((req.EndBlock - start) / 2)
-			for i := 0; i < 2; i++ {
-				err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
-				if err != nil {
-					l.Log.Error("failed to add new proof request", "err", err)
-					return err
-				}
-
-				tmpStart = tmpEnd + 1
-				tmpEnd = req.EndBlock
-			}
-		}
-	}
-}
-
-func (l *L2OutputSubmitter) queuePendingAggProofs(ctx context.Context) error {
-	// Get the latest L2OO output
-	from, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
-	if err != nil {
-		return fmt.Errorf("failed to get latest L2OO output: %w", err)
-	}
-
-	minTo, err := l.l2ooContract.NextOutputIndex(&bind.CallOpts{Context: ctx})
-	if err != nil {
-		return fmt.Errorf("failed to get next L2OO output: %w", err)
-	}
-
-	_, err := l.db.TryCreateAggProofFromSpanProofs(from, minTo)
-	if err != nil {
-		return fmt.Errorf("failed to create agg proof from span proofs: %w", err)
-	}
-
-	return nil
-}
-
-func (l *L2OutputSubmitter) requestUnrequestedProofs() error {
-	unrequestedProofs, err := l.db.GetAllUnrequestedProofs()
-    if err != nil {
-        return fmt.Errorf("failed to get unrequested proofs: %w", err)
-    }
-
-    for _, proof := range unrequestedProofs {
-		if proof.Type == ProofTypeAGG {
-			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
-			if err != nil {
-				l.Log.Error("failed to checkpoint block hash", "err", err)
-				return err
-			}
-			l.db.AddL1BlockInfo(proof.StartBlock, proof.EndBlock, blockNumber, blockHash)
-		}
-        go func(p ProofRequest) {
-			// TODO:
-			// - implement requestProofFromKonaSP1 function
-			// - figure out how to get proverReqId back
-			// - determine order of operations (can't wait too long on status but can't preempt)
-            proverRequestID, err := l.requestProofFromKonaSP1(ctx, p)
-            if err != nil {
-                l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
-                return
-            }
-
-            err = l.db.UpdateProofStatus(proverRequestID, "REQ")
-            if err != nil {
-                l.Log.Error("failed to update proof status", "err", err, "proverRequestID", proverRequestID)
-            }
-        }(proof)
-    }
-
-    return nil
-}
-
-func (l *L2OutputSubmitter) submitAggProofs(ctx context.Context) error {
+func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
     // Get the latest output index from the L2OutputOracle contract
     latestOutputIndex, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
     if err != nil {
@@ -737,8 +551,9 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 		case <-ticker.C:
 			// 1) Queue up any span batches that are ready to prove.
 			// This is done by checking the chain for completed channels and pulling span batches out.
-			// We add them to the DB as "UNREQ" so they are queued up to request later.
-			err := l.addAvailableSpanBatchesToDB(ctx)
+			// We break apart span batches if they exceed the max size, and gracefully handle bugs in span batch decoding.
+			// We add ranges to be proven to the DB as "UNREQ" so they are queued up to request later.
+			err := l.DeriveNewSpanBatches(ctx)
 			if err != nil {
 				l.Log.Error("failed to add next span batches to db", "err", err)
 				break
@@ -747,7 +562,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 2) Check the statuses of all requested proofs.
 			// If it's successfully returned, we validate that we have it on disk and set status = "COMPLETE".
 			// If it fails or times out, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
-			err = l.updateRequestedProofs()
+			err = l.ProcessPendingProofs()
 			if err != nil {
 				l.Log.Error("failed to update requested proofs", "err", err)
 				break
@@ -756,7 +571,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
 			// This is done by checking if we have contiguous span proofs from the last on chain
 			// output root through at least the submission interval.
-			err = l.queuePendingAggProofs()
+			err = l.DeriveAggProofs()
 			if err != nil {
 				l.Log.Error("failed to generate pending agg proofs", "err", err)
 				break
@@ -766,7 +581,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// Any DB entry with status = "UNREQ" means it's queued up and ready.
 			// We request all of these (both span and agg) from the prover network.
 			// For agg proofs, we also checkpoint the blockhash in advance.
-			err = l.requestUnrequestedProofs()
+			err = l.RequestQueuedProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to request unrequested proofs", "err", err)
 				break

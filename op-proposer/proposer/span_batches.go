@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
@@ -13,6 +14,69 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/sources"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
+	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
+	// ZTODO: think through off by ones
+	latestEndBlock, err := l.db.GetLatestEndBlock()
+	if err != nil {
+		l.Log.Error("failed to get latest end requested", "err", err)
+		return err
+	}
+	nextBlock := latestEndBlock + 1
+
+	// use batch decoder to pull all batches from next block's L1 Origin through Finalized L1 from chain to disk
+	err = l.FetchBatchesFromChain(ctx, nextBlock)
+	if err != nil {
+		l.Log.Error("failed to fetch batches from chain", "err", err)
+		return err
+	}
+
+	maxSpanBatchDeviation := l.DriverSetup.Cfg.MaxSpanBatchDeviation
+	maxBlockRangePerSpanProof := l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
+
+	for {
+		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
+		start, end, err := l.GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation)
+		if err == reassemble.NoSpanBatchFoundError {
+			l.Log.Info("no span batch found", "nextBlock", nextBlock)
+			break
+		} else if err == reassemble.MaxDeviationExceededError {
+			l.Log.Info("max deviation exceeded, autofilling", "end", end)
+		} else if err != nil {
+			l.Log.Error("failed to generate span batch range", "err", err)
+			return err
+		}
+
+		// the nextBlock should always be the start of a new span batch, warn if not
+		if start != nextBlock {
+			l.Log.Warn("start block does not match next block", "start", start, "nextBlock", nextBlock)
+		}
+
+		tmpStart := nextBlock
+		for {
+			tmpEnd := uint64(math.Min(tmpStart+maxBlockRangePerSpanProof, end))
+
+			// insert the new span into the db to be requested in the future
+			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
+			if err != nil {
+				l.Log.Error("failed to insert proof request", "err", err)
+				return err
+			}
+
+			if tmpEnd == end {
+				break
+			}
+
+			tmpStart = tmpEnd + 1
+		}
+
+		// ZTODO: think through off by ones
+		nextBlock = end + 1
+	}
+
+	return nil
+}
 
 func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock uint64) error {
 	proposerConfig := l.DriverSetup.Cfg

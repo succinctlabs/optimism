@@ -64,7 +64,18 @@ func (db *ProofDB) NewEntry(proofType string, start, end uint64) error {
 	return nil
 }
 
-func (db *ProofDB) UpdateProofStatus(proverRequestID string, newStatus string) error {
+func (db *ProofDB) UpdateProofStatus(identifier interface{}, newStatus string) error {
+	query := db.client.ProofRequest.Update()
+
+	switch id := identifier.(type) {
+	case int:
+		query = query.Where(proofrequest.ID(id))
+	case string:
+		query = query.Where(proofrequest.ProverRequestID(id))
+	default:
+		return fmt.Errorf("invalid identifier type: %T", identifier)
+	}
+
 	// Convert string to proofrequest.Type
 	var pStatus proofrequest.Status
 	switch newStatus {
@@ -80,11 +91,21 @@ func (db *ProofDB) UpdateProofStatus(proverRequestID string, newStatus string) e
 		return fmt.Errorf("invalid proof status: %s", newStatus)
 	}
 
-	_, err := db.client.ProofRequest.Update().
-		Where(proofrequest.ProverRequestID(proverRequestID)).
-		SetStatus(pStatus).
-		Save(context.Background())
+	_, err := query.SetStatus(pStatus).Save(context.Background())
 	return err
+}
+
+func (db *ProofDB) SetProverRequestID(id int, proverRequestID string) error {
+	_, err := db.client.ProofRequest.Update().
+		Where(proofrequest.ID(id)).
+		SetProverRequestID(proverRequestID).
+		Save(context.Background())
+
+	if err != nil {
+		return fmt.Errorf("failed to set prover network id: %w", err)
+	}
+
+	return nil
 }
 
 func (db *ProofDB) AddProof(proverRequestID string, proof []byte) error {
@@ -169,9 +190,12 @@ func (db *ProofDB) GetLatestEndBlock() (uint64, error) {
 	return uint64(maxEnd), nil
 }
 
-func (db *ProofDB) GetAllRequestedProofs() ([]*ent.ProofRequest, error) {
+func (db *ProofDB) GetAllPendingProofs() ([]*ent.ProofRequest, error) {
 	proofs, err := db.client.ProofRequest.Query().
-		Where(proofrequest.StatusEQ(proofrequest.StatusREQ)).
+		Where(
+			proofrequest.StatusEQ(proofrequest.StatusREQ),
+			proofrequest.ProverRequestIDNEQ(""),
+		).
 		All(context.Background())
 
 	if err != nil {
