@@ -83,23 +83,17 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 		go func(p ent.ProofRequest) {
 			err = l.db.UpdateProofStatus(proof.ID, "REQ")
 			if err != nil {
-				l.Log.Error("failed to update proof status", "err", err, "proverRequestID", proverRequestID)
+				l.Log.Error("failed to update proof status", "err", err)
 				return
 			}
 
-			proverRequestID, err := l.RequestKonaProof(p)
+			err = l.RequestKonaProof(p)
 			if err != nil {
 				err = l.db.UpdateProofStatus(proof.ID, "FAILED")
 				if err != nil {
 					l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", proverRequestID)
 				}
 				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
-				return
-			}
-
-			err = l.db.SetProverRequestID(proof.ID, proverRequestID)
-			if err != nil {
-				l.Log.Error("failed to set prover request ID", "err", err, "proverRequestID", proverRequestID
 			}
 		}(proof)
 	}
@@ -128,9 +122,8 @@ func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
 	return nil
 }
 
-func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) (string, error) {
+func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 	// TODO:
 	// - implement requestProofFromKonaSP1 function
-	// - figure out how to get proverReqId back
-	// - determine order of operations (can't wait too long on status but can't preempt)
+	// - pass db path so kona can update directly
 }
