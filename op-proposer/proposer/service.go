@@ -49,6 +49,13 @@ type ProposerConfig struct {
 	AllowNonFinalized bool
 
 	WaitNodeSync bool
+
+	// Additional fields required for ZK Proposer
+	// ZTODO: Make sure these are set up properly from the service
+	dbPath                     string
+	beaconRpc                  string
+	txCacheOutDir              string
+	batchDecoderConcurrentReqs uint64
 }
 
 type ProposerService struct {
