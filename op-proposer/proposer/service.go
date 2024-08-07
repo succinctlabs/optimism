@@ -52,10 +52,12 @@ type ProposerConfig struct {
 
 	// Additional fields required for ZK Proposer
 	// ZTODO: Make sure these are set up properly from the service
-	dbPath                     string
-	beaconRpc                  string
-	txCacheOutDir              string
-	batchDecoderConcurrentReqs uint64
+	DbPath                     string
+	BeaconRpc                  string
+	TxCacheOutDir              string
+	BatchDecoderConcurrentReqs uint64
+	MaxSpanBatchDeviation      uint64
+	MaxBlockRangePerSpanProof  uint64
 }
 
 type ProposerService struct {
@@ -105,10 +107,12 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.WaitNodeSync = cfg.WaitNodeSync
 
 	// Additional fields required for ZK Proposer
-	ps.dbPath = cfg.DbPath
-	ps.beaconRpc = cfg.BeaconRpc
-	ps.txCacheOutDir = cfg.TxCacheOutDir
-	ps.batchDecoderConcurrentReqs = cfg.BatchDecoderConcurrentReqs
+	ps.DbPath = cfg.DbPath
+	ps.BeaconRpc = cfg.BeaconRpc
+	ps.TxCacheOutDir = cfg.TxCacheOutDir
+	ps.BatchDecoderConcurrentReqs = cfg.BatchDecoderConcurrentReqs
+	ps.MaxSpanBatchDeviation = cfg.MaxSpanBatchDeviation
+	ps.MaxBlockRangePerSpanProof = cfg.MaxBlockRangePerSpanProof
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)

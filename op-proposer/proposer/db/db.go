@@ -156,7 +156,7 @@ func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumbe
 	return nil
 }
 
-func (db *ProofDB) GetLatestEndRequested() (uint64, error) {
+func (db *ProofDB) GetLatestEndBlock() (uint64, error) {
 	maxEnd, err := db.client.ProofRequest.Query().
 		Order(ent.Desc(proofrequest.FieldEndBlock)).
 		FirstID(context.Background())

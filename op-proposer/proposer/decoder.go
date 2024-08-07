@@ -30,7 +30,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		log.Fatal(err)
 		return err
 	}
-	beaconAddr := proposerConfig.beaconRpc
+	beaconAddr := proposerConfig.BeaconRpc
 	var beacon *sources.L1BeaconClient
 	if beaconAddr != "" {
 		beaconClient := sources.NewBeaconHTTPClient(client.NewBasicHTTPClient(beaconAddr, nil))
@@ -57,15 +57,15 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 			rollupCfg.Genesis.SystemConfig.BatcherAddr: {},
 		},
 		BatchInbox:         rollupCfg.BatchInboxAddress,
-		OutDirectory:       proposerConfig.txCacheOutDir,
-		ConcurrentRequests: proposerConfig.batchDecoderConcurrentReqs,
+		OutDirectory:       proposerConfig.TxCacheOutDir,
+		ConcurrentRequests: proposerConfig.BatchDecoderConcurrentReqs,
 	}
 
 	fetch.Batches(l1Client, beacon, fetchConfig)
 	return nil
 }
 
-func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock uint64) (uint64, uint64, error) {
+func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	chainID, err := l.DriverSetup.L1Client.ChainID(ctx)
@@ -77,14 +77,14 @@ func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock uint64) (uint64, ui
 
 	reassembleConfig := reassemble.Config{
 		BatchInbox:    rollupCfg.BatchInboxAddress,
-		InDirectory:   l.DriverSetup.Cfg.txCacheOutDir,
+		InDirectory:   l.DriverSetup.Cfg.TxCacheOutDir,
 		OutDirectory:  "",
 		L2ChainID:     chainID,
 		L2GenesisTime: rollupCfg.Genesis.L2Time,
 		L2BlockTime:   rollupCfg.BlockTime,
 	}
 
-	return reassemble.GetSpanBatchRange(reassembleConfig, rollupCfg, nextBlock)
+	return reassemble.GetSpanBatchRange(reassembleConfig, rollupCfg, nextBlock, maxSpanBatchDeviation)
 }
 
 func (l *L2OutputSubmitter) getL1OriginAndFinalized(ctx context.Context, nextBlock uint64) (uint64, uint64, error) {

@@ -75,6 +75,10 @@ type CLIConfig struct {
 	TxCacheOutDir string
 	// Number of concurrent requests to make when fetching L1 data to determine span batch boundaries.
 	BatchDecoderConcurrentReqs uint64
+	// If we find a span batch this far ahead of the block we're targeting, we assume an error and just fill in the gap.
+	MaxSpanBatchDeviation uint64
+	// The max size (in blocks) of a proof we will attempt to generate. If span batches are larger, we break them up.
+	MaxBlockRangePerSpanProof uint64
 }
 
 func (c *CLIConfig) Check() error {
@@ -111,13 +115,15 @@ func (c *CLIConfig) Check() error {
 func NewConfig(ctx *cli.Context) *CLIConfig {
 	return &CLIConfig{
 		// Required Flags
-		L1EthRpc:     ctx.String(flags.L1EthRpcFlag.Name),
-		RollupRpc:    ctx.String(flags.RollupRpcFlag.Name),
-		L2OOAddress:  ctx.String(flags.L2OOAddressFlag.Name),
-		PollInterval: ctx.Duration(flags.PollIntervalFlag.Name),
-		TxMgrConfig:  txmgr.ReadCLIConfig(ctx),
-		DbPath:       ctx.String(flags.DbPathFlag.Name),
-		BeaconRpc:    ctx.String(flags.BeaconRpcFlag.Name),
+		L1EthRpc:                  ctx.String(flags.L1EthRpcFlag.Name),
+		RollupRpc:                 ctx.String(flags.RollupRpcFlag.Name),
+		L2OOAddress:               ctx.String(flags.L2OOAddressFlag.Name),
+		PollInterval:              ctx.Duration(flags.PollIntervalFlag.Name),
+		TxMgrConfig:               txmgr.ReadCLIConfig(ctx),
+		DbPath:                    ctx.String(flags.DbPathFlag.Name),
+		BeaconRpc:                 ctx.String(flags.BeaconRpcFlag.Name),
+		MaxSpanBatchDeviation:     ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
+		MaxBlockRangePerSpanProof: ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
 
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),

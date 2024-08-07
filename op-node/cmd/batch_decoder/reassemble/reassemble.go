@@ -47,6 +47,7 @@ type Config struct {
 }
 
 var NoSpanBatchFoundError = errors.New("no span batch found for the given block")
+var MaxDeviationExceededError = errors.New("max deviation exceeded")
 
 func LoadFrames(directory string, inbox common.Address) []FrameWithMetadata {
 	txns := loadTransactions(directory, inbox)
@@ -83,7 +84,7 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 	}
 }
 
-func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) (uint64, uint64, error) {
+func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
 	frames := LoadFrames(config.InDirectory, config.BatchInbox)
 	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
 	for _, frame := range frames {
@@ -108,6 +109,9 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block uint64) 
 			endBlock := startBlock + uint64(blockCount) - 1
 			if l2Block >= startBlock && l2Block <= endBlock {
 				return startBlock, endBlock, nil
+			} else if l2Block+maxSpanBatchDeviation < startBlock {
+				// ZTODO: Think about off by one here
+				return l2Block, startBlock - 1, MaxDeviationExceededError
 			}
 		}
 	}

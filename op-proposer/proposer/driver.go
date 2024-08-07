@@ -127,7 +127,7 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 		return nil, err
 	}
 
-	db, err := InitDB("./proofs.db")
+	db, err := InitDB(setup.Cfg.DbPath)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -231,12 +231,12 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 func (l *L2OutputSubmitter) addAvailableSpanBatchesToDB(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
 	// ZTODO: think through off by ones
-	lastEndBlock, err := l.db.GetLatestEndRequested()
+	latestEndBlock, err := l.db.GetLatestEndBlock()
 	if err != nil {
 		l.Log.Error("failed to get latest end requested", "err", err)
 		return err
 	}
-	nextBlock := lastEndBlock + 1
+	nextBlock := latestEndBlock + 1
 
 	// use batch decoder to pull all batches from next block's L1 Origin through Finalized L1 from chain to disk
 	err := l.FetchBatchesFromChain(ctx, nextBlock)
@@ -245,12 +245,17 @@ func (l *L2OutputSubmitter) addAvailableSpanBatchesToDB(ctx context.Context) err
 		return err
 	}
 
+	maxSpanBatchDeviation := l.DriverSetup.Cfg.MaxSpanBatchDeviation
+	maxBlockRangePerSpanProof := l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
+
 	for {
 		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
-		start, end, err := l.GenerateSpanBatchRange(ctx, nextBlock)
+		start, end, err := l.GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation)
 		if err == NoSpanBatchFoundError {
 			l.Log.Info("no span batch found", "nextBlock", nextBlock)
 			break
+		} else if err == MaxDeviationExceededError {
+			l.Log.Info("max deviation exceeded, autofilling", "end", end)
 		} else if err != nil {
 			l.Log.Error("failed to generate span batch range", "err", err)
 			return err
@@ -261,11 +266,22 @@ func (l *L2OutputSubmitter) addAvailableSpanBatchesToDB(ctx context.Context) err
 			l.Log.Warn("start block does not match next block", "start", start, "nextBlock", nextBlock)
 		}
 
-		// insert the new span into the db to be requested in the future
-		err = l.db.NewEntry("SPAN", nextBlock, end)
-		if err != nil {
-			l.Log.Error("failed to insert proof request", "err", err)
-			return err
+		tmpStart := nextBlock
+		for {
+			tmpEnd = math.Min(tmpStart + maxBlockRangePerSpanProof, end)
+
+			// insert the new span into the db to be requested in the future
+			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
+			if err != nil {
+				l.Log.Error("failed to insert proof request", "err", err)
+				return err
+			}
+
+			if tmpEnd == end {
+				break
+			}
+
+			tmpStart = tmpEnd + 1
 		}
 
 		// ZTODO: think through off by ones

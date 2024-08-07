@@ -44,6 +44,18 @@ var (
 		Usage:   "HTTP provider URL for the beacon node",
 		EnvVars: prefixEnvVars("BEACON_RPC"),
 	}
+	MaxSpanBatchDeviationFlag = &cli.Uint64Flag{
+		Name:    "max-span-batch-deviation",
+		Usage:   "If we find a span batch this far ahead of our target, we assume an error and fill in the gap",
+		Value:   600,
+		EnvVars: prefixEnvVars("MAX_SPAN_BATCH_DEVIATION"),
+	}
+	MaxBlockRangePerSpanProofFlag = &cli.Uint64Flag{
+		Name:    "max-block-range-per-span-proof",
+		Usage:   "Maximum number of blocks to include in a single span proof",
+		Value:   75,
+		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
+	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{
