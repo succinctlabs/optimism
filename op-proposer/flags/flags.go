@@ -32,6 +32,18 @@ var (
 		Usage:   "HTTP provider URL for the rollup node. A comma-separated list enables the active rollup provider.",
 		EnvVars: prefixEnvVars("ROLLUP_RPC"),
 	}
+	DbPathFlag = &cli.StringFlag{
+		Name:  "db-path",
+		Usage: "Path to the database used to track ZK proof generation",
+		// ZTODO: Decide on better default path here
+		Value:   "proofs.db",
+		EnvVars: prefixEnvVars("DB_PATH"),
+	}
+	BeaconRpcFlag = &cli.StringFlag{
+		Name:    "beacon-rpc",
+		Usage:   "HTTP provider URL for the beacon node",
+		EnvVars: prefixEnvVars("BEACON_RPC"),
+	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{
@@ -84,6 +96,18 @@ var (
 			"the current L1 tip before proceeding with its driver loop.",
 		Value:   false,
 		EnvVars: prefixEnvVars("WAIT_NODE_SYNC"),
+	}
+	TxCacheOutDirFlag = &cli.StringFlag{
+		Name:    "tx-cache-out-dir",
+		Usage:   "Cache directory for the found transactions to determine span batch boundaries",
+		Value:   "/tmp/batch_decoder/transactions_cache",
+		EnvVars: prefixEnvVars("TX_CACHE_OUT_DIR"),
+	}
+	BatchDecoderConcurrentReqsFlag = &cli.Uint64Flag{
+		Name:    "batch-decoder-concurrent-reqs",
+		Usage:   "Concurrency level when fetching transactions to determine span batch boundaries",
+		Value:   10,
+		EnvVars: prefixEnvVars("BATCH_DECODER_CONCURRENT_REQS"),
 	}
 	// Legacy Flags
 	L2OutputHDPathFlag = txmgr.L2OutputHDPathFlag

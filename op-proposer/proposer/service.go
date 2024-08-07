@@ -104,6 +104,12 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.AllowNonFinalized = cfg.AllowNonFinalized
 	ps.WaitNodeSync = cfg.WaitNodeSync
 
+	// Additional fields required for ZK Proposer
+	ps.dbPath = cfg.DbPath
+	ps.beaconRpc = cfg.BeaconRpc
+	ps.txCacheOutDir = cfg.TxCacheOutDir
+	ps.batchDecoderConcurrentReqs = cfg.BatchDecoderConcurrentReqs
+
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)
 
@@ -267,6 +273,12 @@ func (ps *ProposerService) initRPCServer(cfg *CLIConfig) error {
 		return fmt.Errorf("unable to start RPC server: %w", err)
 	}
 	ps.rpcServer = server
+	return nil
+}
+
+func (ps *ProposerService) initZKConfig(cfg *CLIConfig) error {
+	ps.Log.Info("Running Proposer")
+	<-ctx.Done()
 	return nil
 }
 

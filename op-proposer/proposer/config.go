@@ -64,6 +64,17 @@ type CLIConfig struct {
 
 	// Whether to wait for the sequencer to sync to a recent block at startup.
 	WaitNodeSync bool
+
+	// Additional fields required for ZK Proposer.
+
+	// Path to the database that tracks ZK proof generation.
+	DbPath string
+	// L1 Beacon RPC URL used to determine span batch boundaries.
+	BeaconRpc string
+	// Directory to store the transaction cache when determining span batch boundaries.
+	TxCacheOutDir string
+	// Number of concurrent requests to make when fetching L1 data to determine span batch boundaries.
+	BatchDecoderConcurrentReqs uint64
 }
 
 func (c *CLIConfig) Check() error {
@@ -105,6 +116,9 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		L2OOAddress:  ctx.String(flags.L2OOAddressFlag.Name),
 		PollInterval: ctx.Duration(flags.PollIntervalFlag.Name),
 		TxMgrConfig:  txmgr.ReadCLIConfig(ctx),
+		DbPath:       ctx.String(flags.DbPathFlag.Name),
+		BeaconRpc:    ctx.String(flags.BeaconRpcFlag.Name),
+
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),
 		RPCConfig:                    oprpc.ReadCLIConfig(ctx),
@@ -117,5 +131,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		DisputeGameType:              uint32(ctx.Uint(flags.DisputeGameTypeFlag.Name)),
 		ActiveSequencerCheckDuration: ctx.Duration(flags.ActiveSequencerCheckDurationFlag.Name),
 		WaitNodeSync:                 ctx.Bool(flags.WaitNodeSyncFlag.Name),
+		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
+		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
 	}
 }
