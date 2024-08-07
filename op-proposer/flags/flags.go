@@ -56,6 +56,12 @@ var (
 		Value:   75,
 		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
 	}
+	MaxProofTimeFlag = &cli.Uint64Flag{
+		Name:    "max-proof-time",
+		Usage:   "Maximum time in seconds to spend generating a proof before giving up",
+		Value:   14400,
+		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
+	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{

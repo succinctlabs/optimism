@@ -330,7 +330,8 @@ func (l *L2OutputSubmitter) updateRequestedProofs() error {
 				return err
 			}
 
-		case "FAILED":
+		// ZTODO: insert timeout logic using l.DriverSetup.Cfg.MaxProofTime.
+		case "FAILED" || "TIMEOUT":
 			// update status in db to "FAILED"
 			err = l.db.UpdateProofStatus(req.ProverRequestID, "FAILED")
 			if err != nil {
@@ -745,7 +746,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 
 			// 2) Check the statuses of all requested proofs.
 			// If it's successfully returned, we validate that we have it on disk and set status = "COMPLETE".
-			// If it fails, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
+			// If it fails or times out, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
 			err = l.updateRequestedProofs()
 			if err != nil {
 				l.Log.Error("failed to update requested proofs", "err", err)

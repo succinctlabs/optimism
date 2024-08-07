@@ -79,6 +79,8 @@ type CLIConfig struct {
 	MaxSpanBatchDeviation uint64
 	// The max size (in blocks) of a proof we will attempt to generate. If span batches are larger, we break them up.
 	MaxBlockRangePerSpanProof uint64
+	// The maximum amount of time we will spend waiting for a proof before giving up and trying again.
+	MaxProofTime uint64
 }
 
 func (c *CLIConfig) Check() error {
@@ -124,6 +126,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		BeaconRpc:                 ctx.String(flags.BeaconRpcFlag.Name),
 		MaxSpanBatchDeviation:     ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
 		MaxBlockRangePerSpanProof: ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
+		MaxProofTime:              ctx.Uint64(flags.MaxProofTimeFlag.Name),
 
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),

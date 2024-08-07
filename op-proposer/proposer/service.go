@@ -51,13 +51,13 @@ type ProposerConfig struct {
 	WaitNodeSync bool
 
 	// Additional fields required for ZK Proposer
-	// ZTODO: Make sure these are set up properly from the service
 	DbPath                     string
 	BeaconRpc                  string
 	TxCacheOutDir              string
 	BatchDecoderConcurrentReqs uint64
 	MaxSpanBatchDeviation      uint64
 	MaxBlockRangePerSpanProof  uint64
+	MaxProofTime               uint64
 }
 
 type ProposerService struct {
