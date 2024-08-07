@@ -17,7 +17,6 @@ import (
 
 func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
-	// ZTODO: think through off by ones
 	latestEndBlock, err := l.db.GetLatestEndBlock()
 	if err != nil {
 		l.Log.Error("failed to get latest end requested", "err", err)
@@ -32,12 +31,9 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 		return err
 	}
 
-	maxSpanBatchDeviation := l.DriverSetup.Cfg.MaxSpanBatchDeviation
-	maxBlockRangePerSpanProof := l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
-
 	for {
 		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
-		start, end, err := l.GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation)
+		start, end, err := l.GenerateSpanBatchRange(nextBlock, l.DriverSetup.Cfg.MaxSpanBatchDeviation)
 		if err == reassemble.NoSpanBatchFoundError {
 			l.Log.Info("no span batch found", "nextBlock", nextBlock)
 			break
@@ -55,7 +51,8 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 
 		tmpStart := nextBlock
 		for {
-			tmpEnd := uint64(math.Min(tmpStart+maxBlockRangePerSpanProof, end))
+			maxEnd := tmpStart + l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
+			tmpEnd := uint64(math.Min(maxEnd, end))
 
 			// insert the new span into the db to be requested in the future
 			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
@@ -71,7 +68,6 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 			tmpStart = tmpEnd + 1
 		}
 
-		// ZTODO: think through off by ones
 		nextBlock = end + 1
 	}
 

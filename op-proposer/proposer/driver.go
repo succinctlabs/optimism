@@ -240,8 +240,7 @@ func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
     }
 
     // Check for a completed AGG proof starting at the next index
-	// TODO: Check for off by one?
-    completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex)
+    completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex + 1)
     if err != nil {
         return fmt.Errorf("failed to query for completed AGG proof: %w", err)
     }
@@ -251,7 +250,6 @@ func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
     }
 
 	for _, aggProof := range completedAggProofs {
-		// TODO: Off by one?
 		output, err := l.FetchOutput(ctx, aggProof.EndBlock)
 		if err != nil {
 			return fmt.Errorf("failed to fetch output at block %d: %w", aggProof.EndBlock, err)
@@ -588,7 +586,8 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			}
 
 			// 5) Submit agg proofs on chain.
-			err = l.submitAggProofs(ctx)
+			// If we have a completed agg proof waiting in the DB, we submit them on chain.
+			err = l.SubmitAggProofs(ctx)
 		case <-l.done:
 			return
 		}

@@ -242,7 +242,7 @@ func (db *ProofDB) GetAllCompletedAggProofs(startBlock uint64) ([]*ent.ProofRequ
 	return proofs, nil
 }
 
-func (db *ProofDB) TryCreateAggProofFromSpanProofs(latestOutputIndex, nextOutputIndex uint64) (bool, error) {
+func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, error) {
 	// Start a transaction
 	tx, err := db.client.Tx(context.Background())
 	if err != nil {
@@ -251,11 +251,10 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(latestOutputIndex, nextOutput
 	defer tx.Rollback()
 
 	// Check if there's already an AGG proof in progress
-	// ZTODO: Think about off by ones
 	count, err := tx.ProofRequest.Query().
 		Where(
 			proofrequest.TypeEQ(proofrequest.TypeAGG),
-			proofrequest.StartBlockEQ(latestOutputIndex),
+			proofrequest.StartBlockEQ(from),
 			proofrequest.StatusNEQ(proofrequest.StatusFAILED),
 		).
 		Count(context.Background())
@@ -267,7 +266,7 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(latestOutputIndex, nextOutput
 	}
 
 	// Find consecutive SPAN proofs
-	start := latestOutputIndex
+	start := from
 	var end uint64
 	for {
 		spanProof, err := tx.ProofRequest.Query().
@@ -287,14 +286,14 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(latestOutputIndex, nextOutput
 		start = end + 1
 	}
 
-	if end < nextOutputIndex {
+	if end < minTo {
 		return false, nil // Not enough SPAN proofs to create an AGG proof
 	}
 
 	// Create a new AGG proof request
 	_, err = tx.ProofRequest.Create().
 		SetType(proofrequest.TypeAGG).
-		SetStartBlock(latestOutputIndex).
+		SetStartBlock(from).
 		SetEndBlock(end).
 		SetStatus(proofrequest.StatusUNREQ).
 		Save(context.Background())

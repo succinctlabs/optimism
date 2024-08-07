@@ -105,12 +105,10 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpan
 				return 0, 0, errors.New("couldn't convert batch to span batch")
 			}
 			blockCount := spanBatch.GetBlockCount()
-			// ZTODO: Think about off by one here
 			endBlock := startBlock + uint64(blockCount) - 1
 			if l2Block >= startBlock && l2Block <= endBlock {
 				return startBlock, endBlock, nil
 			} else if l2Block+maxSpanBatchDeviation < startBlock {
-				// ZTODO: Think about off by one here
 				return l2Block, startBlock - 1, MaxDeviationExceededError
 			}
 		}

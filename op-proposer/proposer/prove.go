@@ -17,7 +17,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 	}
 	for _, req := range reqs {
 		// check prover network for req id status
-		// TODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
+		// ZTODO: HAVE IT PING SP1 NETWORK TO ASK FOR STATUS
 		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
 		case "SUCCESS":
 			// get the completed proof from the network
@@ -101,20 +101,22 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 	return nil
 }
 
+// Use the L2OO contract to look up the range of blocks that the next proof must cover.
+// Check the DB to see if we have sufficient span proofs to request an agg proof that covers this range.
+// If so, queue up the agg proof in the DB to be requested later.
 func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
-	// Get the latest L2OO output
-	from, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+	latest, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get latest L2OO output: %w", err)
 	}
+	from := latest.Uint64() + 1
 
 	minTo, err := l.l2ooContract.NextOutputIndex(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get next L2OO output: %w", err)
 	}
 
-	// ZTODO: Need to turn these big ints into uint64
-	_, err = l.db.TryCreateAggProofFromSpanProofs(from, minTo)
+	_, err = l.db.TryCreateAggProofFromSpanProofs(from, minTo.Uint64())
 	if err != nil {
 		return fmt.Errorf("failed to create agg proof from span proofs: %w", err)
 	}
@@ -125,5 +127,6 @@ func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
 func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 	// TODO:
 	// - implement requestProofFromKonaSP1 function
+	// - start block is first to prove, so we need output root to be at start - 1
 	// - pass db path so kona can update directly
 }
