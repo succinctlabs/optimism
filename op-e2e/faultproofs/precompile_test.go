@@ -8,10 +8,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ethereum-optimism/optimism/cannon/mipsevm"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/stretchr/testify/require"
+
+	"github.com/ethereum-optimism/optimism/cannon/mipsevm/singlethreaded"
 	"github.com/ethereum-optimism/optimism/op-challenger/config"
-	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/cannon"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/utils"
+	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/trace/vm"
 	"github.com/ethereum-optimism/optimism/op-challenger/metrics"
 	op_e2e "github.com/ethereum-optimism/optimism/op-e2e"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/challenger"
@@ -20,11 +26,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/ioutil"
 	"github.com/ethereum-optimism/optimism/op-service/sources"
 	"github.com/ethereum-optimism/optimism/op-service/testlog"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/stretchr/testify/require"
 )
 
 func TestPrecompiles(t *testing.T) {
@@ -71,15 +72,13 @@ func TestPrecompiles(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			op_e2e.InitParallel(t, op_e2e.UsesCannon)
 			ctx := context.Background()
-			cfg := op_e2e.DefaultSystemConfig(t)
+			genesisTime := hexutil.Uint64(0)
+			cfg := op_e2e.EcotoneSystemConfig(t, &genesisTime)
 			// We don't need a verifier - just the sequencer is enough
 			delete(cfg.Nodes, "verifier")
 			// Use a small sequencer window size to avoid test timeout while waiting for empty blocks
 			// But not too small to ensure that our claim and subsequent state change is published
 			cfg.DeployConfig.SequencerWindowSize = 16
-			minTs := hexutil.Uint64(0)
-			cfg.DeployConfig.L2GenesisDeltaTimeOffset = &minTs
-			cfg.DeployConfig.L2GenesisEcotoneTimeOffset = &minTs
 
 			sys, err := cfg.Start(t)
 			require.Nil(t, err, "Error starting up system")
@@ -135,7 +134,7 @@ func TestPrecompiles(t *testing.T) {
 	}
 }
 
-func runCannon(t *testing.T, ctx context.Context, sys *op_e2e.System, inputs utils.LocalGameInputs, l2Node string) {
+func runCannon(t *testing.T, ctx context.Context, sys *op_e2e.System, inputs utils.LocalGameInputs, l2Node string, extraVmArgs ...string) {
 	l1Endpoint := sys.NodeEndpoint("l1")
 	l1Beacon := sys.L1BeaconEndpoint()
 	rollupEndpoint := sys.RollupEndpoint("sequencer")
@@ -147,10 +146,10 @@ func runCannon(t *testing.T, ctx context.Context, sys *op_e2e.System, inputs uti
 	cannonOpts(&cfg)
 
 	logger := testlog.Logger(t, log.LevelInfo).New("role", "cannon")
-	executor := cannon.NewExecutor(logger, metrics.NoopMetrics, &cfg, cfg.CannonAbsolutePreState, inputs)
+	executor := vm.NewExecutor(logger, metrics.NoopMetrics, cfg.Cannon, vm.NewOpProgramVmConfig(), cfg.CannonAbsolutePreState, inputs)
 
 	t.Log("Running cannon")
-	err := executor.GenerateProof(ctx, proofsDir, math.MaxUint)
+	err := executor.DoGenerateProof(ctx, proofsDir, math.MaxUint, math.MaxUint, extraVmArgs...)
 	require.NoError(t, err, "failed to generate proof")
 
 	state, err := parseState(filepath.Join(proofsDir, "final.json.gz"))
@@ -160,13 +159,13 @@ func runCannon(t *testing.T, ctx context.Context, sys *op_e2e.System, inputs uti
 	t.Logf("Completed in %d steps", state.Step)
 }
 
-func parseState(path string) (*mipsevm.State, error) {
+func parseState(path string) (*singlethreaded.State, error) {
 	file, err := ioutil.OpenDecompressed(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open state file (%v): %w", path, err)
 	}
 	defer file.Close()
-	var state mipsevm.State
+	var state singlethreaded.State
 	err = json.NewDecoder(file).Decode(&state)
 	if err != nil {
 		return nil, fmt.Errorf("invalid mipsevm state (%v): %w", path, err)

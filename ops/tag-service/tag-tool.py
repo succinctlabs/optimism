@@ -1,20 +1,16 @@
 import argparse
 import subprocess
-import re
 import semver
 
 SERVICES  = [
     'ci-builder',
     'ci-builder-rust',
-    'chain-mon',
-    'indexer',
     'op-node',
     'op-batcher',
     'op-challenger',
     'op-dispute-mon',
     'op-proposer',
     'da-server',
-    'proxyd',
     'op-heartbeat',
     'op-contracts',
     'test',
@@ -91,4 +87,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

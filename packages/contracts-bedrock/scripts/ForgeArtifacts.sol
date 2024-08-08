@@ -78,8 +78,8 @@ library ForgeArtifacts {
         string[] memory cmd = new string[](3);
         cmd[0] = Executables.bash;
         cmd[1] = "-c";
-        cmd[2] = string.concat(Executables.jq, " '.methodIdentifiers | keys' < ", _getForgeArtifactPath(_name));
-        bytes memory res = Process.run(cmd);
+        cmd[2] = string.concat(Executables.jq, " '.methodIdentifiers // {} | keys ' < ", _getForgeArtifactPath(_name));
+        bytes memory res = Process.run(cmd, true);
         ids_ = stdJson.readStringArray(string(res), "");
     }
 
@@ -162,7 +162,7 @@ library ForgeArtifacts {
     {
         string memory pathExcludesPat;
         for (uint256 i = 0; i < pathExcludes.length; i++) {
-            pathExcludesPat = string.concat(pathExcludesPat, " -path ", pathExcludes[i]);
+            pathExcludesPat = string.concat(pathExcludesPat, " -path \"", pathExcludes[i], "\"");
             if (i != pathExcludes.length - 1) {
                 pathExcludesPat = string.concat(pathExcludesPat, " -o ");
             }
