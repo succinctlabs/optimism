@@ -1,8 +1,13 @@
 package proposer
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"time"
 
 	"github.com/ava-labs/coreth/accounts/abi/bind"
 	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent"
@@ -15,26 +20,19 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 		return err
 	}
 	for _, req := range reqs {
-		// check prover network for req id status
-		// ZTODO: communicate with server to get this response
-		// it'll come back as json
-		// parse into status & proof & proof req time
-		switch proverNetworkResp := "SUCCESS"; proverNetworkResp {
-		case "SUCCESS":
-			// get the completed proof from the network
-			proof := []byte("proof")
-
+		status, proof, err := l.GetProofStatus(req.ProverRequestID)
+		if status == "PROOF_FULFILLED" {
 			// update the proof to the DB and update status to "COMPLETE"
 			err = l.db.AddProof(req.ID, proof)
 			if err != nil {
 				l.Log.Error("failed to update completed proof status", "err", err)
 				return err
 			}
+		}
 
-		// ZTODO: insert timeout logic using l.DriverSetup.Cfg.MaxProofTime.
-		// this needs to be adapted so we have all requested proofs included those without proverRequestID
-		// then we can accurately see if they have timed out in native mode
-		case "FAILED", "TIMEOUT":
+		timeout := time.Now().Unix() > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
+		// ZTODO: Talk to Succinct about logic of different statuses
+		if timeout {
 			// update status in db to "FAILED"
 			err = l.db.UpdateProofStatus(req.ID, "FAILED")
 			if err != nil {
@@ -139,12 +137,7 @@ func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 	var err error
 
 	if p.Type == proofrequest.TypeAGG {
-		subproofs, err := l.db.GetSubproofs(p.StartBlock, p.EndBlock)
-		if err != nil {
-			return fmt.Errorf("failed to get subproofs: %w", err)
-		}
-
-		proofId, err = l.RequestAggProof(prevConfirmedBlock, p.EndBlock, subproofs)
+		proofId, err = l.RequestAggProof(prevConfirmedBlock, p.EndBlock)
 		if err != nil {
 			return fmt.Errorf("failed to request AGG proof: %w", err)
 		}
@@ -165,12 +158,112 @@ func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 	return nil
 }
 
-func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) {
-	// use l.DriverSetup.Cfg.KonaServerURL
-	return "", nil
+type SpanProofRequest struct {
+	Start uint64 `json:"start"`
+	End   uint64 `json:"end"`
 }
 
-func (l *L2OutputSubmitter) RequestAggProof(start, end uint64, subproofs []*ent.ProofRequest) (string, error) {
-	// use l.DriverSetup.Cfg.KonaServerURL
-	return "", nil
+type AggProofRequest struct {
+	Subproofs [][]byte `json:"subproofs"`
+}
+
+type ProofResponse struct {
+	ProofID string `json:"id"`
+}
+
+func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) {
+	requestBody := SpanProofRequest{
+		Start: start,
+		End:   end,
+	}
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	return l.RequestProofFromServer(jsonBody)
+}
+
+func (l *L2OutputSubmitter) RequestAggProof(start, end uint64) (string, error) {
+	subproofs, err := l.db.GetSubproofs(start, end)
+	if err != nil {
+		return "", fmt.Errorf("failed to get subproofs: %w", err)
+	}
+	requestBody := AggProofRequest{
+		Subproofs: subproofs,
+	}
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	return l.RequestProofFromServer(jsonBody)
+}
+
+func (l *L2OutputSubmitter) RequestProofFromServer(jsonBody []byte) (string, error) {
+	req, err := http.NewRequest("POST", l.DriverSetup.Cfg.KonaServerUrl, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Errorf("Error reading the response body: %v", err)
+	}
+
+	// Create a variable of the Response type
+	var response ProofResponse
+
+	// Unmarshal the JSON into the response variable
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Errorf("Error decoding JSON response: %v", err)
+	}
+
+	return response.ProofID, nil
+}
+
+type ProofStatus struct {
+	Status string `json:"status"`
+	Proof  []byte `json:"proof"`
+}
+
+func (l *L2OutputSubmitter) GetProofStatus(proofId string) (string, []byte, error) {
+	req, err := http.NewRequest("GET", l.DriverSetup.Cfg.KonaServerUrl+"/status/"+proofId, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Errorf("Error reading the response body: %v", err)
+	}
+
+	// Create a variable of the Response type
+	var response ProofStatus
+
+	// Unmarshal the JSON into the response variable
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Errorf("Error decoding JSON response: %v", err)
+	}
+
+	return response.Status, response.Proof, nil
 }

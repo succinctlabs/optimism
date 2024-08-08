@@ -62,6 +62,11 @@ var (
 		Value:   14400,
 		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
 	}
+	KonaServerUrlFlag = &cli.StringFlag{
+		Name:    "kona-server-url",
+		Usage:   "URL of the Kona server to request proofs from",
+		EnvVars: prefixEnvVars("KONA_SERVER_URL"),
+	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{

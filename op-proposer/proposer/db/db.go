@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent"
 	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent/proofrequest"
@@ -92,6 +93,7 @@ func (db *ProofDB) SetProverRequestID(id int, proverRequestID string) error {
 	_, err := db.client.ProofRequest.Update().
 		Where(proofrequest.ID(id)).
 		SetProverRequestID(proverRequestID).
+		SetProofRequestTime(time.Now().Unix()).
 		Save(context.Background())
 
 	if err != nil {
@@ -299,7 +301,7 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 	return true, nil
 }
 
-func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([]*ent.ProofRequest, error) {
+func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([][]byte, error) {
 	ctx := context.Background()
 	client := db.client
 
@@ -320,14 +322,14 @@ func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([]*ent.ProofRequest
 	}
 
 	// Check if we have a valid chain of proofs
-	var result []*ent.ProofRequest
+	var result [][]byte
 	currentBlock := aggProof.StartBlock
 
 	for _, span := range spans {
 		if span.StartBlock != currentBlock {
 			return nil, fmt.Errorf("gap in proof chain: expected start block %d, got %d", currentBlock, span.StartBlock)
 		}
-		result = append(result, span)
+		result = append(result, span.Proof)
 		currentBlock = span.EndBlock + 1
 	}
 

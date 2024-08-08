@@ -58,6 +58,7 @@ type ProposerConfig struct {
 	MaxSpanBatchDeviation      uint64
 	MaxBlockRangePerSpanProof  uint64
 	MaxProofTime               uint64
+	KonaServerUrl              string
 }
 
 type ProposerService struct {

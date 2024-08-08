@@ -81,6 +81,8 @@ type CLIConfig struct {
 	MaxBlockRangePerSpanProof uint64
 	// The maximum amount of time we will spend waiting for a proof before giving up and trying again.
 	MaxProofTime uint64
+	// The URL of the Kona server to request proofs from.
+	KonaServerUrl string
 }
 
 func (c *CLIConfig) Check() error {
@@ -127,6 +129,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		MaxSpanBatchDeviation:     ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
 		MaxBlockRangePerSpanProof: ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
 		MaxProofTime:              ctx.Uint64(flags.MaxProofTimeFlag.Name),
+		KonaServerUrl:             ctx.String(flags.KonaServerUrlFlag.Name),
 
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),
