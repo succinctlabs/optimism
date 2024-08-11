@@ -58,15 +58,15 @@ func (prc *ProofRequestCreate) SetNillableProverRequestID(s *string) *ProofReque
 }
 
 // SetProofRequestTime sets the "proof_request_time" field.
-func (prc *ProofRequestCreate) SetProofRequestTime(i int64) *ProofRequestCreate {
-	prc.mutation.SetProofRequestTime(i)
+func (prc *ProofRequestCreate) SetProofRequestTime(u uint64) *ProofRequestCreate {
+	prc.mutation.SetProofRequestTime(u)
 	return prc
 }
 
 // SetNillableProofRequestTime sets the "proof_request_time" field if the given value is not nil.
-func (prc *ProofRequestCreate) SetNillableProofRequestTime(i *int64) *ProofRequestCreate {
-	if i != nil {
-		prc.SetProofRequestTime(*i)
+func (prc *ProofRequestCreate) SetNillableProofRequestTime(u *uint64) *ProofRequestCreate {
+	if u != nil {
+		prc.SetProofRequestTime(*u)
 	}
 	return prc
 }
@@ -208,7 +208,7 @@ func (prc *ProofRequestCreate) createSpec() (*ProofRequest, *sqlgraph.CreateSpec
 		_node.ProverRequestID = value
 	}
 	if value, ok := prc.mutation.ProofRequestTime(); ok {
-		_spec.SetField(proofrequest.FieldProofRequestTime, field.TypeInt64, value)
+		_spec.SetField(proofrequest.FieldProofRequestTime, field.TypeUint64, value)
 		_node.ProofRequestTime = value
 	}
 	if value, ok := prc.mutation.L1BlockNumber(); ok {

@@ -93,7 +93,7 @@ func (db *ProofDB) SetProverRequestID(id int, proverRequestID string) error {
 	_, err := db.client.ProofRequest.Update().
 		Where(proofrequest.ID(id)).
 		SetProverRequestID(proverRequestID).
-		SetProofRequestTime(time.Now().Unix()).
+		SetProofRequestTime(uint64(time.Now().Unix())).
 		Save(context.Background())
 
 	if err != nil {
@@ -301,7 +301,7 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 	return true, nil
 }
 
-func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([][]byte, error) {
+func (db *ProofDB) GetSubproofs(start, end uint64) ([][]byte, error) {
 	ctx := context.Background()
 	client := db.client
 
@@ -310,8 +310,8 @@ func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([][]byte, error) {
 		Where(
 			proofrequest.TypeEQ(proofrequest.TypeSPAN),
 			proofrequest.StatusEQ(proofrequest.StatusCOMPLETE),
-			proofrequest.StartBlockGTE(aggProof.StartBlock),
-			proofrequest.EndBlockLTE(aggProof.EndBlock),
+			proofrequest.StartBlockGTE(start),
+			proofrequest.EndBlockLTE(end),
 		).
 		Order(ent.Asc(proofrequest.FieldStartBlock))
 
@@ -323,7 +323,7 @@ func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([][]byte, error) {
 
 	// Check if we have a valid chain of proofs
 	var result [][]byte
-	currentBlock := aggProof.StartBlock
+	currentBlock := start
 
 	for _, span := range spans {
 		if span.StartBlock != currentBlock {
@@ -333,8 +333,8 @@ func (db *ProofDB) GetSubproofs(aggProof *ent.ProofRequest) ([][]byte, error) {
 		currentBlock = span.EndBlock + 1
 	}
 
-	if currentBlock-1 != aggProof.EndBlock {
-		return nil, fmt.Errorf("incomplete proof chain: ends at block %d, expected %d", currentBlock-1, aggProof.EndBlock)
+	if currentBlock-1 != end {
+		return nil, fmt.Errorf("incomplete proof chain: ends at block %d, expected %d", currentBlock-1, end)
 	}
 
 	return result, nil

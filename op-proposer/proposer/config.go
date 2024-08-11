@@ -119,17 +119,13 @@ func (c *CLIConfig) Check() error {
 func NewConfig(ctx *cli.Context) *CLIConfig {
 	return &CLIConfig{
 		// Required Flags
-		L1EthRpc:                  ctx.String(flags.L1EthRpcFlag.Name),
-		RollupRpc:                 ctx.String(flags.RollupRpcFlag.Name),
-		L2OOAddress:               ctx.String(flags.L2OOAddressFlag.Name),
-		PollInterval:              ctx.Duration(flags.PollIntervalFlag.Name),
-		TxMgrConfig:               txmgr.ReadCLIConfig(ctx),
-		DbPath:                    ctx.String(flags.DbPathFlag.Name),
-		BeaconRpc:                 ctx.String(flags.BeaconRpcFlag.Name),
-		MaxSpanBatchDeviation:     ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
-		MaxBlockRangePerSpanProof: ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
-		MaxProofTime:              ctx.Uint64(flags.MaxProofTimeFlag.Name),
-		KonaServerUrl:             ctx.String(flags.KonaServerUrlFlag.Name),
+		L1EthRpc:      ctx.String(flags.L1EthRpcFlag.Name),
+		RollupRpc:     ctx.String(flags.RollupRpcFlag.Name),
+		L2OOAddress:   ctx.String(flags.L2OOAddressFlag.Name),
+		PollInterval:  ctx.Duration(flags.PollIntervalFlag.Name),
+		TxMgrConfig:   txmgr.ReadCLIConfig(ctx),
+		BeaconRpc:     ctx.String(flags.BeaconRpcFlag.Name),
+		KonaServerUrl: ctx.String(flags.KonaServerUrlFlag.Name),
 
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),
@@ -143,6 +139,10 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		DisputeGameType:              uint32(ctx.Uint(flags.DisputeGameTypeFlag.Name)),
 		ActiveSequencerCheckDuration: ctx.Duration(flags.ActiveSequencerCheckDurationFlag.Name),
 		WaitNodeSync:                 ctx.Bool(flags.WaitNodeSyncFlag.Name),
+		DbPath:                       ctx.String(flags.DbPathFlag.Name),
+		MaxSpanBatchDeviation:        ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
+		MaxBlockRangePerSpanProof:    ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
+		MaxProofTime:                 ctx.Uint64(flags.MaxProofTimeFlag.Name),
 		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
 		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
 	}

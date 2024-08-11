@@ -68,7 +68,7 @@ func ProverRequestID(v string) predicate.ProofRequest {
 }
 
 // ProofRequestTime applies equality check predicate on the "proof_request_time" field. It's identical to ProofRequestTimeEQ.
-func ProofRequestTime(v int64) predicate.ProofRequest {
+func ProofRequestTime(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldEQ(FieldProofRequestTime, v))
 }
 
@@ -283,42 +283,42 @@ func ProverRequestIDContainsFold(v string) predicate.ProofRequest {
 }
 
 // ProofRequestTimeEQ applies the EQ predicate on the "proof_request_time" field.
-func ProofRequestTimeEQ(v int64) predicate.ProofRequest {
+func ProofRequestTimeEQ(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldEQ(FieldProofRequestTime, v))
 }
 
 // ProofRequestTimeNEQ applies the NEQ predicate on the "proof_request_time" field.
-func ProofRequestTimeNEQ(v int64) predicate.ProofRequest {
+func ProofRequestTimeNEQ(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldNEQ(FieldProofRequestTime, v))
 }
 
 // ProofRequestTimeIn applies the In predicate on the "proof_request_time" field.
-func ProofRequestTimeIn(vs ...int64) predicate.ProofRequest {
+func ProofRequestTimeIn(vs ...uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldIn(FieldProofRequestTime, vs...))
 }
 
 // ProofRequestTimeNotIn applies the NotIn predicate on the "proof_request_time" field.
-func ProofRequestTimeNotIn(vs ...int64) predicate.ProofRequest {
+func ProofRequestTimeNotIn(vs ...uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldNotIn(FieldProofRequestTime, vs...))
 }
 
 // ProofRequestTimeGT applies the GT predicate on the "proof_request_time" field.
-func ProofRequestTimeGT(v int64) predicate.ProofRequest {
+func ProofRequestTimeGT(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldGT(FieldProofRequestTime, v))
 }
 
 // ProofRequestTimeGTE applies the GTE predicate on the "proof_request_time" field.
-func ProofRequestTimeGTE(v int64) predicate.ProofRequest {
+func ProofRequestTimeGTE(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldGTE(FieldProofRequestTime, v))
 }
 
 // ProofRequestTimeLT applies the LT predicate on the "proof_request_time" field.
-func ProofRequestTimeLT(v int64) predicate.ProofRequest {
+func ProofRequestTimeLT(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldLT(FieldProofRequestTime, v))
 }
 
 // ProofRequestTimeLTE applies the LTE predicate on the "proof_request_time" field.
-func ProofRequestTimeLTE(v int64) predicate.ProofRequest {
+func ProofRequestTimeLTE(v uint64) predicate.ProofRequest {
 	return predicate.ProofRequest(sql.FieldLTE(FieldProofRequestTime, v))
 }
 

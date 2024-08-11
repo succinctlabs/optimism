@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ava-labs/coreth/accounts/abi/bind"
 	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent"
 	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent/proofrequest"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 
 func (l *L2OutputSubmitter) ProcessPendingProofs() error {
@@ -30,7 +30,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 			}
 		}
 
-		timeout := time.Now().Unix() > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
+		timeout := uint64(time.Now().Unix()) > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
 		// ZTODO: Talk to Succinct about logic of different statuses
 		if timeout {
 			// update status in db to "FAILED"
@@ -85,7 +85,7 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 				l.Log.Error("failed to checkpoint block hash", "err", err)
 				return err
 			}
-			l.db.AddL1BlockInfo(proof.StartBlock, proof.EndBlock, blockNumber, blockHash)
+			l.db.AddL1BlockInfoToAggRequest(proof.StartBlock, proof.EndBlock, blockNumber, blockHash.Hex())
 		}
 		go func(p ent.ProofRequest) {
 			err = l.db.UpdateProofStatus(proof.ID, "REQ")
@@ -102,7 +102,7 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 				}
 				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
 			}
-		}(proof)
+		}(*proof)
 	}
 
 	return nil

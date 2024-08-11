@@ -39,7 +39,7 @@ type ProofRequestMutation struct {
 	addend_block          *int64
 	status                *proofrequest.Status
 	prover_request_id     *string
-	proof_request_time    *int64
+	proof_request_time    *uint64
 	addproof_request_time *int64
 	l1_block_number       *uint64
 	addl1_block_number    *int64
@@ -383,13 +383,13 @@ func (m *ProofRequestMutation) ResetProverRequestID() {
 }
 
 // SetProofRequestTime sets the "proof_request_time" field.
-func (m *ProofRequestMutation) SetProofRequestTime(i int64) {
-	m.proof_request_time = &i
+func (m *ProofRequestMutation) SetProofRequestTime(u uint64) {
+	m.proof_request_time = &u
 	m.addproof_request_time = nil
 }
 
 // ProofRequestTime returns the value of the "proof_request_time" field in the mutation.
-func (m *ProofRequestMutation) ProofRequestTime() (r int64, exists bool) {
+func (m *ProofRequestMutation) ProofRequestTime() (r uint64, exists bool) {
 	v := m.proof_request_time
 	if v == nil {
 		return
@@ -400,7 +400,7 @@ func (m *ProofRequestMutation) ProofRequestTime() (r int64, exists bool) {
 // OldProofRequestTime returns the old "proof_request_time" field's value of the ProofRequest entity.
 // If the ProofRequest object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ProofRequestMutation) OldProofRequestTime(ctx context.Context) (v int64, err error) {
+func (m *ProofRequestMutation) OldProofRequestTime(ctx context.Context) (v uint64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldProofRequestTime is only allowed on UpdateOne operations")
 	}
@@ -414,12 +414,12 @@ func (m *ProofRequestMutation) OldProofRequestTime(ctx context.Context) (v int64
 	return oldValue.ProofRequestTime, nil
 }
 
-// AddProofRequestTime adds i to the "proof_request_time" field.
-func (m *ProofRequestMutation) AddProofRequestTime(i int64) {
+// AddProofRequestTime adds u to the "proof_request_time" field.
+func (m *ProofRequestMutation) AddProofRequestTime(u int64) {
 	if m.addproof_request_time != nil {
-		*m.addproof_request_time += i
+		*m.addproof_request_time += u
 	} else {
-		m.addproof_request_time = &i
+		m.addproof_request_time = &u
 	}
 }
 
@@ -780,7 +780,7 @@ func (m *ProofRequestMutation) SetField(name string, value ent.Value) error {
 		m.SetProverRequestID(v)
 		return nil
 	case proofrequest.FieldProofRequestTime:
-		v, ok := value.(int64)
+		v, ok := value.(uint64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

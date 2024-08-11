@@ -281,12 +281,6 @@ func (ps *ProposerService) initRPCServer(cfg *CLIConfig) error {
 	return nil
 }
 
-func (ps *ProposerService) initZKConfig(cfg *CLIConfig) error {
-	ps.Log.Info("Running Proposer")
-	<-ctx.Done()
-	return nil
-}
-
 // Start runs once upon start of the proposer lifecycle,
 // and starts L2Output-submission work if the proposer is configured to start submit data on startup.
 func (ps *ProposerService) Start(_ context.Context) error {

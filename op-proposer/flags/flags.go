@@ -32,35 +32,10 @@ var (
 		Usage:   "HTTP provider URL for the rollup node. A comma-separated list enables the active rollup provider.",
 		EnvVars: prefixEnvVars("ROLLUP_RPC"),
 	}
-	DbPathFlag = &cli.StringFlag{
-		Name:  "db-path",
-		Usage: "Path to the database used to track ZK proof generation",
-		// ZTODO: Decide on better default path here
-		Value:   "proofs.db",
-		EnvVars: prefixEnvVars("DB_PATH"),
-	}
 	BeaconRpcFlag = &cli.StringFlag{
 		Name:    "beacon-rpc",
 		Usage:   "HTTP provider URL for the beacon node",
 		EnvVars: prefixEnvVars("BEACON_RPC"),
-	}
-	MaxSpanBatchDeviationFlag = &cli.Uint64Flag{
-		Name:    "max-span-batch-deviation",
-		Usage:   "If we find a span batch this far ahead of our target, we assume an error and fill in the gap",
-		Value:   600,
-		EnvVars: prefixEnvVars("MAX_SPAN_BATCH_DEVIATION"),
-	}
-	MaxBlockRangePerSpanProofFlag = &cli.Uint64Flag{
-		Name:    "max-block-range-per-span-proof",
-		Usage:   "Maximum number of blocks to include in a single span proof",
-		Value:   75,
-		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
-	}
-	MaxProofTimeFlag = &cli.Uint64Flag{
-		Name:    "max-proof-time",
-		Usage:   "Maximum time in seconds to spend generating a proof before giving up",
-		Value:   14400,
-		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
 	}
 	KonaServerUrlFlag = &cli.StringFlag{
 		Name:    "kona-server-url",
@@ -120,6 +95,32 @@ var (
 		Value:   false,
 		EnvVars: prefixEnvVars("WAIT_NODE_SYNC"),
 	}
+	DbPathFlag = &cli.StringFlag{
+		Name:  "db-path",
+		Usage: "Path to the database used to track ZK proof generation",
+		// ZTODO: Decide on better default path here
+		Value:   "./proofs.db",
+		EnvVars: prefixEnvVars("DB_PATH"),
+	}
+	MaxSpanBatchDeviationFlag = &cli.Uint64Flag{
+		Name:    "max-span-batch-deviation",
+		Usage:   "If we find a span batch this far ahead of our target, we assume an error and fill in the gap",
+		Value:   600,
+		EnvVars: prefixEnvVars("MAX_SPAN_BATCH_DEVIATION"),
+	}
+	MaxBlockRangePerSpanProofFlag = &cli.Uint64Flag{
+		Name:    "max-block-range-per-span-proof",
+		Usage:   "Maximum number of blocks to include in a single span proof",
+		Value:   50,
+		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
+	}
+	// ZTODO: Rename to something like ProofExpiryTime
+	MaxProofTimeFlag = &cli.Uint64Flag{
+		Name:    "max-proof-time",
+		Usage:   "Maximum time in seconds to spend generating a proof before giving up",
+		Value:   14400,
+		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
+	}
 	TxCacheOutDirFlag = &cli.StringFlag{
 		Name:    "tx-cache-out-dir",
 		Usage:   "Cache directory for the found transactions to determine span batch boundaries",
@@ -139,6 +140,8 @@ var (
 var requiredFlags = []cli.Flag{
 	L1EthRpcFlag,
 	RollupRpcFlag,
+	BeaconRpcFlag,
+	KonaServerUrlFlag,
 }
 
 var optionalFlags = []cli.Flag{
@@ -152,6 +155,12 @@ var optionalFlags = []cli.Flag{
 	DisputeGameTypeFlag,
 	ActiveSequencerCheckDurationFlag,
 	WaitNodeSyncFlag,
+	DbPathFlag,
+	MaxSpanBatchDeviationFlag,
+	MaxBlockRangePerSpanProofFlag,
+	MaxProofTimeFlag,
+	TxCacheOutDirFlag,
+	BatchDecoderConcurrentReqsFlag,
 }
 
 func init() {

@@ -15,10 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum-optimism/optimism/op-proposer/bindings"
 	"github.com/ethereum-optimism/optimism/op-proposer/metrics"
+	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db"
 	"github.com/ethereum-optimism/optimism/op-service/dial"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum-optimism/optimism/op-service/txmgr"
@@ -52,7 +54,6 @@ type RollupClient interface {
 	OutputAtBlock(ctx context.Context, blockNum uint64) (*eth.OutputResponse, error)
 }
 
-
 type DriverSetup struct {
 	Log      log.Logger
 	Metr     metrics.Metricer
@@ -83,7 +84,7 @@ type L2OutputSubmitter struct {
 	dgfContract *bindings.DisputeGameFactoryCaller
 	dgfABI      *abi.ABI
 
-	db ProofDB
+	db db.ProofDB
 }
 
 // NewL2OutputSubmitter creates a new L2 Output Submitter
@@ -129,7 +130,7 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 		return nil, err
 	}
 
-	db, err := InitDB(setup.Cfg.DbPath)
+	db, err := db.InitDB(setup.Cfg.DbPath)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -143,7 +144,7 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 
 		l2ooContract: l2ooContract,
 		l2ooABI:      parsed,
-		db:           db,
+		db:           *db,
 	}, nil
 }
 
@@ -221,7 +222,7 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 	close(l.done)
 	l.wg.Wait()
 
-	if l.db != nil {
+	if l.db != (db.ProofDB{}) {
 		if err := l.db.CloseDB(); err != nil {
 			return fmt.Errorf("error closing database: %w", err)
 		}
@@ -231,23 +232,22 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 	return nil
 }
 
-
 func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
-    // Get the latest output index from the L2OutputOracle contract
-    latestOutputIndex, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
-    if err != nil {
-        return fmt.Errorf("failed to get latest output index: %w", err)
-    }
+	// Get the latest output index from the L2OutputOracle contract
+	latestOutputIndex, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get latest output index: %w", err)
+	}
 
-    // Check for a completed AGG proof starting at the next index
-    completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex + 1)
-    if err != nil {
-        return fmt.Errorf("failed to query for completed AGG proof: %w", err)
-    }
+	// Check for a completed AGG proof starting at the next index
+	completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex.Uint64() + 1)
+	if err != nil {
+		return fmt.Errorf("failed to query for completed AGG proof: %w", err)
+	}
 
-    if len(completedAggProofs) == 0 {
-        return nil
-    }
+	if len(completedAggProofs) == 0 {
+		return nil
+	}
 
 	for _, aggProof := range completedAggProofs {
 		output, err := l.FetchOutput(ctx, aggProof.EndBlock)
@@ -255,11 +255,11 @@ func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
 			return fmt.Errorf("failed to fetch output at block %d: %w", aggProof.EndBlock, err)
 		}
 
-		l.proposeOutput(ctx, output, aggProof.proof)
+		l.proposeOutput(ctx, output, aggProof.Proof)
 		l.Log.Info("AGG proof submitted on-chain", "start", aggProof.StartBlock, "end", aggProof.EndBlock)
 	}
 
-    return nil
+	return nil
 }
 
 // FetchL2OOOutput gets the next output proposal for the L2OO.
@@ -398,6 +398,10 @@ func proposeL2OutputDGFTxData(abi *abi.ABI, gameType uint32, output *eth.OutputR
 	return abi.Pack("create", gameType, output.OutputRoot, math.U256Bytes(new(big.Int).SetUint64(output.BlockRef.Number)))
 }
 
+func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNumber uint64, blockHash common.Hash) ([]byte, error) {
+	return l.l2ooABI.Pack("checkpointBlockHash", new(big.Int).SetUint64(blockNumber), blockHash)
+}
+
 // We wait until l1head advances beyond blocknum. This is used to make sure proposal tx won't
 // immediately fail when checking the l1 blockhash. Note that EstimateGas uses "latest" state to
 // execute the transaction by default, meaning inside the call, the head block is considered
@@ -474,7 +478,6 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 	}
 	return nil
 }
-
 
 // sendCheckpointTransaction creates & sends transaction to checkpoint blockhash on L2OO contract.
 func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber uint64, blockHash common.Hash) (uint64, common.Hash, error) {
@@ -569,7 +572,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
 			// This is done by checking if we have contiguous span proofs from the last on chain
 			// output root through at least the submission interval.
-			err = l.DeriveAggProofs()
+			err = l.DeriveAggProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to generate pending agg proofs", "err", err)
 				break
@@ -642,7 +645,7 @@ func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.Outpu
 			"err", err,
 			"l1blocknum", output.Status.CurrentL1.Number,
 			"l1blockhash", output.Status.CurrentL1.Hash,
-			"l1head", output.Status.HeadL1.Number
+			"l1head", output.Status.HeadL1.Number,
 			"proof", proof)
 		return
 	}

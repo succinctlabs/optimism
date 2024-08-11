@@ -27,7 +27,7 @@ type ProofRequest struct {
 	// ProverRequestID holds the value of the "prover_request_id" field.
 	ProverRequestID string `json:"prover_request_id,omitempty"`
 	// ProofRequestTime holds the value of the "proof_request_time" field.
-	ProofRequestTime int64 `json:"proof_request_time,omitempty"`
+	ProofRequestTime uint64 `json:"proof_request_time,omitempty"`
 	// L1BlockNumber holds the value of the "l1_block_number" field.
 	L1BlockNumber uint64 `json:"l1_block_number,omitempty"`
 	// L1BlockHash holds the value of the "l1_block_hash" field.
@@ -103,7 +103,7 @@ func (pr *ProofRequest) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field proof_request_time", values[i])
 			} else if value.Valid {
-				pr.ProofRequestTime = value.Int64
+				pr.ProofRequestTime = uint64(value.Int64)
 			}
 		case proofrequest.FieldL1BlockNumber:
 			if value, ok := values[i].(*sql.NullInt64); !ok {

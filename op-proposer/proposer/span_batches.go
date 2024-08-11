@@ -52,7 +52,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 		tmpStart := nextBlock
 		for {
 			maxEnd := tmpStart + l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
-			tmpEnd := uint64(math.Min(maxEnd, end))
+			tmpEnd := uint64(math.Min(float64(maxEnd), float64(end)))
 
 			// insert the new span into the db to be requested in the future
 			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
@@ -107,7 +107,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 	}
 	// ZTODO: This won't work for untracked / new / test chains.
 	// How do we want to handle that? Optional config all the way up? Sane defaults?
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID)
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID.Uint64())
 
 	fetchConfig := fetch.Config{
 		Start:   l1Origin,
@@ -131,9 +131,9 @@ func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviat
 	chainID, err := l.DriverSetup.L1Client.ChainID(ctx)
 	if err != nil {
 		log.Fatal(err)
-		return err
+		return 0, 0, err
 	}
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID)
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID.Uint64())
 
 	reassembleConfig := reassemble.Config{
 		BatchInbox:    rollupCfg.BatchInboxAddress,
