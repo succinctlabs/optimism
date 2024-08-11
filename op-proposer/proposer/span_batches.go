@@ -19,8 +19,15 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
 	latestEndBlock, err := l.db.GetLatestEndBlock()
 	if err != nil {
-		l.Log.Error("failed to get latest end requested", "err", err)
-		return err
+		if err == ent.IsNotFound {
+			latestEndBlock, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
+			if err != nil {
+				return fmt.Errorf("failed to get latest output index: %w", err)
+			}
+		} else {
+			l.Log.Error("failed to get latest end requested", "err", err)
+			return err
+		}
 	}
 	nextBlock := latestEndBlock + 1
 

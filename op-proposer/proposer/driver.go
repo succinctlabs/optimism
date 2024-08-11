@@ -44,6 +44,7 @@ type L1Client interface {
 
 type L2OOContract interface {
 	Version(*bind.CallOpts) (string, error)
+	LatestBlockNumber(*bind.CallOpts) (*big.Int, error)
 	NextBlockNumber(*bind.CallOpts) (*big.Int, error)
 	LatestOutputIndex(*bind.CallOpts) (*big.Int, error)
 	NextOutputIndex(*bind.CallOpts) (*big.Int, error)
@@ -234,13 +235,13 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 
 func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
 	// Get the latest output index from the L2OutputOracle contract
-	latestOutputIndex, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+	latestBlockNumber, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get latest output index: %w", err)
 	}
 
 	// Check for a completed AGG proof starting at the next index
-	completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestOutputIndex.Uint64() + 1)
+	completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestBlockNumber.Uint64() + 1)
 	if err != nil {
 		return fmt.Errorf("failed to query for completed AGG proof: %w", err)
 	}
