@@ -10,8 +10,10 @@ import (
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
+	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db/ent"
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/sources"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -19,10 +21,12 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
 	latestEndBlock, err := l.db.GetLatestEndBlock()
 	if err != nil {
-		if err == ent.IsNotFound {
-			latestEndBlock, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
+		if ent.IsNotFound(err) {
+			latestEndBlockU256, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
 			if err != nil {
 				return fmt.Errorf("failed to get latest output index: %w", err)
+			} else {
+				latestEndBlock = latestEndBlockU256.Uint64()
 			}
 		} else {
 			l.Log.Error("failed to get latest end requested", "err", err)
