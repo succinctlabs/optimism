@@ -21,7 +21,6 @@ import (
 func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
 	latestEndBlock, err := l.db.GetLatestEndBlock()
-	fmt.Println("latestEndBlock", latestEndBlock)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			latestEndBlockU256, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
@@ -36,7 +35,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 		}
 	}
 	nextBlock := latestEndBlock + 1
-	fmt.Println("nextBlock", nextBlock)
+	l.Log.Info("deriving span batch for L2 block", "nextBlock", nextBlock)
 
 	// use batch decoder to pull all batches from next block's L1 Origin through Finalized L1 from chain to disk
 	err = l.FetchBatchesFromChain(ctx, nextBlock)
@@ -63,12 +62,15 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 			l.Log.Warn("start block does not match next block", "start", start, "nextBlock", nextBlock)
 		}
 
+		l.Log.Info("found span batch range", "start", start, "end", end)
+
 		tmpStart := nextBlock
 		for {
 			maxEnd := tmpStart + l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
 			tmpEnd := uint64(math.Min(float64(maxEnd), float64(end)))
 
 			// insert the new span into the db to be requested in the future
+			l.Log.Info("inserting span proof request", "start", tmpStart, "end", tmpEnd)
 			err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
 			if err != nil {
 				l.Log.Error("failed to insert proof request", "err", err)
@@ -128,7 +130,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		return err
 	}
 
-	fmt.Println("Fetching batches from L1 Origin", l1Origin, "to Finalized L1", finalizedL1)
+	l.Log.Info("Fetching batches from L1 Origin to Finalized L1", "l1 origin", l1Origin, "Finalized L1", finalizedL1)
 	fetchConfig := fetch.Config{
 		Start:   l1Origin,
 		End:     finalizedL1,
@@ -141,7 +143,8 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		ConcurrentRequests: proposerConfig.BatchDecoderConcurrentReqs,
 	}
 
-	fetch.Batches(l1Client, beacon, fetchConfig)
+	totalValid, _ := fetch.Batches(l1Client, beacon, fetchConfig)
+	l.Log.Info("Fetched batches", "totalValid", totalValid)
 	return nil
 }
 

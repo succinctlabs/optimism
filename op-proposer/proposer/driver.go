@@ -555,7 +555,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// This is done by checking the chain for completed channels and pulling span batches out.
 			// We break apart span batches if they exceed the max size, and gracefully handle bugs in span batch decoding.
 			// We add ranges to be proven to the DB as "UNREQ" so they are queued up to request later.
-			fmt.Println("1) Deriving Span Batches...")
+			l.Log.Info("Stage 1: Deriving Span Batches...")
 			err := l.DeriveNewSpanBatches(ctx)
 			if err != nil {
 				l.Log.Error("failed to add next span batches to db", "err", err)
@@ -565,7 +565,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 2) Check the statuses of all requested proofs.
 			// If it's successfully returned, we validate that we have it on disk and set status = "COMPLETE".
 			// If it fails or times out, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
-			fmt.Println("2) Processing Pending Proofs...")
+			l.Log.Info("Stage 2: Processing Pending Proofs...")
 			err = l.ProcessPendingProofs()
 			if err != nil {
 				l.Log.Error("failed to update requested proofs", "err", err)
@@ -575,7 +575,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
 			// This is done by checking if we have contiguous span proofs from the last on chain
 			// output root through at least the submission interval.
-			fmt.Println("3) Deriving Agg Proofs...")
+			l.Log.Info("Stage 3: Deriving Agg Proofs...")
 			err = l.DeriveAggProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to generate pending agg proofs", "err", err)
@@ -586,7 +586,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			// Any DB entry with status = "UNREQ" means it's queued up and ready.
 			// We request all of these (both span and agg) from the prover network.
 			// For agg proofs, we also checkpoint the blockhash in advance.
-			fmt.Println("4) Requesting Queued Proofs...")
+			l.Log.Info("Stage 4: Requesting Queued Proofs...")
 			err = l.RequestQueuedProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to request unrequested proofs", "err", err)
@@ -595,7 +595,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 
 			// 5) Submit agg proofs on chain.
 			// If we have a completed agg proof waiting in the DB, we submit them on chain.
-			fmt.Println("5) Submitting Agg Proofs...")
+			l.Log.Info("Stage 5: Submitting Agg Proofs...")
 			err = l.SubmitAggProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to submit agg proofs", "err", err)

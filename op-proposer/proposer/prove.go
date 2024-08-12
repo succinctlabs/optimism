@@ -27,6 +27,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 		}
 		if status == "PROOF_FULFILLED" {
 			// update the proof to the DB and update status to "COMPLETE"
+			l.Log.Info("proof fulfilled", "id", req.ProverRequestID)
 			err = l.db.AddProof(req.ID, proof)
 			if err != nil {
 				l.Log.Error("failed to update completed proof status", "err", err)
@@ -38,6 +39,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 		// ZTODO: Talk to Succinct about logic of different statuses
 		if timeout {
 			// update status in db to "FAILED"
+			l.Log.Info("proof timed out", "id", req.ProverRequestID)
 			err = l.db.UpdateProofStatus(req.ID, "FAILED")
 			if err != nil {
 				l.Log.Error("failed to update failed proof status", "err", err)
@@ -47,7 +49,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 			// If an AGG proof failed, we're in trouble.
 			// Try again.
 			if req.Type == proofrequest.TypeAGG {
-				l.Log.Error("failed to get agg proof, adding to db to retry", "req", req)
+				l.Log.Error("agg proof failed, adding to db to retry", "req", req)
 
 				err = l.db.NewEntry("AGG", req.StartBlock, req.EndBlock)
 				if err != nil {
@@ -58,6 +60,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 
 			// If a SPAN proof failed, assume it was too big.
 			// Therefore, create two new entries for the original proof split in half.
+			l.Log.Info("span proof failed, splitting in half to retry", "req", req)
 			tmpStart := req.StartBlock
 			tmpEnd := tmpStart + ((req.EndBlock - tmpStart) / 2)
 			for i := 0; i < 2; i++ {
@@ -81,15 +84,14 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get unrequested proofs: %w", err)
 	}
-	fmt.Println("unrequestedProofs", len(unrequestedProofs))
 
 	for _, proof := range unrequestedProofs {
 		currentRequestedProofs, err := l.db.CountRequestedProofs()
-		fmt.Println(currentRequestedProofs)
 		if err != nil {
 			return fmt.Errorf("failed to count requested proofs: %w", err)
 		}
 		if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
+			l.Log.Info("max concurrent proof requests reached, waiting for next cycle")
 			break
 		}
 		if proof.Type == proofrequest.TypeAGG {
@@ -101,7 +103,6 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 			l.db.AddL1BlockInfoToAggRequest(proof.StartBlock, proof.EndBlock, blockNumber, blockHash.Hex())
 		}
 		go func(p ent.ProofRequest) {
-			fmt.Println("requesting proof", p)
 			err = l.db.UpdateProofStatus(proof.ID, "REQ")
 			if err != nil {
 				l.Log.Error("failed to update proof status", "err", err)
@@ -137,9 +138,12 @@ func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
 		return fmt.Errorf("failed to get next L2OO output: %w", err)
 	}
 
-	_, err = l.db.TryCreateAggProofFromSpanProofs(from, minTo.Uint64())
+	created, err := l.db.TryCreateAggProofFromSpanProofs(from, minTo.Uint64())
 	if err != nil {
 		return fmt.Errorf("failed to create agg proof from span proofs: %w", err)
+	}
+	if created {
+		l.Log.Info("created new AGG proof", "from", from, "to", minTo.Uint64())
 	}
 
 	return nil
@@ -186,6 +190,7 @@ type ProofResponse struct {
 }
 
 func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) {
+	l.Log.Info("requesting span proof", "start", start, "end", end)
 	requestBody := SpanProofRequest{
 		Start: start,
 		End:   end,
@@ -199,6 +204,7 @@ func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) 
 }
 
 func (l *L2OutputSubmitter) RequestAggProof(start, end uint64) (string, error) {
+	l.Log.Info("requesting agg proof", "start", start, "end", end)
 	subproofs, err := l.db.GetSubproofs(start, end)
 	if err != nil {
 		return "", fmt.Errorf("failed to get subproofs: %w", err)
