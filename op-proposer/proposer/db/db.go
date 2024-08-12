@@ -57,6 +57,7 @@ func (db *ProofDB) NewEntry(proofType string, start, end uint64) error {
 		SetStartBlock(start).
 		SetEndBlock(end).
 		SetStatus(proofrequest.StatusUNREQ).
+		SetRequestAddedTime(uint64(time.Now().Unix())).
 		Save(context.Background())
 
 	if err != nil {
@@ -216,19 +217,43 @@ func (db *ProofDB) CountRequestedProofs() (int, error) {
 	return count, nil
 }
 
-func (db *ProofDB) GetAllUnrequestedProofs() ([]*ent.ProofRequest, error) {
-	proofs, err := db.client.ProofRequest.Query().
-		Where(proofrequest.StatusEQ(proofrequest.StatusUNREQ)).
-		All(context.Background())
+func (db *ProofDB) GetNextUnrequestedProof() (*ent.ProofRequest, error) {
+	// First, try to get an AGG type proof
+	aggProof, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.StatusEQ(proofrequest.StatusUNREQ),
+			proofrequest.TypeEQ(proofrequest.TypeAGG),
+		).
+		Order(ent.Asc(proofrequest.FieldRequestAddedTime)).
+		First(context.Background())
+
+	if err == nil {
+		// We found an AGG proof, return it
+		return aggProof, nil
+	} else if !ent.IsNotFound(err) {
+		// An error occurred that wasn't "not found"
+		return nil, fmt.Errorf("failed to query AGG unrequested proof: %w", err)
+	}
+
+	// If we're here, it means no AGG proof was found. Let's try SPAN proof.
+	spanProof, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.StatusEQ(proofrequest.StatusUNREQ),
+			proofrequest.TypeEQ(proofrequest.TypeSPAN),
+		).
+		Order(ent.Asc(proofrequest.FieldRequestAddedTime)).
+		First(context.Background())
 
 	if err != nil {
 		if ent.IsNotFound(err) {
+			// No SPAN proof found either
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to query completed AGG proof: %w", err)
+		return nil, fmt.Errorf("failed to query SPAN unrequested proof: %w", err)
 	}
 
-	return proofs, nil
+	// We found a SPAN proof
+	return spanProof, nil
 }
 
 func (db *ProofDB) GetAllCompletedAggProofs(startBlock uint64) ([]*ent.ProofRequest, error) {

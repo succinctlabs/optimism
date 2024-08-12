@@ -97,6 +97,27 @@ func (pru *ProofRequestUpdate) SetNillableStatus(pr *proofrequest.Status) *Proof
 	return pru
 }
 
+// SetRequestAddedTime sets the "request_added_time" field.
+func (pru *ProofRequestUpdate) SetRequestAddedTime(u uint64) *ProofRequestUpdate {
+	pru.mutation.ResetRequestAddedTime()
+	pru.mutation.SetRequestAddedTime(u)
+	return pru
+}
+
+// SetNillableRequestAddedTime sets the "request_added_time" field if the given value is not nil.
+func (pru *ProofRequestUpdate) SetNillableRequestAddedTime(u *uint64) *ProofRequestUpdate {
+	if u != nil {
+		pru.SetRequestAddedTime(*u)
+	}
+	return pru
+}
+
+// AddRequestAddedTime adds u to the "request_added_time" field.
+func (pru *ProofRequestUpdate) AddRequestAddedTime(u int64) *ProofRequestUpdate {
+	pru.mutation.AddRequestAddedTime(u)
+	return pru
+}
+
 // SetProverRequestID sets the "prover_request_id" field.
 func (pru *ProofRequestUpdate) SetProverRequestID(s string) *ProofRequestUpdate {
 	pru.mutation.SetProverRequestID(s)
@@ -280,6 +301,12 @@ func (pru *ProofRequestUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	if value, ok := pru.mutation.Status(); ok {
 		_spec.SetField(proofrequest.FieldStatus, field.TypeEnum, value)
 	}
+	if value, ok := pru.mutation.RequestAddedTime(); ok {
+		_spec.SetField(proofrequest.FieldRequestAddedTime, field.TypeUint64, value)
+	}
+	if value, ok := pru.mutation.AddedRequestAddedTime(); ok {
+		_spec.AddField(proofrequest.FieldRequestAddedTime, field.TypeUint64, value)
+	}
 	if value, ok := pru.mutation.ProverRequestID(); ok {
 		_spec.SetField(proofrequest.FieldProverRequestID, field.TypeString, value)
 	}
@@ -403,6 +430,27 @@ func (pruo *ProofRequestUpdateOne) SetNillableStatus(pr *proofrequest.Status) *P
 	if pr != nil {
 		pruo.SetStatus(*pr)
 	}
+	return pruo
+}
+
+// SetRequestAddedTime sets the "request_added_time" field.
+func (pruo *ProofRequestUpdateOne) SetRequestAddedTime(u uint64) *ProofRequestUpdateOne {
+	pruo.mutation.ResetRequestAddedTime()
+	pruo.mutation.SetRequestAddedTime(u)
+	return pruo
+}
+
+// SetNillableRequestAddedTime sets the "request_added_time" field if the given value is not nil.
+func (pruo *ProofRequestUpdateOne) SetNillableRequestAddedTime(u *uint64) *ProofRequestUpdateOne {
+	if u != nil {
+		pruo.SetRequestAddedTime(*u)
+	}
+	return pruo
+}
+
+// AddRequestAddedTime adds u to the "request_added_time" field.
+func (pruo *ProofRequestUpdateOne) AddRequestAddedTime(u int64) *ProofRequestUpdateOne {
+	pruo.mutation.AddRequestAddedTime(u)
 	return pruo
 }
 
@@ -618,6 +666,12 @@ func (pruo *ProofRequestUpdateOne) sqlSave(ctx context.Context) (_node *ProofReq
 	}
 	if value, ok := pruo.mutation.Status(); ok {
 		_spec.SetField(proofrequest.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := pruo.mutation.RequestAddedTime(); ok {
+		_spec.SetField(proofrequest.FieldRequestAddedTime, field.TypeUint64, value)
+	}
+	if value, ok := pruo.mutation.AddedRequestAddedTime(); ok {
+		_spec.AddField(proofrequest.FieldRequestAddedTime, field.TypeUint64, value)
 	}
 	if value, ok := pruo.mutation.ProverRequestID(); ok {
 		_spec.SetField(proofrequest.FieldProverRequestID, field.TypeString, value)

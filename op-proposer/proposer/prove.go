@@ -80,45 +80,43 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 }
 
 func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
-	unrequestedProofs, err := l.db.GetAllUnrequestedProofs()
+	nextProofToRequest, err := l.db.GetNextUnrequestedProof()
 	if err != nil {
 		return fmt.Errorf("failed to get unrequested proofs: %w", err)
 	}
 
-	for _, proof := range unrequestedProofs {
-		currentRequestedProofs, err := l.db.CountRequestedProofs()
-		if err != nil {
-			return fmt.Errorf("failed to count requested proofs: %w", err)
-		}
-		if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
-			l.Log.Info("max concurrent proof requests reached, waiting for next cycle")
-			break
-		}
-		if proof.Type == proofrequest.TypeAGG {
-			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
-			if err != nil {
-				l.Log.Error("failed to checkpoint block hash", "err", err)
-				return err
-			}
-			l.db.AddL1BlockInfoToAggRequest(proof.StartBlock, proof.EndBlock, blockNumber, blockHash.Hex())
-		}
-		go func(p ent.ProofRequest) {
-			err = l.db.UpdateProofStatus(proof.ID, "REQ")
-			if err != nil {
-				l.Log.Error("failed to update proof status", "err", err)
-				return
-			}
-
-			err = l.RequestKonaProof(p)
-			if err != nil {
-				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
-				err = l.db.UpdateProofStatus(proof.ID, "FAILED")
-				if err != nil {
-					l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", proof.ID)
-				}
-			}
-		}(*proof)
+	currentRequestedProofs, err := l.db.CountRequestedProofs()
+	if err != nil {
+		return fmt.Errorf("failed to count requested proofs: %w", err)
 	}
+	if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
+		l.Log.Info("max concurrent proof requests reached, waiting for next cycle")
+		return nil
+	}
+	if nextProofToRequest.Type == proofrequest.TypeAGG {
+		blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+		if err != nil {
+			l.Log.Error("failed to checkpoint block hash", "err", err)
+			return err
+		}
+		l.db.AddL1BlockInfoToAggRequest(nextProofToRequest.StartBlock, nextProofToRequest.EndBlock, blockNumber, blockHash.Hex())
+	}
+	go func(p ent.ProofRequest) {
+		err = l.db.UpdateProofStatus(nextProofToRequest.ID, "REQ")
+		if err != nil {
+			l.Log.Error("failed to update proof status", "err", err)
+			return
+		}
+
+		err = l.RequestKonaProof(p)
+		if err != nil {
+			l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
+			err = l.db.UpdateProofStatus(nextProofToRequest.ID, "FAILED")
+			if err != nil {
+				l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", nextProofToRequest.ID)
+			}
+		}
+	}(*nextProofToRequest)
 
 	return nil
 }

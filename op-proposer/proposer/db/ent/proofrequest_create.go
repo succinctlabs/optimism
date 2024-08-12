@@ -43,6 +43,12 @@ func (prc *ProofRequestCreate) SetStatus(pr proofrequest.Status) *ProofRequestCr
 	return prc
 }
 
+// SetRequestAddedTime sets the "request_added_time" field.
+func (prc *ProofRequestCreate) SetRequestAddedTime(u uint64) *ProofRequestCreate {
+	prc.mutation.SetRequestAddedTime(u)
+	return prc
+}
+
 // SetProverRequestID sets the "prover_request_id" field.
 func (prc *ProofRequestCreate) SetProverRequestID(s string) *ProofRequestCreate {
 	prc.mutation.SetProverRequestID(s)
@@ -161,6 +167,9 @@ func (prc *ProofRequestCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ProofRequest.status": %w`, err)}
 		}
 	}
+	if _, ok := prc.mutation.RequestAddedTime(); !ok {
+		return &ValidationError{Name: "request_added_time", err: errors.New(`ent: missing required field "ProofRequest.request_added_time"`)}
+	}
 	return nil
 }
 
@@ -202,6 +211,10 @@ func (prc *ProofRequestCreate) createSpec() (*ProofRequest, *sqlgraph.CreateSpec
 	if value, ok := prc.mutation.Status(); ok {
 		_spec.SetField(proofrequest.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
+	}
+	if value, ok := prc.mutation.RequestAddedTime(); ok {
+		_spec.SetField(proofrequest.FieldRequestAddedTime, field.TypeUint64, value)
+		_node.RequestAddedTime = value
 	}
 	if value, ok := prc.mutation.ProverRequestID(); ok {
 		_spec.SetField(proofrequest.FieldProverRequestID, field.TypeString, value)

@@ -21,6 +21,8 @@ const (
 	FieldEndBlock = "end_block"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldRequestAddedTime holds the string denoting the request_added_time field in the database.
+	FieldRequestAddedTime = "request_added_time"
 	// FieldProverRequestID holds the string denoting the prover_request_id field in the database.
 	FieldProverRequestID = "prover_request_id"
 	// FieldProofRequestTime holds the string denoting the proof_request_time field in the database.
@@ -42,6 +44,7 @@ var Columns = []string{
 	FieldStartBlock,
 	FieldEndBlock,
 	FieldStatus,
+	FieldRequestAddedTime,
 	FieldProverRequestID,
 	FieldProofRequestTime,
 	FieldL1BlockNumber,
@@ -133,6 +136,11 @@ func ByEndBlock(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByRequestAddedTime orders the results by the request_added_time field.
+func ByRequestAddedTime(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequestAddedTime, opts...).ToFunc()
 }
 
 // ByProverRequestID orders the results by the prover_request_id field.
