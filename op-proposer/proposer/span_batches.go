@@ -119,8 +119,9 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		return err
 	}
 	// ZTODO: This won't work for untracked / new / test chains.
-	// How do we want to handle that? Optional config all the way up? Sane defaults?
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(uint64(11155420))
+	// How do we want to handle that? This is just for BatcherAddr / BatchInbox,
+	// so I think best is to allow CLI arg of either ChainID or those two.
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(l.Cfg.L2ChainID)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -144,14 +145,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 }
 
 func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
-	// ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	// defer cancel()
-	// chainID, err := l.DriverSetup.L1Client.ChainID(ctx)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// 	return 0, 0, err
-	// }
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(uint64(11155420))
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(l.Cfg.L2ChainID)
 	if err != nil {
 		log.Fatal(err)
 		return 0, 0, err
@@ -161,7 +155,7 @@ func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviat
 		BatchInbox:    rollupCfg.BatchInboxAddress,
 		InDirectory:   l.DriverSetup.Cfg.TxCacheOutDir,
 		OutDirectory:  "",
-		L2ChainID:     new(big.Int).SetUint64(11155420),
+		L2ChainID:     new(big.Int).SetUint64(l.Cfg.L2ChainID),
 		L2GenesisTime: rollupCfg.Genesis.L2Time,
 		L2BlockTime:   rollupCfg.BlockTime,
 	}

@@ -57,6 +57,7 @@ type ProposerConfig struct {
 	BatchDecoderConcurrentReqs uint64
 	MaxSpanBatchDeviation      uint64
 	MaxBlockRangePerSpanProof  uint64
+	L2ChainID                  uint64
 	MaxProofTime               uint64
 	KonaServerUrl              string
 }
@@ -116,6 +117,7 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.MaxBlockRangePerSpanProof = cfg.MaxBlockRangePerSpanProof
 	ps.KonaServerUrl = cfg.KonaServerUrl
 	ps.MaxProofTime = cfg.MaxProofTime
+	ps.L2ChainID = cfg.L2ChainID
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)

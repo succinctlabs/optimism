@@ -79,6 +79,8 @@ type CLIConfig struct {
 	MaxSpanBatchDeviation uint64
 	// The max size (in blocks) of a proof we will attempt to generate. If span batches are larger, we break them up.
 	MaxBlockRangePerSpanProof uint64
+	// The Chain ID of the L2 chain.
+	L2ChainID uint64
 	// The maximum amount of time we will spend waiting for a proof before giving up and trying again.
 	MaxProofTime uint64
 	// The URL of the Kona server to request proofs from.
@@ -119,13 +121,13 @@ func (c *CLIConfig) Check() error {
 func NewConfig(ctx *cli.Context) *CLIConfig {
 	return &CLIConfig{
 		// Required Flags
-		L1EthRpc:      ctx.String(flags.L1EthRpcFlag.Name),
-		RollupRpc:     ctx.String(flags.RollupRpcFlag.Name),
-		L2OOAddress:   ctx.String(flags.L2OOAddressFlag.Name),
-		PollInterval:  ctx.Duration(flags.PollIntervalFlag.Name),
-		TxMgrConfig:   txmgr.ReadCLIConfig(ctx),
-		BeaconRpc:     ctx.String(flags.BeaconRpcFlag.Name),
-		KonaServerUrl: ctx.String(flags.KonaServerUrlFlag.Name),
+		L1EthRpc:     ctx.String(flags.L1EthRpcFlag.Name),
+		RollupRpc:    ctx.String(flags.RollupRpcFlag.Name),
+		L2OOAddress:  ctx.String(flags.L2OOAddressFlag.Name),
+		PollInterval: ctx.Duration(flags.PollIntervalFlag.Name),
+		TxMgrConfig:  txmgr.ReadCLIConfig(ctx),
+		BeaconRpc:    ctx.String(flags.BeaconRpcFlag.Name),
+		L2ChainID:    uint64(ctx.Uint(flags.L2ChainIDFlag.Name)),
 
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),
@@ -145,5 +147,6 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		MaxProofTime:                 ctx.Uint64(flags.MaxProofTimeFlag.Name),
 		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
 		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
+		KonaServerUrl:                ctx.String(flags.KonaServerUrlFlag.Name),
 	}
 }
