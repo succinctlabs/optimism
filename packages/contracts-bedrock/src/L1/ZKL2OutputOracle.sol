@@ -6,7 +6,6 @@ import { ISemver } from "src/universal/ISemver.sol";
 import { Types } from "src/libraries/Types.sol";
 import { Constants } from "src/libraries/Constants.sol";
 import { SP1VerifierGateway } from "@sp1-contracts/src/SP1VerifierGateway.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @custom:proxied
 /// @title ZKL2OutputOracle
@@ -14,7 +13,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 ///         commitment to the state of the L2 chain. Other contracts like the OptimismPortal use
 ///         these outputs to verify information about the state of L2.
 ///         This is a diff of the L2OutputOracle, but where outputs are ZK verified.
-contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
+contract ZKL2OutputOracle is Initializable, ISemver {
     /// @notice The number of the first L2 block recorded in this contract.
     uint256 public startingBlockNumber;
 
@@ -44,6 +43,10 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @custom:network-specific
     uint256 public finalizationPeriodSeconds;
 
+    ////////////////////////////////////////////////////////////
+    //                      New Storage                       //
+    ////////////////////////////////////////////////////////////
+
     /// @notice Struct containing the public values committed to for the SP1 proof.
     struct PublicValuesStruct {
         bytes32 l1Head;
@@ -59,11 +62,18 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @notice The verification key of the SP1 program.
     bytes32 public vkey;
 
+    /// @notice The owner of the contract, who has admin permissions.
+    address public owner;
+
     /// @notice The deployed SP1VerifierGateway contract to request proofs from.
     SP1VerifierGateway public verifierGateway;
 
     /// @notice A trusted mapping of block numbers to block hashes.
     mapping (uint => bytes32) public historicBlockHashes;
+
+    ////////////////////////////////////////////////////////////
+    //                         Events                         //
+    ////////////////////////////////////////////////////////////
 
     /// @notice Emitted when an output is proposed.
     /// @param outputRoot    The output root.
@@ -89,9 +99,27 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @param newVerifierGateway The new verifier gateway.
     event UpdatedVerifierGateway(address indexed oldVerifierGateway, address indexed newVerifierGateway);
 
+    /// @notice Emitted when ownership is transferred.
+    /// @param previousOwner The previous owner.
+    /// @param newOwner      The new owner.
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
     /// @notice Semantic version.
     /// @custom:semver 2.0.0
     string public constant version = "2.0.0";
+
+    ////////////////////////////////////////////////////////////
+    //                        Modifiers                       //
+    ////////////////////////////////////////////////////////////
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "L2OutputOracle: caller is not the owner");
+        _;
+    }
+
+    ////////////////////////////////////////////////////////////
+    //                        Functions                       //
+    ////////////////////////////////////////////////////////////
 
     /// @notice Constructs the L2OutputOracle contract. Initializes variables to the same values as
     ///         in the getting-started config.
@@ -159,24 +187,6 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
         _transferOwnership(_owner);
         _updateVKey(_vkey);
         _updateVerifierGateway(_verifierGateway);
-    }
-
-    function updateVKey(bytes32 _vkey) external onlyOwner {
-        _updateVKey(_vkey);
-    }
-
-    function _updateVKey(bytes32 _vkey) internal {
-        emit UpdatedVKey(vkey, _vkey);
-        vkey = _vkey;
-    }
-
-    function updateVerifierGateway(address _verifierGateway) external onlyOwner {
-        _updateVerifierGateway(_verifierGateway);
-    }
-
-    function _updateVerifierGateway(address _verifierGateway) internal {
-        emit UpdatedVerifierGateway(address(verifierGateway), _verifierGateway);
-        verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
 
     /// @notice Getter for the submissionInterval.
@@ -400,5 +410,36 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @return L2 timestamp of the given block.
     function computeL2Timestamp(uint256 _l2BlockNumber) public view returns (uint256) {
         return startingTimestamp + ((_l2BlockNumber - startingBlockNumber) * l2BlockTime);
+    }
+
+    ////////////////////////////////////////////////////////////
+    //                         Admin                          //
+    ////////////////////////////////////////////////////////////
+
+    function transferOwnership(address _newOwner) external onlyOwner {
+        owner = _newOwner;
+    }
+
+    function _transferOwnership(address _newOwner) internal {
+        emit OwnershipTransferred(owner, _newOwner);
+        owner = _newOwner;
+    }
+
+    function updateVKey(bytes32 _vkey) external onlyOwner {
+        _updateVKey(_vkey);
+    }
+
+    function _updateVKey(bytes32 _vkey) internal {
+        emit UpdatedVKey(vkey, _vkey);
+        vkey = _vkey;
+    }
+
+    function updateVerifierGateway(address _verifierGateway) external onlyOwner {
+        _updateVerifierGateway(_verifierGateway);
+    }
+
+    function _updateVerifierGateway(address _verifierGateway) internal {
+        emit UpdatedVerifierGateway(address(verifierGateway), _verifierGateway);
+        verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
 }
