@@ -44,6 +44,15 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @custom:network-specific
     uint256 public finalizationPeriodSeconds;
 
+    /// @notice Struct containing the public values committed to for the SP1 proof.
+    struct PublicValuesStruct {
+        bytes32 l1Head;
+        bytes32 l2PreRoot;
+        bytes32 claimRoot;
+        uint256 claimBlockNum;
+        uint256 chainId;
+    }
+
     /// @notice The chain ID of the L2 chain.
     uint public chainId;
 
