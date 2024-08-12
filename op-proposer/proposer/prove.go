@@ -21,6 +21,10 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 	}
 	for _, req := range reqs {
 		status, proof, err := l.GetProofStatus(req.ProverRequestID)
+		if err != nil {
+			l.Log.Error("failed to get proof status", "err", err)
+			return err
+		}
 		if status == "PROOF_FULFILLED" {
 			// update the proof to the DB and update status to "COMPLETE"
 			err = l.db.AddProof(req.ID, proof)
@@ -96,11 +100,11 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 
 			err = l.RequestKonaProof(p)
 			if err != nil {
+				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
 				err = l.db.UpdateProofStatus(proof.ID, "FAILED")
 				if err != nil {
 					l.Log.Error("failed to revert proof status", "err", err, "proverRequestID", proof.ID)
 				}
-				l.Log.Error("failed to request proof from Kona SP1", "err", err, "proof", p)
 			}
 		}(*proof)
 	}
@@ -147,7 +151,7 @@ func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 			return fmt.Errorf("failed to request SPAN proof: %w", err)
 		}
 	} else {
-		return fmt.Errorf("unknown proof type: %d", p.Type)
+		return fmt.Errorf("unknown proof type: %s", p.Type)
 	}
 
 	err = l.db.SetProverRequestID(p.ID, proofId)
@@ -181,7 +185,7 @@ func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) 
 		return "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	return l.RequestProofFromServer(jsonBody)
+	return l.RequestProofFromServer("request_span_proof", jsonBody)
 }
 
 func (l *L2OutputSubmitter) RequestAggProof(start, end uint64) (string, error) {
@@ -197,11 +201,11 @@ func (l *L2OutputSubmitter) RequestAggProof(start, end uint64) (string, error) {
 		return "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	return l.RequestProofFromServer(jsonBody)
+	return l.RequestProofFromServer("request_agg_proof", jsonBody)
 }
 
-func (l *L2OutputSubmitter) RequestProofFromServer(jsonBody []byte) (string, error) {
-	req, err := http.NewRequest("POST", l.DriverSetup.Cfg.KonaServerUrl, bytes.NewBuffer(jsonBody))
+func (l *L2OutputSubmitter) RequestProofFromServer(urlPath string, jsonBody []byte) (string, error) {
+	req, err := http.NewRequest("POST", l.Cfg.KonaServerUrl+"/"+urlPath, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -217,7 +221,7 @@ func (l *L2OutputSubmitter) RequestProofFromServer(jsonBody []byte) (string, err
 	// Read the response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Errorf("Error reading the response body: %v", err)
+		return "", fmt.Errorf("error reading the response body: %v", err)
 	}
 
 	// Create a variable of the Response type
@@ -226,7 +230,7 @@ func (l *L2OutputSubmitter) RequestProofFromServer(jsonBody []byte) (string, err
 	// Unmarshal the JSON into the response variable
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		fmt.Errorf("Error decoding JSON response: %v", err)
+		return "", fmt.Errorf("error decoding JSON response: %v", err)
 	}
 
 	return response.ProofID, nil
@@ -238,7 +242,7 @@ type ProofStatus struct {
 }
 
 func (l *L2OutputSubmitter) GetProofStatus(proofId string) (string, []byte, error) {
-	req, err := http.NewRequest("GET", l.DriverSetup.Cfg.KonaServerUrl+"/status/"+proofId, nil)
+	req, err := http.NewRequest("GET", l.Cfg.KonaServerUrl+"/status/"+proofId, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}

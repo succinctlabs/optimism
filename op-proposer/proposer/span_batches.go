@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/big"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
@@ -20,6 +21,7 @@ import (
 func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
 	latestEndBlock, err := l.db.GetLatestEndBlock()
+	fmt.Println("latestEndBlock", latestEndBlock)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			latestEndBlockU256, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
@@ -49,7 +51,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 			l.Log.Info("no span batch found", "nextBlock", nextBlock)
 			break
 		} else if err == reassemble.MaxDeviationExceededError {
-			l.Log.Info("max deviation exceeded, autofilling", "end", end)
+			l.Log.Info("max deviation exceeded, autofilling", "start", start, "end", end)
 		} else if err != nil {
 			l.Log.Error("failed to generate span batch range", "err", err)
 			return err
@@ -94,9 +96,9 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	cCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	chainID, err := l1Client.ChainID(ctx)
+	chainID, err := l1Client.ChainID(cCtx)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -107,7 +109,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		beaconClient := sources.NewBeaconHTTPClient(client.NewBasicHTTPClient(beaconAddr, nil))
 		beaconCfg := sources.L1BeaconClientConfig{FetchAllSidecars: false}
 		beacon = sources.NewL1BeaconClient(beaconClient, beaconCfg)
-		_, err := beacon.GetVersion(ctx)
+		_, err := beacon.GetVersion(cCtx)
 		if err != nil {
 			log.Fatal(fmt.Errorf("failed to check L1 Beacon API version: %w", err))
 			return err
@@ -118,8 +120,13 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 	}
 	// ZTODO: This won't work for untracked / new / test chains.
 	// How do we want to handle that? Optional config all the way up? Sane defaults?
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID.Uint64())
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(uint64(11155420))
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
 
+	fmt.Println("Fetching batches from L1 Origin", l1Origin, "to Finalized L1", finalizedL1)
 	fetchConfig := fetch.Config{
 		Start:   l1Origin,
 		End:     finalizedL1,
@@ -137,20 +144,24 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 }
 
 func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	chainID, err := l.DriverSetup.L1Client.ChainID(ctx)
+	// ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// defer cancel()
+	// chainID, err := l.DriverSetup.L1Client.ChainID(ctx)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// 	return 0, 0, err
+	// }
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(uint64(11155420))
 	if err != nil {
 		log.Fatal(err)
 		return 0, 0, err
 	}
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(chainID.Uint64())
 
 	reassembleConfig := reassemble.Config{
 		BatchInbox:    rollupCfg.BatchInboxAddress,
 		InDirectory:   l.DriverSetup.Cfg.TxCacheOutDir,
 		OutDirectory:  "",
-		L2ChainID:     chainID,
+		L2ChainID:     new(big.Int).SetUint64(11155420),
 		L2GenesisTime: rollupCfg.Genesis.L2Time,
 		L2BlockTime:   rollupCfg.BlockTime,
 	}

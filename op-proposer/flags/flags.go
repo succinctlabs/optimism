@@ -37,11 +37,6 @@ var (
 		Usage:   "HTTP provider URL for the beacon node",
 		EnvVars: prefixEnvVars("BEACON_RPC"),
 	}
-	KonaServerUrlFlag = &cli.StringFlag{
-		Name:    "kona-server-url",
-		Usage:   "URL of the Kona server to request proofs from",
-		EnvVars: prefixEnvVars("KONA_SERVER_URL"),
-	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{
@@ -121,6 +116,12 @@ var (
 		Value:   14400,
 		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
 	}
+	KonaServerUrlFlag = &cli.StringFlag{
+		Name:    "kona-server-url",
+		Usage:   "URL of the Kona server to request proofs from",
+		Value:   "http://127.0.0.1:3000",
+		EnvVars: prefixEnvVars("KONA_SERVER_URL"),
+	}
 	TxCacheOutDirFlag = &cli.StringFlag{
 		Name:    "tx-cache-out-dir",
 		Usage:   "Cache directory for the found transactions to determine span batch boundaries",
@@ -141,7 +142,6 @@ var requiredFlags = []cli.Flag{
 	L1EthRpcFlag,
 	RollupRpcFlag,
 	BeaconRpcFlag,
-	KonaServerUrlFlag,
 }
 
 var optionalFlags = []cli.Flag{
@@ -161,6 +161,7 @@ var optionalFlags = []cli.Flag{
 	MaxProofTimeFlag,
 	TxCacheOutDirFlag,
 	BatchDecoderConcurrentReqsFlag,
+	KonaServerUrlFlag,
 }
 
 func init() {

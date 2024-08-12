@@ -173,14 +173,15 @@ func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumbe
 func (db *ProofDB) GetLatestEndBlock() (uint64, error) {
 	maxEnd, err := db.client.ProofRequest.Query().
 		Order(ent.Desc(proofrequest.FieldEndBlock)).
-		FirstID(context.Background())
+		Select(proofrequest.FieldEndBlock).
+		First(context.Background())
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return 0, nil
+			return 0, err
 		}
 		return 0, fmt.Errorf("failed to get latest end requested: %w", err)
 	}
-	return uint64(maxEnd), nil
+	return uint64(maxEnd.EndBlock), nil
 }
 
 func (db *ProofDB) GetAllPendingProofs() ([]*ent.ProofRequest, error) {

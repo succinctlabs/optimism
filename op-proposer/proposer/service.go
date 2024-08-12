@@ -114,6 +114,8 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.BatchDecoderConcurrentReqs = cfg.BatchDecoderConcurrentReqs
 	ps.MaxSpanBatchDeviation = cfg.MaxSpanBatchDeviation
 	ps.MaxBlockRangePerSpanProof = cfg.MaxBlockRangePerSpanProof
+	ps.KonaServerUrl = cfg.KonaServerUrl
+	ps.MaxProofTime = cfg.MaxProofTime
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)
