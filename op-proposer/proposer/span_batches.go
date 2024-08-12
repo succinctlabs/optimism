@@ -143,6 +143,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		ConcurrentRequests: proposerConfig.BatchDecoderConcurrentReqs,
 	}
 
+	// ZTODO: How to avoid it refetching the same ones repeatedly?
 	totalValid, _ := fetch.Batches(l1Client, beacon, fetchConfig)
 	l.Log.Info("Fetched batches", "totalValid", totalValid)
 	return nil

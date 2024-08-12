@@ -186,7 +186,7 @@ type AggProofRequest struct {
 }
 
 type ProofResponse struct {
-	ProofID string `json:"id"`
+	ProofID string `json:"proof_id"`
 }
 
 func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) {
@@ -248,6 +248,7 @@ func (l *L2OutputSubmitter) RequestProofFromServer(urlPath string, jsonBody []by
 	if err != nil {
 		return "", fmt.Errorf("error decoding JSON response: %v", err)
 	}
+	l.Log.Info("successfully submitted proof", "proofID", response.ProofID)
 
 	return response.ProofID, nil
 }
