@@ -81,8 +81,17 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get unrequested proofs: %w", err)
 	}
+	fmt.Println("unrequestedProofs", len(unrequestedProofs))
 
 	for _, proof := range unrequestedProofs {
+		currentRequestedProofs, err := l.db.CountRequestedProofs()
+		fmt.Println(currentRequestedProofs)
+		if err != nil {
+			return fmt.Errorf("failed to count requested proofs: %w", err)
+		}
+		if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
+			break
+		}
 		if proof.Type == proofrequest.TypeAGG {
 			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
 			if err != nil {
@@ -92,6 +101,7 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 			l.db.AddL1BlockInfoToAggRequest(proof.StartBlock, proof.EndBlock, blockNumber, blockHash.Hex())
 		}
 		go func(p ent.ProofRequest) {
+			fmt.Println("requesting proof", p)
 			err = l.db.UpdateProofStatus(proof.ID, "REQ")
 			if err != nil {
 				l.Log.Error("failed to update proof status", "err", err)

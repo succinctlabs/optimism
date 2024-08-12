@@ -127,6 +127,12 @@ var (
 		Value:   "http://127.0.0.1:3000",
 		EnvVars: prefixEnvVars("KONA_SERVER_URL"),
 	}
+	MaxConcurrentProofRequestsFlag = &cli.Uint64Flag{
+		Name:    "max-concurrent-proof-requests",
+		Usage:   "Maximum number of proofs to generate concurrently",
+		Value:   10,
+		EnvVars: prefixEnvVars("MAX_CONCURRENT_PROOF_REQUESTS"),
+	}
 	TxCacheOutDirFlag = &cli.StringFlag{
 		Name:    "tx-cache-out-dir",
 		Usage:   "Cache directory for the found transactions to determine span batch boundaries",
@@ -168,6 +174,7 @@ var optionalFlags = []cli.Flag{
 	TxCacheOutDirFlag,
 	BatchDecoderConcurrentReqsFlag,
 	KonaServerUrlFlag,
+	MaxConcurrentProofRequestsFlag,
 }
 
 func init() {

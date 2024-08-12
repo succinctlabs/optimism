@@ -60,6 +60,7 @@ type ProposerConfig struct {
 	L2ChainID                  uint64
 	MaxProofTime               uint64
 	KonaServerUrl              string
+	MaxConcurrentProofRequests uint64
 }
 
 type ProposerService struct {
@@ -118,6 +119,7 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.KonaServerUrl = cfg.KonaServerUrl
 	ps.MaxProofTime = cfg.MaxProofTime
 	ps.L2ChainID = cfg.L2ChainID
+	ps.MaxConcurrentProofRequests = cfg.MaxConcurrentProofRequests
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)

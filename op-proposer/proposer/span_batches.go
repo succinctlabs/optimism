@@ -36,6 +36,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 		}
 	}
 	nextBlock := latestEndBlock + 1
+	fmt.Println("nextBlock", nextBlock)
 
 	// use batch decoder to pull all batches from next block's L1 Origin through Finalized L1 from chain to disk
 	err = l.FetchBatchesFromChain(ctx, nextBlock)

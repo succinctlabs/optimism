@@ -202,6 +202,20 @@ func (db *ProofDB) GetAllPendingProofs() ([]*ent.ProofRequest, error) {
 	return proofs, nil
 }
 
+func (db *ProofDB) CountRequestedProofs() (int, error) {
+	count, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.StatusEQ(proofrequest.StatusREQ),
+		).
+		Count(context.Background())
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to count pending proofs: %w", err)
+	}
+
+	return count, nil
+}
+
 func (db *ProofDB) GetAllUnrequestedProofs() ([]*ent.ProofRequest, error) {
 	proofs, err := db.client.ProofRequest.Query().
 		Where(proofrequest.StatusEQ(proofrequest.StatusUNREQ)).

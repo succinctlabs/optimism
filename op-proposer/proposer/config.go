@@ -85,6 +85,8 @@ type CLIConfig struct {
 	MaxProofTime uint64
 	// The URL of the Kona server to request proofs from.
 	KonaServerUrl string
+	// The maximum proofs that can be requested from the server concurrently.
+	MaxConcurrentProofRequests uint64
 }
 
 func (c *CLIConfig) Check() error {
@@ -148,5 +150,6 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
 		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
 		KonaServerUrl:                ctx.String(flags.KonaServerUrlFlag.Name),
+		MaxConcurrentProofRequests:   ctx.Uint64(flags.MaxConcurrentProofRequestsFlag.Name),
 	}
 }
