@@ -124,7 +124,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
     /// @notice Constructs the L2OutputOracle contract. Initializes variables to the same values as
     ///         in the getting-started config.
     constructor() {
-        _disableInitializers();
+        // _disableInitializers();
     }
 
     /// @notice Initializer.
@@ -441,5 +441,31 @@ contract ZKL2OutputOracle is Initializable, ISemver {
     function _updateVerifierGateway(address _verifierGateway) internal {
         emit UpdatedVerifierGateway(address(verifierGateway), _verifierGateway);
         verifierGateway = SP1VerifierGateway(_verifierGateway);
+    }
+
+    ////////////////////////////////////////////////////////////
+    //                  Test Functionality                    //
+    ////////////////////////////////////////////////////////////
+
+    function updateSubmissionInterval(uint256 _submissionInterval) external onlyOwner {
+        submissionInterval = _submissionInterval;
+    }
+
+    function updateChainId(uint _chainId) external onlyOwner {
+        chainId = _chainId;
+    }
+
+    function updateL2BlockTime(uint256 _l2BlockTime) external onlyOwner {
+        l2BlockTime = _l2BlockTime;
+    }
+
+    function setNextOutputRoot(uint _timestamp, uint _blockNum, bytes32 _outputRoot) external onlyOwner {
+        l2Outputs.push(
+            Types.OutputProposal({
+                outputRoot: _outputRoot,
+                timestamp: uint128(_timestamp),
+                l2BlockNumber: uint128(_blockNum)
+            })
+        );
     }
 }
