@@ -9,21 +9,12 @@ import { SP1VerifierGateway } from "@sp1-contracts/src/SP1VerifierGateway.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @custom:proxied
-/// @title L2OutputOracle
-/// @notice The L2OutputOracle contains an array of L2 state outputs, where each output is a
+/// @title ZKL2OutputOracle
+/// @notice The ZKL2OutputOracle contains an array of L2 state outputs, where each output is a
 ///         commitment to the state of the L2 chain. Other contracts like the OptimismPortal use
 ///         these outputs to verify information about the state of L2.
+///         This is a diff of the L2OutputOracle, but where outputs are ZK verified.
 contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
-
-    /// @notice Struct containing the public values committed to for the SP1 proof.
-    struct PublicValuesStruct {
-        bytes32 l1Head;
-        bytes32 l2PreRoot;
-        bytes32 claimRoot;
-        uint256 claimBlockNum;
-        uint256 chainId;
-    }
-
     /// @notice The number of the first L2 block recorded in this contract.
     uint256 public startingBlockNumber;
 
@@ -79,8 +70,14 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @param newNextOutputIndex  Next L2 output index after the deletion.
     event OutputsDeleted(uint256 indexed prevNextOutputIndex, uint256 indexed newNextOutputIndex);
 
+    /// @notice Emitted when the vkey is updated.
+    /// @param oldVkey The old vkey.
+    /// @param newVkey The new vkey.
     event UpdatedVKey(bytes32 indexed oldVkey, bytes32 indexed newVkey);
 
+    /// @notice Emitted when the verifier gateway is updated.
+    /// @param oldVerifierGateway The old verifier gateway.
+    /// @param newVerifierGateway The new verifier gateway.
     event UpdatedVerifierGateway(address indexed oldVerifierGateway, address indexed newVerifierGateway);
 
     /// @notice Semantic version.
@@ -90,16 +87,7 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
     /// @notice Constructs the L2OutputOracle contract. Initializes variables to the same values as
     ///         in the getting-started config.
     constructor() {
-        initialize({
-            _submissionInterval: 1,
-            _l2BlockTime: 1,
-            _startingBlockNumber: 0,
-            _startingTimestamp: 0,
-            _proposer: address(0),
-            _challenger: address(0),
-            _finalizationPeriodSeconds: 0,
-            _chainId: 0
-        });
+        _disableInitializers();
     }
 
     /// @notice Initializer.
@@ -125,7 +113,9 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
         address _challenger,
         uint256 _finalizationPeriodSeconds,
         uint256 _chainId,
-        address _owner
+        address _owner,
+        bytes32 _vkey,
+        address _verifierGateway
     )
         public
         reinitializer(2)
@@ -144,7 +134,6 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
         finalizationPeriodSeconds = _finalizationPeriodSeconds;
         chainId = _chainId;
 
-
         if (l2Outputs.length == 0) {
             l2Outputs.push(
                     Types.OutputProposal({
@@ -159,16 +148,24 @@ contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
         }
 
         _transferOwnership(_owner);
+        _updateVKey(_vkey);
+        _updateVerifierGateway(_verifierGateway);
     }
 
-    function setVKey(bytes32 _vkey) external {
-        require(msg.sender == owner, "L2OutputOracle: only the proposer address can set the vKey");
+    function updateVKey(bytes32 _vkey) external onlyOwner {
+        _updateVKey(_vkey);
+    }
+
+    function _updateVKey(bytes32 _vkey) internal {
         emit UpdatedVKey(vkey, _vkey);
         vkey = _vkey;
     }
 
-    function setVerifierGateway(address _verifierGateway) external {
-        require(msg.sender == owner, "L2OutputOracle: only the proposer address can set the verifier gateway");
+    function updateVerifierGateway(address _verifierGateway) external onlyOwner {
+        _updateVerifierGateway(_verifierGateway);
+    }
+
+    function _updateVerifierGateway(address _verifierGateway) internal {
         emit UpdatedVerifierGateway(address(verifierGateway), _verifierGateway);
         verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
