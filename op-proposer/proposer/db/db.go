@@ -16,7 +16,8 @@ type ProofDB struct {
 }
 
 func InitDB(dbPath string) (*ProofDB, error) {
-	client, err := ent.Open("sqlite3", dbPath)
+	connectionString := fmt.Sprintf("file:%s?_fk=1", dbPath)
+	client, err := ent.Open("sqlite3", connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed opening connection to sqlite: %v", err)
 	}
