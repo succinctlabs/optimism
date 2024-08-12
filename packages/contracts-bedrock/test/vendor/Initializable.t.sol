@@ -2,14 +2,14 @@
 pragma solidity 0.8.15;
 
 import { Bridge_Initializer } from "test/setup/Bridge_Initializer.sol";
-import { Executables } from "scripts/Executables.sol";
+import { Executables } from "scripts/libraries/Executables.sol";
 import { CrossDomainMessenger } from "src/universal/CrossDomainMessenger.sol";
 import { L2OutputOracle } from "src/L1/L2OutputOracle.sol";
 import { SystemConfig } from "src/L1/SystemConfig.sol";
 import { SuperchainConfig } from "src/L1/SuperchainConfig.sol";
 import { ResourceMetering } from "src/L1/ResourceMetering.sol";
 import { OptimismPortal } from "src/L1/OptimismPortal.sol";
-import { ForgeArtifacts } from "scripts/ForgeArtifacts.sol";
+import { ForgeArtifacts } from "scripts/libraries/ForgeArtifacts.sol";
 import { Process } from "scripts/libraries/Process.sol";
 import "src/L1/ProtocolVersions.sol";
 import "src/dispute/lib/Types.sol";
@@ -113,7 +113,7 @@ contract Initializer_Test is Bridge_Initializer {
         contracts.push(
             InitializeableContract({
                 target: deploy.mustGetAddress("L2OutputOracle"),
-                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0, 0)),
+                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0)),
                 initializedSlotVal: deploy.loadInitializedSlot("L2OutputOracle")
             })
         );
@@ -121,7 +121,7 @@ contract Initializer_Test is Bridge_Initializer {
         contracts.push(
             InitializeableContract({
                 target: address(l2OutputOracle),
-                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0, 0)),
+                initCalldata: abi.encodeCall(l2OutputOracle.initialize, (0, 0, 0, 0, address(0), address(0), 0)),
                 initializedSlotVal: deploy.loadInitializedSlot("L2OutputOracleProxy")
             })
         );

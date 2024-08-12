@@ -425,13 +425,7 @@ contract OptimismPortal_Test is CommonTest {
         vm.roll(checkpoint);
         vm.warp(l2OutputOracle.computeL2Timestamp(checkpoint) + 1);
         vm.prank(l2OutputOracle.PROPOSER());
-        l2OutputOracle.proposeL2Output(
-            claimedOutputRoot,
-            deploy.cfg().l2OutputOracleStartingBlockNumber() + l2OutputOracle.SUBMISSION_INTERVAL(),
-            l1Head,
-            deploy.cfg().l2OutputOracleStartingBlockNumber(),
-            proof
-        );
+        l2OutputOracle.proposeL2Output(keccak256(abi.encode(2)), checkpoint, 0, 0);
 
         // warp to the final second of the finalization period
         uint256 finalizationHorizon = block.timestamp + l2OutputOracle.FINALIZATION_PERIOD_SECONDS();
@@ -616,13 +610,7 @@ contract OptimismPortal_FinalizeWithdrawal_Test is CommonTest {
         // Configure the oracle to return the output root we've prepared.
         vm.warp(l2OutputOracle.computeL2Timestamp(_proposedBlockNumber) + 1);
         vm.prank(l2OutputOracle.PROPOSER());
-        l2OutputOracle.proposeL2Output(
-            claimedOutputRoot,
-            deploy.cfg().l2OutputOracleStartingBlockNumber() + l2OutputOracle.SUBMISSION_INTERVAL(),
-            l1Head,
-            deploy.cfg().l2OutputOracleStartingBlockNumber(),
-            proof
-        );
+        l2OutputOracle.proposeL2Output(_outputRoot, _proposedBlockNumber, 0, 0);
 
         // Warp beyond the finalization period for the block we've proposed.
         vm.warp(
@@ -726,51 +714,51 @@ contract OptimismPortal_FinalizeWithdrawal_Test is CommonTest {
         assertEq(timestamp, block.timestamp);
     }
 
-    // /// @dev Tests that `proveWithdrawalTransaction` succeeds when the withdrawal has already
-    // ///      been proven and the output root, output index, and l2BlockNumber have changed.
-    // function test_proveWithdrawalTransaction_replayProveChangedOutputRootAndOutputIndex_succeeds() external {
-    //     vm.expectEmit(true, true, true, true);
-    //     emit WithdrawalProven(_withdrawalHash, alice, bob);
-    //     optimismPortal.proveWithdrawalTransaction(_defaultTx, _proposedOutputIndex, _outputRootProof, _withdrawalProof);
+    /// @dev Tests that `proveWithdrawalTransaction` succeeds when the withdrawal has already
+    ///      been proven and the output root, output index, and l2BlockNumber have changed.
+    function test_proveWithdrawalTransaction_replayProveChangedOutputRootAndOutputIndex_succeeds() external {
+        vm.expectEmit(true, true, true, true);
+        emit WithdrawalProven(_withdrawalHash, alice, bob);
+        optimismPortal.proveWithdrawalTransaction(_defaultTx, _proposedOutputIndex, _outputRootProof, _withdrawalProof);
 
-    //     // Compute the storage slot of the outputRoot corresponding to the `withdrawalHash`
-    //     // inside of the `provenWithdrawal`s mapping.
-    //     bytes32 slot;
-    //     assembly {
-    //         mstore(0x00, sload(_withdrawalHash.slot))
-    //         mstore(0x20, 52) // 52 is the slot of the `provenWithdrawals` mapping in OptimismPortal
-    //         slot := keccak256(0x00, 0x40)
-    //     }
+        // Compute the storage slot of the outputRoot corresponding to the `withdrawalHash`
+        // inside of the `provenWithdrawal`s mapping.
+        bytes32 slot;
+        assembly {
+            mstore(0x00, sload(_withdrawalHash.slot))
+            mstore(0x20, 52) // 52 is the slot of the `provenWithdrawals` mapping in OptimismPortal
+            slot := keccak256(0x00, 0x40)
+        }
 
-    //     // Store a dummy output root within the `provenWithdrawals` mapping without touching the
-    //     // l2BlockNumber or timestamp.
-    //     vm.store(address(optimismPortal), slot, bytes32(0));
+        // Store a dummy output root within the `provenWithdrawals` mapping without touching the
+        // l2BlockNumber or timestamp.
+        vm.store(address(optimismPortal), slot, bytes32(0));
 
-    //     // Fetch the output proposal at `_proposedOutputIndex` from the L2OutputOracle
-    //     Types.OutputProposal memory proposal = optimismPortal.l2Oracle().getL2Output(_proposedOutputIndex);
+        // Fetch the output proposal at `_proposedOutputIndex` from the L2OutputOracle
+        Types.OutputProposal memory proposal = optimismPortal.l2Oracle().getL2Output(_proposedOutputIndex);
 
-    //     // Propose the same output root again, creating the same output at a different index + l2BlockNumber.
-    //     vm.startPrank(optimismPortal.l2Oracle().PROPOSER());
-    //     optimismPortal.l2Oracle().proposeL2Output(
-    //         proposal.outputRoot, optimismPortal.l2Oracle().nextBlockNumber(), blockhash(block.number), block.number
-    //     );
-    //     vm.stopPrank();
+        // Propose the same output root again, creating the same output at a different index + l2BlockNumber.
+        vm.startPrank(optimismPortal.l2Oracle().PROPOSER());
+        optimismPortal.l2Oracle().proposeL2Output(
+            proposal.outputRoot, optimismPortal.l2Oracle().nextBlockNumber(), blockhash(block.number), block.number
+        );
+        vm.stopPrank();
 
-    //     // Warp ahead 1 second
-    //     vm.warp(block.timestamp + 1);
+        // Warp ahead 1 second
+        vm.warp(block.timestamp + 1);
 
-    //     // Even though we have already proven this withdrawalHash, we should be allowed to re-submit
-    //     // our proof with a changed outputRoot + a different output index
-    //     vm.expectEmit(true, true, true, true);
-    //     emit WithdrawalProven(_withdrawalHash, alice, bob);
-    //     optimismPortal.proveWithdrawalTransaction(
-    //         _defaultTx, _proposedOutputIndex + 1, _outputRootProof, _withdrawalProof
-    //     );
+        // Even though we have already proven this withdrawalHash, we should be allowed to re-submit
+        // our proof with a changed outputRoot + a different output index
+        vm.expectEmit(true, true, true, true);
+        emit WithdrawalProven(_withdrawalHash, alice, bob);
+        optimismPortal.proveWithdrawalTransaction(
+            _defaultTx, _proposedOutputIndex + 1, _outputRootProof, _withdrawalProof
+        );
 
-    //     // Ensure that the withdrawal was updated within the mapping
-    //     (, uint128 timestamp,) = optimismPortal.provenWithdrawals(_withdrawalHash);
-    //     assertEq(timestamp, block.timestamp);
-    // }
+        // Ensure that the withdrawal was updated within the mapping
+        (, uint128 timestamp,) = optimismPortal.provenWithdrawals(_withdrawalHash);
+        assertEq(timestamp, block.timestamp);
+    }
 
     /// @dev Tests that `proveWithdrawalTransaction` succeeds.
     function test_proveWithdrawalTransaction_validWithdrawalProof_succeeds() external {

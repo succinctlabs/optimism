@@ -20,15 +20,15 @@ remappings = [
   'ds-test/=lib/forge-std/lib/ds-test/src',
   'safe-contracts/=lib/safe-contracts/contracts',
   'kontrol-cheatcodes/=lib/kontrol-cheatcodes/src',
-  'gelato/=lib/automate/contracts',
-  '@sp1-contracts=lib/sp1-contracts/contracts/'
+  'gelato/=lib/automate/contracts'
 ]
 extra_output = ['devdoc', 'userdoc', 'metadata', 'storageLayout']
 bytecode_hash = 'none'
 build_info_path = 'artifacts/build-info'
 ast = true
 evm_version = "cancun"
-ignored_error_codes = ["transient-storage", "code-size", "init-code-size"]
+# 5159 error code is selfdestruct error code
+ignored_error_codes = ["transient-storage", "code-size", "init-code-size", 5159]
 
 # We set the gas limit to max int64 to avoid running out of gas during testing, since the default
 # gas limit is 1B and some of our tests require more gas than that, such as `test_callWithMinGas_noLeakageLow_succeeds`.

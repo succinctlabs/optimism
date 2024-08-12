@@ -5,13 +5,25 @@ import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable
 import { ISemver } from "src/universal/ISemver.sol";
 import { Types } from "src/libraries/Types.sol";
 import { Constants } from "src/libraries/Constants.sol";
+import { SP1VerifierGateway } from "@sp1-contracts/src/SP1VerifierGateway.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @custom:proxied
 /// @title L2OutputOracle
 /// @notice The L2OutputOracle contains an array of L2 state outputs, where each output is a
 ///         commitment to the state of the L2 chain. Other contracts like the OptimismPortal use
 ///         these outputs to verify information about the state of L2.
-contract L2OutputOracle is Initializable, ISemver {
+contract ZKL2OutputOracle is Initializable, Ownable, ISemver {
+
+    /// @notice Struct containing the public values committed to for the SP1 proof.
+    struct PublicValuesStruct {
+        bytes32 l1Head;
+        bytes32 l2PreRoot;
+        bytes32 claimRoot;
+        uint256 claimBlockNum;
+        uint256 chainId;
+    }
+
     /// @notice The number of the first L2 block recorded in this contract.
     uint256 public startingBlockNumber;
 
@@ -41,6 +53,18 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @custom:network-specific
     uint256 public finalizationPeriodSeconds;
 
+    /// @notice The chain ID of the L2 chain.
+    uint public chainId;
+
+    /// @notice The verification key of the SP1 program.
+    bytes32 public vkey;
+
+    /// @notice The deployed SP1VerifierGateway contract to request proofs from.
+    SP1VerifierGateway public verifierGateway;
+
+    /// @notice A trusted mapping of block numbers to block hashes.
+    mapping (uint => bytes32) public historicBlockHashes;
+
     /// @notice Emitted when an output is proposed.
     /// @param outputRoot    The output root.
     /// @param l2OutputIndex The index of the output in the l2Outputs array.
@@ -55,9 +79,13 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @param newNextOutputIndex  Next L2 output index after the deletion.
     event OutputsDeleted(uint256 indexed prevNextOutputIndex, uint256 indexed newNextOutputIndex);
 
+    event UpdatedVKey(bytes32 indexed oldVkey, bytes32 indexed newVkey);
+
+    event UpdatedVerifierGateway(address indexed oldVerifierGateway, address indexed newVerifierGateway);
+
     /// @notice Semantic version.
-    /// @custom:semver 1.8.0
-    string public constant version = "1.8.0";
+    /// @custom:semver 2.0.0
+    string public constant version = "2.0.0";
 
     /// @notice Constructs the L2OutputOracle contract. Initializes variables to the same values as
     ///         in the getting-started config.
@@ -69,7 +97,8 @@ contract L2OutputOracle is Initializable, ISemver {
             _startingTimestamp: 0,
             _proposer: address(0),
             _challenger: address(0),
-            _finalizationPeriodSeconds: 0
+            _finalizationPeriodSeconds: 0,
+            _chainId: 0
         });
     }
 
@@ -78,21 +107,28 @@ contract L2OutputOracle is Initializable, ISemver {
     /// @param _l2BlockTime         The time per L2 block, in seconds.
     /// @param _startingBlockNumber The number of the first L2 block.
     /// @param _startingTimestamp   The timestamp of the first L2 block.
+    /// @param _startingOutputRoot  The output root of the first L2 block.
     /// @param _proposer            The address of the proposer.
     /// @param _challenger          The address of the challenger.
     /// @param _finalizationPeriodSeconds The minimum time (in seconds) that must elapse before a withdrawal
     ///                                   can be finalized.
+    /// @param _chainId             The chain ID of the L2 chain.
+    /// @param _owner               The address that has permission to update the vkey and verifier gateway.
+    /// @dev Starting block number, timestamp and output root are ignored for upgrades where these values already exist.
     function initialize(
         uint256 _submissionInterval,
         uint256 _l2BlockTime,
         uint256 _startingBlockNumber,
         uint256 _startingTimestamp,
+        bytes32 _startingOutputRoot,
         address _proposer,
         address _challenger,
-        uint256 _finalizationPeriodSeconds
+        uint256 _finalizationPeriodSeconds,
+        uint256 _chainId,
+        address _owner
     )
         public
-        initializer
+        reinitializer(2)
     {
         require(_submissionInterval > 0, "L2OutputOracle: submission interval must be greater than 0");
         require(_l2BlockTime > 0, "L2OutputOracle: L2 block time must be greater than 0");
@@ -103,11 +139,38 @@ contract L2OutputOracle is Initializable, ISemver {
 
         submissionInterval = _submissionInterval;
         l2BlockTime = _l2BlockTime;
-        startingBlockNumber = _startingBlockNumber;
-        startingTimestamp = _startingTimestamp;
         proposer = _proposer;
         challenger = _challenger;
         finalizationPeriodSeconds = _finalizationPeriodSeconds;
+        chainId = _chainId;
+
+
+        if (l2Outputs.length == 0) {
+            l2Outputs.push(
+                    Types.OutputProposal({
+                        outputRoot: _startingOutputRoot,
+                        timestamp: uint128(_startingTimestamp),
+                        l2BlockNumber: uint128(_startingBlockNumber)
+                    })
+            );
+
+            startingBlockNumber = _startingBlockNumber;
+            startingTimestamp = _startingTimestamp;
+        }
+
+        _transferOwnership(_owner);
+    }
+
+    function setVKey(bytes32 _vkey) external {
+        require(msg.sender == owner, "L2OutputOracle: only the proposer address can set the vKey");
+        emit UpdatedVKey(vkey, _vkey);
+        vkey = _vkey;
+    }
+
+    function setVerifierGateway(address _verifierGateway) external {
+        require(msg.sender == owner, "L2OutputOracle: only the proposer address can set the verifier gateway");
+        emit UpdatedVerifierGateway(address(verifierGateway), _verifierGateway);
+        verifierGateway = SP1VerifierGateway(_verifierGateway);
     }
 
     /// @notice Getter for the submissionInterval.
@@ -189,16 +252,20 @@ contract L2OutputOracle is Initializable, ISemver {
         bytes32 _outputRoot,
         uint256 _l2BlockNumber,
         bytes32 _l1BlockHash,
-        uint256 _l1BlockNumber
+        uint256 _l1BlockNumber,
+        bytes memory _proof
     )
         external
         payable
     {
-        require(msg.sender == proposer, "L2OutputOracle: only the proposer address can propose new outputs");
+        require(
+            msg.sender == proposer || proposer == address(0),
+            "L2OutputOracle: only the proposer address can propose new outputs"
+        );
 
         require(
-            _l2BlockNumber == nextBlockNumber(),
-            "L2OutputOracle: block number must be equal to next expected block number"
+            _l2BlockNumber <= nextBlockNumber(),
+            "L2OutputOracle: block number must be less than or equal to next expected block number"
         );
 
         require(
@@ -208,20 +275,22 @@ contract L2OutputOracle is Initializable, ISemver {
 
         require(_outputRoot != bytes32(0), "L2OutputOracle: L2 output proposal cannot be the zero hash");
 
-        if (_l1BlockHash != bytes32(0)) {
-            // This check allows the proposer to propose an output based on a given L1 block,
-            // without fear that it will be reorged out.
-            // It will also revert if the blockheight provided is more than 256 blocks behind the
-            // chain tip (as the hash will return as zero). This does open the door to a griefing
-            // attack in which the proposer's submission is censored until the block is no longer
-            // retrievable, if the proposer is experiencing this attack it can simply leave out the
-            // blockhash value, and delay submission until it is confident that the L1 block is
-            // finalized.
-            require(
-                blockhash(_l1BlockNumber) == _l1BlockHash,
-                "L2OutputOracle: block hash does not match the hash at the expected height"
-            );
-        }
+        require(vkey != bytes32(0), "L2OutputOracle: vkey must be set before proposing an output");
+
+        require(
+            historicBlockHashes[_l1BlockNumber] == _l1BlockHash,
+            "L2OutputOracle: block hash does not match the hash at the expected height"
+        );
+
+        PublicValuesStruct memory publicValues = PublicValuesStruct({
+            l1Head: _l1BlockHash,
+            l2PreRoot: l2Outputs[nextOutputIndex() - 1].outputRoot,
+            claimRoot: _outputRoot,
+            claimBlockNum: _l2BlockNumber,
+            chainId: chainId
+        });
+
+        verifierGateway.verifyProof(vkey, abi.encode(publicValues), _proof);
 
         emit OutputProposed(_outputRoot, nextOutputIndex(), _l2BlockNumber, block.timestamp);
 
@@ -232,6 +301,19 @@ contract L2OutputOracle is Initializable, ISemver {
                 l2BlockNumber: uint128(_l2BlockNumber)
             })
         );
+    }
+
+    /// @notice Checkpoints a block hash at a given block number.
+    /// @param _blockNumber Block number to checkpoint the hash at.
+    /// @param _blockHash   Hash of the block at the given block number.
+    /// @dev Block number must be in the past 256 blocks or this will revert.
+    /// @dev Passing both inputs as zero will automatically checkpoint the most recent blockhash.
+    function checkpointBlockHash(uint256 _blockNumber, bytes32 _blockHash) external {
+        require(
+            blockhash(_blockNumber) == _blockHash,
+            "L2OutputOracle: block hash does not match the hash at the expected height"
+        );
+        historicBlockHashes[_blockNumber] = _blockHash;
     }
 
     /// @notice Returns an output by index. Needed to return a struct instead of a tuple.
