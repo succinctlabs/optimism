@@ -43,6 +43,3 @@ __pycache__
 
 # Ignore echidna artifacts
 crytic-export
-
-# database
-proofs.db
