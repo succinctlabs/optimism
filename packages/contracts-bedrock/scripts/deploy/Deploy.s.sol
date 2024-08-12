@@ -1208,7 +1208,8 @@ contract Deploy is Deployer {
                     cfg.l2OutputOracleStartingTimestamp(),
                     cfg.l2OutputOracleProposer(),
                     cfg.l2OutputOracleChallenger(),
-                    cfg.finalizationPeriodSeconds()
+                    cfg.finalizationPeriodSeconds(),
+                    cfg.l2ChainID()
                 )
             )
         });
