@@ -87,6 +87,10 @@ type CLIConfig struct {
 	KonaServerUrl string
 	// The maximum proofs that can be requested from the server concurrently.
 	MaxConcurrentProofRequests uint64
+	// The batch inbox on L1 to read batches from. Note that this is ignored if L2 Chain ID is in rollup config.
+	BatchInbox string
+	// The batcher address to include transactions from. Note that this is ignored if L2 Chain ID is in rollup config.
+	BatcherAddress string
 }
 
 func (c *CLIConfig) Check() error {
@@ -151,5 +155,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
 		KonaServerUrl:                ctx.String(flags.KonaServerUrlFlag.Name),
 		MaxConcurrentProofRequests:   ctx.Uint64(flags.MaxConcurrentProofRequestsFlag.Name),
+		BatchInbox:                   ctx.String(flags.BatchInboxFlag.Name),
+		BatcherAddress:               ctx.String(flags.BatcherAddressFlag.Name),
 	}
 }

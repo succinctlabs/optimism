@@ -143,6 +143,17 @@ var (
 		Value:   10,
 		EnvVars: prefixEnvVars("BATCH_DECODER_CONCURRENT_REQS"),
 	}
+	BatchInboxFlag = &cli.StringFlag{
+		Name:    "batch-inbox",
+		Usage:   "Batch Inbox Address",
+		EnvVars: prefixEnvVars("BATCH_INBOX"),
+	}
+	BatcherAddressFlag = &cli.StringFlag{
+		Name:    "batcher-address",
+		Usage:   "Batch Sender Address",
+		EnvVars: prefixEnvVars("BATCHER_ADDRESS"),
+	}
+
 	// Legacy Flags
 	L2OutputHDPathFlag = txmgr.L2OutputHDPathFlag
 )
@@ -173,6 +184,8 @@ var optionalFlags = []cli.Flag{
 	BatchDecoderConcurrentReqsFlag,
 	KonaServerUrlFlag,
 	MaxConcurrentProofRequestsFlag,
+	BatchInboxFlag,
+	BatcherAddressFlag,
 }
 
 func init() {

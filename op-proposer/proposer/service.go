@@ -61,6 +61,8 @@ type ProposerConfig struct {
 	ProofTimeout               uint64
 	KonaServerUrl              string
 	MaxConcurrentProofRequests uint64
+	BatchInbox                 common.Address
+	BatcherAddress             common.Address
 }
 
 type ProposerService struct {
@@ -120,6 +122,8 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.ProofTimeout = cfg.ProofTimeout
 	ps.L2ChainID = cfg.L2ChainID
 	ps.MaxConcurrentProofRequests = cfg.MaxConcurrentProofRequests
+	ps.BatchInbox = common.HexToAddress(cfg.BatchInbox)
+	ps.BatcherAddress = common.HexToAddress(cfg.BatcherAddress)
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)

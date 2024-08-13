@@ -48,6 +48,8 @@ type L2OOContract interface {
 	NextBlockNumber(*bind.CallOpts) (*big.Int, error)
 	LatestOutputIndex(*bind.CallOpts) (*big.Int, error)
 	NextOutputIndex(*bind.CallOpts) (*big.Int, error)
+	StartingTimestamp(*bind.CallOpts) (*big.Int, error)
+	L2BLOCKTIME(*bind.CallOpts) (*big.Int, error)
 }
 
 type RollupClient interface {
@@ -86,6 +88,8 @@ type L2OutputSubmitter struct {
 	dgfABI      *abi.ABI
 
 	db db.ProofDB
+
+	lastFetchedL1Block uint64
 }
 
 // NewL2OutputSubmitter creates a new L2 Output Submitter

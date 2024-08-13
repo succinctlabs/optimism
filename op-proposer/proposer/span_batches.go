@@ -45,7 +45,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 
 	for {
 		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
-		start, end, err := l.GenerateSpanBatchRange(nextBlock, l.DriverSetup.Cfg.MaxSpanBatchDeviation)
+		start, end, err := l.GenerateSpanBatchRange(ctx, nextBlock, l.DriverSetup.Cfg.MaxSpanBatchDeviation)
 		if err == reassemble.NoSpanBatchFoundError {
 			l.Log.Info("no span batch found", "nextBlock", nextBlock)
 			break
@@ -120,13 +120,19 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		fmt.Println("L1 Beacon endpoint not set. Unable to fetch post-ecotone channel frames")
 		return err
 	}
-	// ZTODO: This won't work for untracked / new / test chains.
-	// How do we want to handle that? This is just for BatcherAddr / BatchInbox,
-	// so I think best is to allow CLI arg of either ChainID or those two.
+
+	batchInbox, batcherAddress := common.Address{}, common.Address{}
 	rollupCfg, err := rollup.LoadOPStackRollupConfig(l.Cfg.L2ChainID)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		l.Log.Warn("failed to load rollup config, trying cli args: %w", err)
+		if (l.Cfg.BatcherAddress == common.Address{} || l.Cfg.BatchInbox == common.Address{}) {
+			return err
+		}
+		batchInbox = l.Cfg.BatchInbox
+		batcherAddress = l.Cfg.BatcherAddress
+	} else {
+		batchInbox = rollupCfg.BatchInboxAddress
+		batcherAddress = rollupCfg.Genesis.SystemConfig.BatcherAddr
 	}
 
 	l.Log.Info("Fetching batches from L1 Origin to Finalized L1", "l1 origin", l1Origin, "Finalized L1", finalizedL1)
@@ -135,33 +141,56 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		End:     finalizedL1,
 		ChainID: chainID,
 		BatchSenders: map[common.Address]struct{}{
-			rollupCfg.Genesis.SystemConfig.BatcherAddr: {},
+			batcherAddress: {},
 		},
-		BatchInbox:         rollupCfg.BatchInboxAddress,
+		BatchInbox:         batchInbox,
 		OutDirectory:       proposerConfig.TxCacheOutDir,
 		ConcurrentRequests: proposerConfig.BatchDecoderConcurrentReqs,
 	}
 
-	// ZTODO: How to avoid it refetching the same ones repeatedly?
+	// TODO: Optimization to avoid it refetching same batches.
 	totalValid, _ := fetch.Batches(l1Client, beacon, fetchConfig)
-	l.Log.Info("Fetched batches", "totalValid", totalValid)
+	l.Log.Info("Successfully fetched batches", "totalValid", totalValid)
 	return nil
 }
 
-func (l *L2OutputSubmitter) GenerateSpanBatchRange(nextBlock, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
+func (l *L2OutputSubmitter) GenerateSpanBatchRange(ctx context.Context, nextBlock, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
+	batchInbox, l2BlockTime, genesisTimestamp := common.Address{}, uint64(0), uint64(0)
 	rollupCfg, err := rollup.LoadOPStackRollupConfig(l.Cfg.L2ChainID)
 	if err != nil {
-		log.Fatal(err)
-		return 0, 0, err
+		if (l.Cfg.BatchInbox == common.Address{}) {
+			return 0, 0, err
+		}
+		cCtx, cancel := context.WithTimeout(ctx, l.Cfg.NetworkTimeout)
+		defer cancel()
+		callOpts := &bind.CallOpts{
+			From:    l.Txmgr.From(),
+			Context: cCtx,
+		}
+		l2BlockTimeU256, err := l.l2ooContract.L2BLOCKTIME(callOpts)
+		if err != nil {
+			return 0, 0, fmt.Errorf("error pulling l2 block time from L2OO contract: %w", err)
+		}
+		l2BlockTime = l2BlockTimeU256.Uint64()
+
+		genesisTimestampU256, err := l.l2ooContract.StartingTimestamp(callOpts)
+		if err != nil {
+			return 0, 0, fmt.Errorf("error pulling genesis timestamp from L2OO contract: %w", err)
+		}
+		genesisTimestamp = genesisTimestampU256.Uint64()
+	} else {
+		batchInbox = rollupCfg.BatchInboxAddress
+		l2BlockTime = rollupCfg.BlockTime
+		genesisTimestamp = rollupCfg.Genesis.L2Time
 	}
 
 	reassembleConfig := reassemble.Config{
-		BatchInbox:    rollupCfg.BatchInboxAddress,
+		BatchInbox:    batchInbox,
 		InDirectory:   l.DriverSetup.Cfg.TxCacheOutDir,
 		OutDirectory:  "",
 		L2ChainID:     new(big.Int).SetUint64(l.Cfg.L2ChainID),
-		L2GenesisTime: rollupCfg.Genesis.L2Time,
-		L2BlockTime:   rollupCfg.BlockTime,
+		L2GenesisTime: genesisTimestamp,
+		L2BlockTime:   l2BlockTime,
 	}
 
 	return reassemble.GetSpanBatchRange(reassembleConfig, rollupCfg, nextBlock, maxSpanBatchDeviation)
