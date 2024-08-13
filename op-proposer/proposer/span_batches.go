@@ -66,7 +66,7 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 
 		tmpStart := nextBlock
 		for {
-			maxEnd := tmpStart + l.DriverSetup.Cfg.MaxBlockRangePerSpanProof
+			maxEnd := tmpStart + l.DriverSetup.Cfg.MaxBlockRangePerSpanProof - 1
 			tmpEnd := uint64(math.Min(float64(maxEnd), float64(end)))
 
 			// insert the new span into the db to be requested in the future

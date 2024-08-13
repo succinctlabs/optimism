@@ -130,7 +130,7 @@ var (
 	MaxConcurrentProofRequestsFlag = &cli.Uint64Flag{
 		Name:    "max-concurrent-proof-requests",
 		Usage:   "Maximum number of proofs to generate concurrently",
-		Value:   10,
+		Value:   20,
 		EnvVars: prefixEnvVars("MAX_CONCURRENT_PROOF_REQUESTS"),
 	}
 	TxCacheOutDirFlag = &cli.StringFlag{

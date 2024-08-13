@@ -37,7 +37,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 
 		timeout := uint64(time.Now().Unix()) > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
 		// ZTODO: Talk to Succinct about logic of different statuses
-		if timeout {
+		if timeout || status == "PROOF_UNCLAIMED" {
 			// update status in db to "FAILED"
 			l.Log.Info("proof timed out", "id", req.ProverRequestID)
 			err = l.db.UpdateProofStatus(req.ID, "FAILED")
@@ -84,15 +84,10 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get unrequested proofs: %w", err)
 	}
-
-	currentRequestedProofs, err := l.db.CountRequestedProofs()
-	if err != nil {
-		return fmt.Errorf("failed to count requested proofs: %w", err)
-	}
-	if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
-		l.Log.Info("max concurrent proof requests reached, waiting for next cycle")
+	if nextProofToRequest == nil {
 		return nil
 	}
+
 	if nextProofToRequest.Type == proofrequest.TypeAGG {
 		blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
 		if err != nil {
@@ -100,8 +95,18 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 			return err
 		}
 		l.db.AddL1BlockInfoToAggRequest(nextProofToRequest.StartBlock, nextProofToRequest.EndBlock, blockNumber, blockHash.Hex())
+	} else {
+		currentRequestedProofs, err := l.db.CountRequestedProofs()
+		if err != nil {
+			return fmt.Errorf("failed to count requested proofs: %w", err)
+		}
+		if currentRequestedProofs >= int(l.Cfg.MaxConcurrentProofRequests) {
+			l.Log.Info("max concurrent proof requests reached, waiting for next cycle")
+			return nil
+		}
 	}
 	go func(p ent.ProofRequest) {
+		l.Log.Info("requesting proof from server", "proof", p)
 		err = l.db.UpdateProofStatus(nextProofToRequest.ID, "REQ")
 		if err != nil {
 			l.Log.Error("failed to update proof status", "err", err)
