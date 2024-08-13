@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"math/big"
-	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
@@ -99,7 +98,7 @@ func (l *L2OutputSubmitter) FetchBatchesFromChain(ctx context.Context, nextBlock
 		return err
 	}
 
-	cCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	cCtx, cancel := context.WithTimeout(context.Background(), l.Cfg.NetworkTimeout)
 	defer cancel()
 	chainID, err := l1Client.ChainID(cCtx)
 	if err != nil {

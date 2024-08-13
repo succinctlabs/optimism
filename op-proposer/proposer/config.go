@@ -82,7 +82,7 @@ type CLIConfig struct {
 	// The Chain ID of the L2 chain.
 	L2ChainID uint64
 	// The maximum amount of time we will spend waiting for a proof before giving up and trying again.
-	MaxProofTime uint64
+	ProofTimeout uint64
 	// The URL of the Kona server to request proofs from.
 	KonaServerUrl string
 	// The maximum proofs that can be requested from the server concurrently.
@@ -146,7 +146,7 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		DbPath:                       ctx.String(flags.DbPathFlag.Name),
 		MaxSpanBatchDeviation:        ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
 		MaxBlockRangePerSpanProof:    ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
-		MaxProofTime:                 ctx.Uint64(flags.MaxProofTimeFlag.Name),
+		ProofTimeout:                 ctx.Uint64(flags.ProofTimeoutFlag.Name),
 		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
 		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
 		KonaServerUrl:                ctx.String(flags.KonaServerUrlFlag.Name),

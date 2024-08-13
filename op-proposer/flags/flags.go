@@ -96,10 +96,9 @@ var (
 		EnvVars: prefixEnvVars("WAIT_NODE_SYNC"),
 	}
 	DbPathFlag = &cli.StringFlag{
-		Name:  "db-path",
-		Usage: "Path to the database used to track ZK proof generation",
-		// ZTODO: Decide on better default path here
-		Value:   "./proofs.db",
+		Name:    "db-path",
+		Usage:   "Path to the database used to track ZK proof generation",
+		Value:   "./op-proposer/proofs.db",
 		EnvVars: prefixEnvVars("DB_PATH"),
 	}
 	MaxSpanBatchDeviationFlag = &cli.Uint64Flag{
@@ -114,9 +113,8 @@ var (
 		Value:   50,
 		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
 	}
-	// ZTODO: Rename to something like ProofExpiryTime
-	MaxProofTimeFlag = &cli.Uint64Flag{
-		Name:    "max-proof-time",
+	ProofTimeoutFlag = &cli.Uint64Flag{
+		Name:    "proof-timeout",
 		Usage:   "Maximum time in seconds to spend generating a proof before giving up",
 		Value:   14400,
 		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
@@ -170,7 +168,7 @@ var optionalFlags = []cli.Flag{
 	DbPathFlag,
 	MaxSpanBatchDeviationFlag,
 	MaxBlockRangePerSpanProofFlag,
-	MaxProofTimeFlag,
+	ProofTimeoutFlag,
 	TxCacheOutDirFlag,
 	BatchDecoderConcurrentReqsFlag,
 	KonaServerUrlFlag,

@@ -559,7 +559,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			err := l.DeriveNewSpanBatches(ctx)
 			if err != nil {
 				l.Log.Error("failed to add next span batches to db", "err", err)
-				break
+				continue
 			}
 
 			// 2) Check the statuses of all requested proofs.
@@ -569,7 +569,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			err = l.ProcessPendingProofs()
 			if err != nil {
 				l.Log.Error("failed to update requested proofs", "err", err)
-				break
+				continue
 			}
 
 			// 3) Determine if any agg proofs are ready to be submitted and queue them up.
@@ -579,7 +579,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			err = l.DeriveAggProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to generate pending agg proofs", "err", err)
-				break
+				continue
 			}
 
 			// 4) Request all unrequested proofs from the prover network.
@@ -590,7 +590,7 @@ func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
 			err = l.RequestQueuedProofs(ctx)
 			if err != nil {
 				l.Log.Error("failed to request unrequested proofs", "err", err)
-				break
+				continue
 			}
 
 			// 5) Submit agg proofs on chain.

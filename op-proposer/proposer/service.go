@@ -58,7 +58,7 @@ type ProposerConfig struct {
 	MaxSpanBatchDeviation      uint64
 	MaxBlockRangePerSpanProof  uint64
 	L2ChainID                  uint64
-	MaxProofTime               uint64
+	ProofTimeout               uint64
 	KonaServerUrl              string
 	MaxConcurrentProofRequests uint64
 }
@@ -117,7 +117,7 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.MaxSpanBatchDeviation = cfg.MaxSpanBatchDeviation
 	ps.MaxBlockRangePerSpanProof = cfg.MaxBlockRangePerSpanProof
 	ps.KonaServerUrl = cfg.KonaServerUrl
-	ps.MaxProofTime = cfg.MaxProofTime
+	ps.ProofTimeout = cfg.ProofTimeout
 	ps.L2ChainID = cfg.L2ChainID
 	ps.MaxConcurrentProofRequests = cfg.MaxConcurrentProofRequests
 

@@ -36,8 +36,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 			continue
 		}
 
-		timeout := uint64(time.Now().Unix()) > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
-		// ZTODO: Talk to Succinct about logic of different statuses
+		timeout := uint64(time.Now().Unix()) > req.ProofRequestTime+l.DriverSetup.Cfg.ProofTimeout
 		if timeout || status == "PROOF_UNCLAIMED" {
 			// update status in db to "FAILED"
 			l.Log.Info("proof timed out", "id", req.ProverRequestID)
