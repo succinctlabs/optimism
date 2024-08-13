@@ -40,6 +40,10 @@ func (db *ProofDB) CloseDB() error {
 }
 
 func (db *ProofDB) NewEntry(proofType string, start, end uint64) error {
+	return db.NewEntryWithReqAddedTimestamp(proofType, start, end, uint64(time.Now().Unix()))
+}
+
+func (db *ProofDB) NewEntryWithReqAddedTimestamp(proofType string, start, end, now uint64) error {
 	// Convert string to proofrequest.Type
 	var pType proofrequest.Type
 	switch proofType {
@@ -57,7 +61,7 @@ func (db *ProofDB) NewEntry(proofType string, start, end uint64) error {
 		SetStartBlock(start).
 		SetEndBlock(end).
 		SetStatus(proofrequest.StatusUNREQ).
-		SetRequestAddedTime(uint64(time.Now().Unix())).
+		SetRequestAddedTime(now).
 		Save(context.Background())
 
 	if err != nil {

@@ -33,6 +33,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 				l.Log.Error("failed to update completed proof status", "err", err)
 				return err
 			}
+			continue
 		}
 
 		timeout := uint64(time.Now().Unix()) > req.ProofRequestTime+l.DriverSetup.Cfg.MaxProofTime
@@ -51,7 +52,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 			if req.Type == proofrequest.TypeAGG {
 				l.Log.Error("agg proof failed, adding to db to retry", "req", req)
 
-				err = l.db.NewEntry("AGG", req.StartBlock, req.EndBlock)
+				err = l.db.NewEntryWithReqAddedTimestamp("AGG", req.StartBlock, req.EndBlock, 0)
 				if err != nil {
 					l.Log.Error("failed to add new proof request", "err")
 					return err
@@ -64,7 +65,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 			tmpStart := req.StartBlock
 			tmpEnd := tmpStart + ((req.EndBlock - tmpStart) / 2)
 			for i := 0; i < 2; i++ {
-				err = l.db.NewEntry("SPAN", tmpStart, tmpEnd)
+				err = l.db.NewEntryWithReqAddedTimestamp("SPAN", tmpStart, tmpEnd, 0)
 				if err != nil {
 					l.Log.Error("failed to add new proof request", "err", err)
 					return err
