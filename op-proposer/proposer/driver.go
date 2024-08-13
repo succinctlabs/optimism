@@ -401,8 +401,8 @@ func proposeL2OutputDGFTxData(abi *abi.ABI, gameType uint32, output *eth.OutputR
 	return abi.Pack("create", gameType, output.OutputRoot, math.U256Bytes(new(big.Int).SetUint64(output.BlockRef.Number)))
 }
 
-func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNumber uint64, blockHash common.Hash) ([]byte, error) {
-	return l.l2ooABI.Pack("checkpointBlockHash", new(big.Int).SetUint64(blockNumber), blockHash)
+func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNumber *big.Int, blockHash common.Hash) ([]byte, error) {
+	return l.l2ooABI.Pack("checkpointBlockHash", blockNumber, blockHash)
 }
 
 // We wait until l1head advances beyond blocknum. This is used to make sure proposal tx won't
@@ -483,9 +483,10 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 }
 
 // sendCheckpointTransaction creates & sends transaction to checkpoint blockhash on L2OO contract.
-func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber uint64, blockHash common.Hash) (uint64, common.Hash, error) {
+func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber *big.Int, blockHash common.Hash) (uint64, common.Hash, error) {
 	var receipt *types.Receipt
 	data, err := l.CheckpointBlockHashTxData(blockNumber, blockHash)
+
 	if err != nil {
 		return 0, common.Hash{}, err
 	}
@@ -504,7 +505,7 @@ func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, block
 		l.Log.Info("checkpoint blockhash tx successfully published",
 			"tx_hash", receipt.TxHash)
 	}
-	return blockNumber, blockHash, nil
+	return blockNumber.Uint64(), blockHash, nil
 }
 
 // loop is responsible for creating & submitting the next outputs
@@ -667,15 +668,12 @@ func (l *L2OutputSubmitter) checkpointBlockHash(ctx context.Context) (uint64, co
 	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	blockNumber, err := l.Txmgr.BlockNumber(cCtx)
-	if err != nil {
-		return 0, common.Hash{}, err
-	}
 	header, err := l.Txmgr.BlockHeader(cCtx)
 	if err != nil {
 		return 0, common.Hash{}, err
 	}
 	blockHash := header.Hash()
+	blockNumber := header.Number
 
 	return l.sendCheckpointTransaction(cCtx, blockNumber, blockHash)
 }

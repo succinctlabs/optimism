@@ -170,7 +170,7 @@ func (m *SimpleTxManager) BlockHeader(ctx context.Context) (*types.Header, error
 	if err != nil {
 		return nil, err
 	}
-	return m.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
+	return m.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber-1))
 }
 
 // Close closes the underlying connection, and sets the closed flag.

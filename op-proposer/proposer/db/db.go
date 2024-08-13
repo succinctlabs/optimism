@@ -156,8 +156,9 @@ func (db *ProofDB) AddProof(id int, proof []byte) error {
 	return nil
 }
 
-func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumber uint64, l1BlockHash string) error {
-	_, err := db.client.ProofRequest.Update().
+func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumber uint64, l1BlockHash string) (*ent.ProofRequest, error) {
+	// Perform the update
+	rowsAffected, err := db.client.ProofRequest.Update().
 		Where(
 			proofrequest.TypeEQ(proofrequest.TypeAGG),
 			proofrequest.StatusEQ(proofrequest.StatusUNREQ),
@@ -169,10 +170,30 @@ func (db *ProofDB) AddL1BlockInfoToAggRequest(startBlock, endBlock, l1BlockNumbe
 		Save(context.Background())
 
 	if err != nil {
-		return fmt.Errorf("failed to update L1 block info: %w", err)
+		return nil, fmt.Errorf("failed to update L1 block info: %w", err)
 	}
 
-	return nil
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("no matching proof request found to update")
+	}
+
+	// Fetch the updated ProofRequest
+	updatedProof, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.TypeEQ(proofrequest.TypeAGG),
+			proofrequest.StatusEQ(proofrequest.StatusUNREQ),
+			proofrequest.StartBlockEQ(startBlock),
+			proofrequest.EndBlockEQ(endBlock),
+			proofrequest.L1BlockNumberEQ(l1BlockNumber),
+			proofrequest.L1BlockHashEQ(l1BlockHash),
+		).
+		Only(context.Background())
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch updated proof request: %w", err)
+	}
+
+	return updatedProof, nil
 }
 
 func (db *ProofDB) GetLatestEndBlock() (uint64, error) {
@@ -279,11 +300,11 @@ func (db *ProofDB) GetAllCompletedAggProofs(startBlock uint64) ([]*ent.ProofRequ
 	return proofs, nil
 }
 
-func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, error) {
+func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, uint64, error) {
 	// Start a transaction
 	tx, err := db.client.Tx(context.Background())
 	if err != nil {
-		return false, fmt.Errorf("failed to begin transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -296,10 +317,10 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 		).
 		Count(context.Background())
 	if err != nil {
-		return false, fmt.Errorf("failed to check existing AGG proofs: %w", err)
+		return false, 0, fmt.Errorf("failed to check existing AGG proofs: %w", err)
 	}
 	if count > 0 {
-		return false, nil // There's already an AGG proof in progress
+		return false, 0, nil // There's already an AGG proof in progress
 	}
 
 	// Find consecutive SPAN proofs
@@ -317,14 +338,14 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 			if ent.IsNotFound(err) {
 				break // No more consecutive SPAN proofs
 			}
-			return false, fmt.Errorf("failed to query SPAN proof: %w", err)
+			return false, 0, fmt.Errorf("failed to query SPAN proof: %w", err)
 		}
 		end = spanProof.EndBlock
 		start = end + 1
 	}
 
 	if end < minTo {
-		return false, nil // Not enough SPAN proofs to create an AGG proof
+		return false, 0, nil // Not enough SPAN proofs to create an AGG proof
 	}
 
 	// Create a new AGG proof request
@@ -332,18 +353,19 @@ func (db *ProofDB) TryCreateAggProofFromSpanProofs(from, minTo uint64) (bool, er
 		SetType(proofrequest.TypeAGG).
 		SetStartBlock(from).
 		SetEndBlock(end).
+		SetRequestAddedTime(0).
 		SetStatus(proofrequest.StatusUNREQ).
 		Save(context.Background())
 	if err != nil {
-		return false, fmt.Errorf("failed to insert AGG proof request: %w", err)
+		return false, 0, fmt.Errorf("failed to insert AGG proof request: %w", err)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return false, fmt.Errorf("failed to commit transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return true, nil
+	return true, end, nil
 }
 
 func (db *ProofDB) GetSubproofs(start, end uint64) ([][]byte, error) {

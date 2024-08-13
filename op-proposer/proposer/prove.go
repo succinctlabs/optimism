@@ -89,12 +89,22 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 	}
 
 	if nextProofToRequest.Type == proofrequest.TypeAGG {
-		blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
-		if err != nil {
-			l.Log.Error("failed to checkpoint block hash", "err", err)
-			return err
+		if nextProofToRequest.L1BlockHash == "" {
+			blockNumber, blockHash, err := l.checkpointBlockHash(ctx)
+			if err != nil {
+				l.Log.Error("failed to checkpoint block hash", "err", err)
+				return err
+			}
+			nextProofToRequest, err = l.db.AddL1BlockInfoToAggRequest(nextProofToRequest.StartBlock, nextProofToRequest.EndBlock, blockNumber, blockHash.Hex())
+			if err != nil {
+				l.Log.Error("failed to add L1 block info to AGG request", "err", err)
+			}
+
+			// wait for the next loop so that we have the version with the block info added
+			return nil
+		} else {
+			l.Log.Info("previous block data was there")
 		}
-		l.db.AddL1BlockInfoToAggRequest(nextProofToRequest.StartBlock, nextProofToRequest.EndBlock, blockNumber, blockHash.Hex())
 	} else {
 		currentRequestedProofs, err := l.db.CountRequestedProofs()
 		if err != nil {
@@ -130,23 +140,23 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 // Check the DB to see if we have sufficient span proofs to request an agg proof that covers this range.
 // If so, queue up the agg proof in the DB to be requested later.
 func (l *L2OutputSubmitter) DeriveAggProofs(ctx context.Context) error {
-	latest, err := l.l2ooContract.LatestOutputIndex(&bind.CallOpts{Context: ctx})
+	latest, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get latest L2OO output: %w", err)
 	}
 	from := latest.Uint64() + 1
 
-	minTo, err := l.l2ooContract.NextOutputIndex(&bind.CallOpts{Context: ctx})
+	minTo, err := l.l2ooContract.NextBlockNumber(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return fmt.Errorf("failed to get next L2OO output: %w", err)
 	}
 
-	created, err := l.db.TryCreateAggProofFromSpanProofs(from, minTo.Uint64())
+	created, end, err := l.db.TryCreateAggProofFromSpanProofs(from, minTo.Uint64())
 	if err != nil {
 		return fmt.Errorf("failed to create agg proof from span proofs: %w", err)
 	}
 	if created {
-		l.Log.Info("created new AGG proof", "from", from, "to", minTo.Uint64())
+		l.Log.Info("created new AGG proof", "from", from, "to", end)
 	}
 
 	return nil
@@ -158,7 +168,7 @@ func (l *L2OutputSubmitter) RequestKonaProof(p ent.ProofRequest) error {
 	var err error
 
 	if p.Type == proofrequest.TypeAGG {
-		proofId, err = l.RequestAggProof(prevConfirmedBlock, p.EndBlock)
+		proofId, err = l.RequestAggProof(prevConfirmedBlock, p.EndBlock, p.L1BlockHash)
 		if err != nil {
 			return fmt.Errorf("failed to request AGG proof: %w", err)
 		}
@@ -186,8 +196,8 @@ type SpanProofRequest struct {
 
 type AggProofRequest struct {
 	Subproofs [][]byte `json:"subproofs"`
+	L1Head    string   `json:"head"`
 }
-
 type ProofResponse struct {
 	ProofID string `json:"proof_id"`
 }
@@ -206,14 +216,15 @@ func (l *L2OutputSubmitter) RequestSpanProof(start, end uint64) (string, error) 
 	return l.RequestProofFromServer("request_span_proof", jsonBody)
 }
 
-func (l *L2OutputSubmitter) RequestAggProof(start, end uint64) (string, error) {
+func (l *L2OutputSubmitter) RequestAggProof(start, end uint64, l1BlockHash string) (string, error) {
 	l.Log.Info("requesting agg proof", "start", start, "end", end)
-	subproofs, err := l.db.GetSubproofs(start, end)
+	subproofs, err := l.db.GetSubproofs(start+1, end)
 	if err != nil {
 		return "", fmt.Errorf("failed to get subproofs: %w", err)
 	}
 	requestBody := AggProofRequest{
 		Subproofs: subproofs,
+		L1Head:    l1BlockHash,
 	}
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
