@@ -380,7 +380,7 @@ func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse, proof []byt
 		output.OutputRoot,
 		new(big.Int).SetUint64(output.BlockRef.Number),
 		l1BlockHash,
-		l1BlockNum,
+		new(big.Int).SetUint64(l1BlockNum),
 		proof)
 }
 
