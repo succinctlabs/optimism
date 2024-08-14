@@ -49,6 +49,20 @@ type ProposerConfig struct {
 	AllowNonFinalized bool
 
 	WaitNodeSync bool
+
+	// Additional fields required for ZK Proposer
+	DbPath                     string
+	BeaconRpc                  string
+	TxCacheOutDir              string
+	BatchDecoderConcurrentReqs uint64
+	MaxSpanBatchDeviation      uint64
+	MaxBlockRangePerSpanProof  uint64
+	L2ChainID                  uint64
+	ProofTimeout               uint64
+	KonaServerUrl              string
+	MaxConcurrentProofRequests uint64
+	BatchInbox                 common.Address
+	BatcherAddress             common.Address
 }
 
 type ProposerService struct {
@@ -96,6 +110,20 @@ func (ps *ProposerService) initFromCLIConfig(ctx context.Context, version string
 	ps.NetworkTimeout = cfg.TxMgrConfig.NetworkTimeout
 	ps.AllowNonFinalized = cfg.AllowNonFinalized
 	ps.WaitNodeSync = cfg.WaitNodeSync
+
+	// Additional fields required for ZK Proposer
+	ps.DbPath = cfg.DbPath
+	ps.BeaconRpc = cfg.BeaconRpc
+	ps.TxCacheOutDir = cfg.TxCacheOutDir
+	ps.BatchDecoderConcurrentReqs = cfg.BatchDecoderConcurrentReqs
+	ps.MaxSpanBatchDeviation = cfg.MaxSpanBatchDeviation
+	ps.MaxBlockRangePerSpanProof = cfg.MaxBlockRangePerSpanProof
+	ps.KonaServerUrl = cfg.KonaServerUrl
+	ps.ProofTimeout = cfg.ProofTimeout
+	ps.L2ChainID = cfg.L2ChainID
+	ps.MaxConcurrentProofRequests = cfg.MaxConcurrentProofRequests
+	ps.BatchInbox = common.HexToAddress(cfg.BatchInbox)
+	ps.BatcherAddress = common.HexToAddress(cfg.BatcherAddress)
 
 	ps.initL2ooAddress(cfg)
 	ps.initDGF(cfg)

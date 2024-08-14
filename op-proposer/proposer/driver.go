@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	_ "net/http/pprof"
 	"sync"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum-optimism/optimism/op-proposer/bindings"
 	"github.com/ethereum-optimism/optimism/op-proposer/metrics"
+	"github.com/ethereum-optimism/optimism/op-proposer/proposer/db"
 	"github.com/ethereum-optimism/optimism/op-service/dial"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum-optimism/optimism/op-service/txmgr"
@@ -41,7 +44,12 @@ type L1Client interface {
 
 type L2OOContract interface {
 	Version(*bind.CallOpts) (string, error)
+	LatestBlockNumber(*bind.CallOpts) (*big.Int, error)
 	NextBlockNumber(*bind.CallOpts) (*big.Int, error)
+	LatestOutputIndex(*bind.CallOpts) (*big.Int, error)
+	NextOutputIndex(*bind.CallOpts) (*big.Int, error)
+	StartingTimestamp(*bind.CallOpts) (*big.Int, error)
+	L2BLOCKTIME(*bind.CallOpts) (*big.Int, error)
 }
 
 type RollupClient interface {
@@ -54,7 +62,7 @@ type DriverSetup struct {
 	Metr     metrics.Metricer
 	Cfg      ProposerConfig
 	Txmgr    txmgr.TxManager
-	L1Client L1Client
+	L1Client *ethclient.Client
 
 	// RollupProvider's RollupClient() is used to retrieve output roots from
 	RollupProvider dial.RollupProvider
@@ -78,6 +86,8 @@ type L2OutputSubmitter struct {
 
 	dgfContract *bindings.DisputeGameFactoryCaller
 	dgfABI      *abi.ABI
+
+	db db.ProofDB
 }
 
 // NewL2OutputSubmitter creates a new L2 Output Submitter
@@ -123,6 +133,12 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 		return nil, err
 	}
 
+	db, err := db.InitDB(setup.Cfg.DbPath)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
 	return &L2OutputSubmitter{
 		DriverSetup: setup,
 		done:        make(chan struct{}),
@@ -131,6 +147,7 @@ func newL2OOSubmitter(ctx context.Context, cancel context.CancelFunc, setup Driv
 
 		l2ooContract: l2ooContract,
 		l2ooABI:      parsed,
+		db:           *db,
 	}, nil
 }
 
@@ -215,7 +232,43 @@ func (l *L2OutputSubmitter) StopL2OutputSubmitting() error {
 	close(l.done)
 	l.wg.Wait()
 
+	if l.db != (db.ProofDB{}) {
+		if err := l.db.CloseDB(); err != nil {
+			return fmt.Errorf("error closing database: %w", err)
+		}
+	}
+
 	l.Log.Info("Proposer stopped")
+	return nil
+}
+
+func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
+	// Get the latest output index from the L2OutputOracle contract
+	latestBlockNumber, err := l.l2ooContract.LatestBlockNumber(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return fmt.Errorf("failed to get latest output index: %w", err)
+	}
+
+	// Check for a completed AGG proof starting at the next index
+	completedAggProofs, err := l.db.GetAllCompletedAggProofs(latestBlockNumber.Uint64() + 1)
+	if err != nil {
+		return fmt.Errorf("failed to query for completed AGG proof: %w", err)
+	}
+
+	if len(completedAggProofs) == 0 {
+		return nil
+	}
+
+	for _, aggProof := range completedAggProofs {
+		output, err := l.FetchOutput(ctx, aggProof.EndBlock)
+		if err != nil {
+			return fmt.Errorf("failed to fetch output at block %d: %w", aggProof.EndBlock, err)
+		}
+
+		l.proposeOutput(ctx, output, aggProof.Proof)
+		l.Log.Info("AGG proof submitted on-chain", "start", aggProof.StartBlock, "end", aggProof.EndBlock)
+	}
+
 	return nil
 }
 
@@ -323,18 +376,19 @@ func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block uint64) (*eth
 }
 
 // ProposeL2OutputTxData creates the transaction data for the ProposeL2Output function
-func (l *L2OutputSubmitter) ProposeL2OutputTxData(output *eth.OutputResponse) ([]byte, error) {
-	return proposeL2OutputTxData(l.l2ooABI, output)
+func (l *L2OutputSubmitter) ProposeL2OutputTxData(output *eth.OutputResponse, proof []byte) ([]byte, error) {
+	return proposeL2OutputTxData(l.l2ooABI, output, proof)
 }
 
 // proposeL2OutputTxData creates the transaction data for the ProposeL2Output function
-func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse) ([]byte, error) {
+func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse, proof []byte) ([]byte, error) {
 	return abi.Pack(
 		"proposeL2Output",
 		output.OutputRoot,
 		new(big.Int).SetUint64(output.BlockRef.Number),
 		output.Status.CurrentL1.Hash,
-		new(big.Int).SetUint64(output.Status.CurrentL1.Number))
+		new(big.Int).SetUint64(output.Status.CurrentL1.Number),
+		proof)
 }
 
 func (l *L2OutputSubmitter) ProposeL2OutputDGFTxData(output *eth.OutputResponse) ([]byte, *big.Int, error) {
@@ -352,6 +406,10 @@ func (l *L2OutputSubmitter) ProposeL2OutputDGFTxData(output *eth.OutputResponse)
 // proposeL2OutputDGFTxData creates the transaction data for the DisputeGameFactory's `create` function
 func proposeL2OutputDGFTxData(abi *abi.ABI, gameType uint32, output *eth.OutputResponse) ([]byte, error) {
 	return abi.Pack("create", gameType, output.OutputRoot, math.U256Bytes(new(big.Int).SetUint64(output.BlockRef.Number)))
+}
+
+func (l *L2OutputSubmitter) CheckpointBlockHashTxData(blockNumber *big.Int, blockHash common.Hash) ([]byte, error) {
+	return l.l2ooABI.Pack("checkpointBlockHash", blockNumber, blockHash)
 }
 
 // We wait until l1head advances beyond blocknum. This is used to make sure proposal tx won't
@@ -383,7 +441,7 @@ func (l *L2OutputSubmitter) waitForL1Head(ctx context.Context, blockNum uint64) 
 }
 
 // sendTransaction creates & sends transactions through the underlying transaction manager.
-func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.OutputResponse) error {
+func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.OutputResponse, proof []byte) error {
 	err := l.waitForL1Head(ctx, output.Status.HeadL1.Number+1)
 	if err != nil {
 		return err
@@ -406,7 +464,7 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 			return err
 		}
 	} else {
-		data, err := l.ProposeL2OutputTxData(output)
+		data, err := l.ProposeL2OutputTxData(output, proof)
 		if err != nil {
 			return err
 		}
@@ -429,6 +487,32 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 			"l1blockhash", output.Status.CurrentL1.Hash)
 	}
 	return nil
+}
+
+// sendCheckpointTransaction creates & sends transaction to checkpoint blockhash on L2OO contract.
+func (l *L2OutputSubmitter) sendCheckpointTransaction(ctx context.Context, blockNumber *big.Int, blockHash common.Hash) (uint64, common.Hash, error) {
+	var receipt *types.Receipt
+	data, err := l.CheckpointBlockHashTxData(blockNumber, blockHash)
+
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	receipt, err = l.Txmgr.Send(ctx, txmgr.TxCandidate{
+		TxData:   data,
+		To:       l.Cfg.L2OutputOracleAddr,
+		GasLimit: 0,
+	})
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+
+	if receipt.Status == types.ReceiptStatusFailed {
+		l.Log.Error("checkpoint blockhash tx successfully published but reverted", "tx_hash", receipt.TxHash)
+	} else {
+		l.Log.Info("checkpoint blockhash tx successfully published",
+			"tx_hash", receipt.TxHash)
+	}
+	return blockNumber.Uint64(), blockHash, nil
 }
 
 // loop is responsible for creating & submitting the next outputs
@@ -464,32 +548,60 @@ func (l *L2OutputSubmitter) waitNodeSync() error {
 // and if the current finalized (or safe) block is past that next block, it
 // proposes it.
 func (l *L2OutputSubmitter) loopL2OO(ctx context.Context) {
-	defer l.Log.Info("loopL2OO returning")
 	ticker := time.NewTicker(l.Cfg.PollInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			// prioritize quit signal
-			select {
-			case <-l.done:
-				return
-			default:
-			}
+			// // 1) Queue up any span batches that are ready to prove.
+			// // This is done by checking the chain for completed channels and pulling span batches out.
+			// // We break apart span batches if they exceed the max size, and gracefully handle bugs in span batch decoding.
+			// // We add ranges to be proven to the DB as "UNREQ" so they are queued up to request later.
+			// l.Log.Info("Stage 1: Deriving Span Batches...")
+			// err := l.DeriveNewSpanBatches(ctx)
+			// if err != nil {
+			// 	l.Log.Error("failed to add next span batches to db", "err", err)
+			// 	continue
+			// }
 
-			// A note on retrying: the outer ticker already runs on a short
-			// poll interval, which has a default value of 6 seconds. So no
-			// retry logic is needed around output fetching here.
-			output, shouldPropose, err := l.FetchL2OOOutput(ctx)
+			// // 2) Check the statuses of all requested proofs.
+			// // If it's successfully returned, we validate that we have it on disk and set status = "COMPLETE".
+			// // If it fails or times out, we set status = "FAILED" (and, if it's a span proof, split the request in half to try again).
+			// l.Log.Info("Stage 2: Processing Pending Proofs...")
+			// err = l.ProcessPendingProofs()
+			// if err != nil {
+			// 	l.Log.Error("failed to update requested proofs", "err", err)
+			// 	continue
+			// }
+
+			// // 3) Determine if any agg proofs are ready to be submitted and queue them up.
+			// // This is done by checking if we have contiguous span proofs from the last on chain
+			// // output root through at least the submission interval.
+			// l.Log.Info("Stage 3: Deriving Agg Proofs...")
+			// err = l.DeriveAggProofs(ctx)
+			// if err != nil {
+			// 	l.Log.Error("failed to generate pending agg proofs", "err", err)
+			// 	continue
+			// }
+
+			// 4) Request all unrequested proofs from the prover network.
+			// Any DB entry with status = "UNREQ" means it's queued up and ready.
+			// We request all of these (both span and agg) from the prover network.
+			// For agg proofs, we also checkpoint the blockhash in advance.
+			l.Log.Info("Stage 4: Requesting Queued Proofs...")
+			err := l.RequestQueuedProofs(ctx)
 			if err != nil {
-				l.Log.Warn("Error getting L2OO output", "err", err)
-				continue
-			} else if !shouldPropose {
-				// debug logging already in FetchL2OOOutput
+				l.Log.Error("failed to request unrequested proofs", "err", err)
 				continue
 			}
 
-			l.proposeOutput(ctx, output)
+			// 5) Submit agg proofs on chain.
+			// If we have a completed agg proof waiting in the DB, we submit them on chain.
+			l.Log.Info("Stage 5: Submitting Agg Proofs...")
+			err = l.SubmitAggProofs(ctx)
+			if err != nil {
+				l.Log.Error("failed to submit agg proofs", "err", err)
+			}
 		case <-l.done:
 			return
 		}
@@ -528,24 +640,43 @@ func (l *L2OutputSubmitter) loopDGF(ctx context.Context) {
 				}
 			}
 
-			l.proposeOutput(ctx, output)
+			l.proposeOutput(ctx, output, nil)
 		case <-l.done:
 			return
 		}
 	}
 }
 
-func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.OutputResponse) {
+func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.OutputResponse, proof []byte) {
 	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	if err := l.sendTransaction(cCtx, output); err != nil {
+	if err := l.sendTransaction(cCtx, output, proof); err != nil {
 		l.Log.Error("Failed to send proposal transaction",
 			"err", err,
 			"l1blocknum", output.Status.CurrentL1.Number,
 			"l1blockhash", output.Status.CurrentL1.Hash,
-			"l1head", output.Status.HeadL1.Number)
+			"l1head", output.Status.HeadL1.Number,
+			"proof", proof)
 		return
 	}
 	l.Metr.RecordL2BlocksProposed(output.BlockRef)
+}
+
+func (l *L2OutputSubmitter) checkpointBlockHash(ctx context.Context) (uint64, common.Hash, error) {
+	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	currBlockNum, err := l.L1Client.BlockNumber(cCtx)
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	header, err := l.L1Client.HeaderByNumber(cCtx, new(big.Int).SetUint64(currBlockNum-1))
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	blockHash := header.Hash()
+	blockNumber := header.Number
+
+	return l.sendCheckpointTransaction(cCtx, blockNumber, blockHash)
 }

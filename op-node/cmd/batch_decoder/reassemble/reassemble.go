@@ -2,6 +2,7 @@ package reassemble
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -45,6 +46,9 @@ type Config struct {
 	L2BlockTime   uint64
 }
 
+var NoSpanBatchFoundError = errors.New("no span batch found for the given block")
+var MaxDeviationExceededError = errors.New("max deviation exceeded")
+
 func LoadFrames(directory string, inbox common.Address) []FrameWithMetadata {
 	txns := loadTransactions(directory, inbox)
 	// Sort first by block number then by transaction index inside the block number range.
@@ -78,6 +82,42 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 			log.Fatal(err)
 		}
 	}
+}
+
+func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
+	frames := LoadFrames(config.InDirectory, config.BatchInbox)
+	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
+	for _, frame := range frames {
+		framesByChannel[frame.Frame.ID] = append(framesByChannel[frame.Frame.ID], frame)
+	}
+	for id, frames := range framesByChannel {
+		ch := processFrames(config, rollupCfg, id, frames)
+		if len(ch.Batches) == 0 {
+			log.Fatalf("no span batches in channel")
+			return 0, 0, errors.New("no span batches in channel")
+		}
+
+		for idx, b := range ch.Batches {
+			startBlock := TimestampToBlock(rollupCfg, b.GetTimestamp())
+			spanBatch, success := b.AsSpanBatch()
+			if !success {
+				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
+				return 0, 0, errors.New("couldn't convert batch to span batch")
+			}
+			blockCount := spanBatch.GetBlockCount()
+			endBlock := startBlock + uint64(blockCount) - 1
+			if l2Block >= startBlock && l2Block <= endBlock {
+				return startBlock, endBlock, nil
+			} else if l2Block+maxSpanBatchDeviation < startBlock {
+				return l2Block, startBlock - 1, MaxDeviationExceededError
+			}
+		}
+	}
+	return 0, 0, NoSpanBatchFoundError
+}
+
+func TimestampToBlock(rollupCfg *rollup.Config, l2Timestamp uint64) uint64 {
+	return ((l2Timestamp - rollupCfg.Genesis.L2Time) / rollupCfg.BlockTime) + rollupCfg.Genesis.L2.Number
 }
 
 func writeChannel(ch ChannelWithMetadata, filename string) error {

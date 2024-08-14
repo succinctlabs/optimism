@@ -89,7 +89,6 @@ func fetchBatchesPerBlock(ctx context.Context, client *ethclient.Client, beacon 
 	if err != nil {
 		return 0, 0, err
 	}
-	fmt.Println("Fetched block: ", number)
 	blobIndex := 0 // index of each blob in the block's blob sidecar
 	for i, tx := range block.Transactions() {
 		if tx.To() != nil && *tx.To() == config.BatchInbox {

@@ -32,6 +32,16 @@ var (
 		Usage:   "HTTP provider URL for the rollup node. A comma-separated list enables the active rollup provider.",
 		EnvVars: prefixEnvVars("ROLLUP_RPC"),
 	}
+	BeaconRpcFlag = &cli.StringFlag{
+		Name:    "beacon-rpc",
+		Usage:   "HTTP provider URL for the beacon node",
+		EnvVars: prefixEnvVars("BEACON_RPC"),
+	}
+	L2ChainIDFlag = &cli.Uint64Flag{
+		Name:    "l2-chain-id",
+		Usage:   "Chain ID of the L2 chain",
+		EnvVars: prefixEnvVars("L2_CHAIN_ID"),
+	}
 
 	// Optional flags
 	L2OOAddressFlag = &cli.StringFlag{
@@ -85,6 +95,65 @@ var (
 		Value:   false,
 		EnvVars: prefixEnvVars("WAIT_NODE_SYNC"),
 	}
+	DbPathFlag = &cli.StringFlag{
+		Name:    "db-path",
+		Usage:   "Path to the database used to track ZK proof generation",
+		Value:   "./op-proposer/proofs.db",
+		EnvVars: prefixEnvVars("DB_PATH"),
+	}
+	MaxSpanBatchDeviationFlag = &cli.Uint64Flag{
+		Name:    "max-span-batch-deviation",
+		Usage:   "If we find a span batch this far ahead of our target, we assume an error and fill in the gap",
+		Value:   600,
+		EnvVars: prefixEnvVars("MAX_SPAN_BATCH_DEVIATION"),
+	}
+	MaxBlockRangePerSpanProofFlag = &cli.Uint64Flag{
+		Name:    "max-block-range-per-span-proof",
+		Usage:   "Maximum number of blocks to include in a single span proof",
+		Value:   50,
+		EnvVars: prefixEnvVars("MAX_BLOCK_RANGE_PER_SPAN_PROOF"),
+	}
+	ProofTimeoutFlag = &cli.Uint64Flag{
+		Name:    "proof-timeout",
+		Usage:   "Maximum time in seconds to spend generating a proof before giving up",
+		Value:   14400,
+		EnvVars: prefixEnvVars("MAX_PROOF_TIME"),
+	}
+	KonaServerUrlFlag = &cli.StringFlag{
+		Name:    "kona-server-url",
+		Usage:   "URL of the Kona server to request proofs from",
+		Value:   "http://127.0.0.1:3000",
+		EnvVars: prefixEnvVars("KONA_SERVER_URL"),
+	}
+	MaxConcurrentProofRequestsFlag = &cli.Uint64Flag{
+		Name:    "max-concurrent-proof-requests",
+		Usage:   "Maximum number of proofs to generate concurrently",
+		Value:   20,
+		EnvVars: prefixEnvVars("MAX_CONCURRENT_PROOF_REQUESTS"),
+	}
+	TxCacheOutDirFlag = &cli.StringFlag{
+		Name:    "tx-cache-out-dir",
+		Usage:   "Cache directory for the found transactions to determine span batch boundaries",
+		Value:   "/tmp/batch_decoder/transactions_cache",
+		EnvVars: prefixEnvVars("TX_CACHE_OUT_DIR"),
+	}
+	BatchDecoderConcurrentReqsFlag = &cli.Uint64Flag{
+		Name:    "batch-decoder-concurrent-reqs",
+		Usage:   "Concurrency level when fetching transactions to determine span batch boundaries",
+		Value:   10,
+		EnvVars: prefixEnvVars("BATCH_DECODER_CONCURRENT_REQS"),
+	}
+	BatchInboxFlag = &cli.StringFlag{
+		Name:    "batch-inbox",
+		Usage:   "Batch Inbox Address",
+		EnvVars: prefixEnvVars("BATCH_INBOX"),
+	}
+	BatcherAddressFlag = &cli.StringFlag{
+		Name:    "batcher-address",
+		Usage:   "Batch Sender Address",
+		EnvVars: prefixEnvVars("BATCHER_ADDRESS"),
+	}
+
 	// Legacy Flags
 	L2OutputHDPathFlag = txmgr.L2OutputHDPathFlag
 )
@@ -92,6 +161,8 @@ var (
 var requiredFlags = []cli.Flag{
 	L1EthRpcFlag,
 	RollupRpcFlag,
+	BeaconRpcFlag,
+	L2ChainIDFlag,
 }
 
 var optionalFlags = []cli.Flag{
@@ -105,6 +176,16 @@ var optionalFlags = []cli.Flag{
 	DisputeGameTypeFlag,
 	ActiveSequencerCheckDurationFlag,
 	WaitNodeSyncFlag,
+	DbPathFlag,
+	MaxSpanBatchDeviationFlag,
+	MaxBlockRangePerSpanProofFlag,
+	ProofTimeoutFlag,
+	TxCacheOutDirFlag,
+	BatchDecoderConcurrentReqsFlag,
+	KonaServerUrlFlag,
+	MaxConcurrentProofRequestsFlag,
+	BatchInboxFlag,
+	BatcherAddressFlag,
 }
 
 func init() {

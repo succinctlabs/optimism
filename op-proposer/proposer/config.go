@@ -64,6 +64,33 @@ type CLIConfig struct {
 
 	// Whether to wait for the sequencer to sync to a recent block at startup.
 	WaitNodeSync bool
+
+	// Additional fields required for ZK Proposer.
+
+	// Path to the database that tracks ZK proof generation.
+	DbPath string
+	// L1 Beacon RPC URL used to determine span batch boundaries.
+	BeaconRpc string
+	// Directory to store the transaction cache when determining span batch boundaries.
+	TxCacheOutDir string
+	// Number of concurrent requests to make when fetching L1 data to determine span batch boundaries.
+	BatchDecoderConcurrentReqs uint64
+	// If we find a span batch this far ahead of the block we're targeting, we assume an error and just fill in the gap.
+	MaxSpanBatchDeviation uint64
+	// The max size (in blocks) of a proof we will attempt to generate. If span batches are larger, we break them up.
+	MaxBlockRangePerSpanProof uint64
+	// The Chain ID of the L2 chain.
+	L2ChainID uint64
+	// The maximum amount of time we will spend waiting for a proof before giving up and trying again.
+	ProofTimeout uint64
+	// The URL of the Kona server to request proofs from.
+	KonaServerUrl string
+	// The maximum proofs that can be requested from the server concurrently.
+	MaxConcurrentProofRequests uint64
+	// The batch inbox on L1 to read batches from. Note that this is ignored if L2 Chain ID is in rollup config.
+	BatchInbox string
+	// The batcher address to include transactions from. Note that this is ignored if L2 Chain ID is in rollup config.
+	BatcherAddress string
 }
 
 func (c *CLIConfig) Check() error {
@@ -105,6 +132,9 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		L2OOAddress:  ctx.String(flags.L2OOAddressFlag.Name),
 		PollInterval: ctx.Duration(flags.PollIntervalFlag.Name),
 		TxMgrConfig:  txmgr.ReadCLIConfig(ctx),
+		BeaconRpc:    ctx.String(flags.BeaconRpcFlag.Name),
+		L2ChainID:    uint64(ctx.Uint(flags.L2ChainIDFlag.Name)),
+
 		// Optional Flags
 		AllowNonFinalized:            ctx.Bool(flags.AllowNonFinalizedFlag.Name),
 		RPCConfig:                    oprpc.ReadCLIConfig(ctx),
@@ -117,5 +147,15 @@ func NewConfig(ctx *cli.Context) *CLIConfig {
 		DisputeGameType:              uint32(ctx.Uint(flags.DisputeGameTypeFlag.Name)),
 		ActiveSequencerCheckDuration: ctx.Duration(flags.ActiveSequencerCheckDurationFlag.Name),
 		WaitNodeSync:                 ctx.Bool(flags.WaitNodeSyncFlag.Name),
+		DbPath:                       ctx.String(flags.DbPathFlag.Name),
+		MaxSpanBatchDeviation:        ctx.Uint64(flags.MaxSpanBatchDeviationFlag.Name),
+		MaxBlockRangePerSpanProof:    ctx.Uint64(flags.MaxBlockRangePerSpanProofFlag.Name),
+		ProofTimeout:                 ctx.Uint64(flags.ProofTimeoutFlag.Name),
+		TxCacheOutDir:                ctx.String(flags.TxCacheOutDirFlag.Name),
+		BatchDecoderConcurrentReqs:   ctx.Uint64(flags.BatchDecoderConcurrentReqsFlag.Name),
+		KonaServerUrl:                ctx.String(flags.KonaServerUrlFlag.Name),
+		MaxConcurrentProofRequests:   ctx.Uint64(flags.MaxConcurrentProofRequestsFlag.Name),
+		BatchInbox:                   ctx.String(flags.BatchInboxFlag.Name),
+		BatcherAddress:               ctx.String(flags.BatcherAddressFlag.Name),
 	}
 }
