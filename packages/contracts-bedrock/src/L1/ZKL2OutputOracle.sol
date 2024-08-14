@@ -280,7 +280,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
         );
 
         require(
-            _l2BlockNumber <= nextBlockNumber(),
+            _l2BlockNumber >= nextBlockNumber(),
             "L2OutputOracle: block number must be less than or equal to next expected block number"
         );
 
@@ -295,7 +295,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
 
         require(
             historicBlockHashes[_l1BlockNumber] == _l1BlockHash,
-            "L2OutputOracle: block hash does not match the hash at the expected height"
+            "L2OutputOracle: proposal failed: passed block hash and number are not checkpointed"
         );
 
         PublicValuesStruct memory publicValues = PublicValuesStruct({
@@ -327,7 +327,7 @@ contract ZKL2OutputOracle is Initializable, ISemver {
     function checkpointBlockHash(uint256 _blockNumber, bytes32 _blockHash) external {
         require(
             blockhash(_blockNumber) == _blockHash,
-            "L2OutputOracle: block hash does not match the hash at the expected height"
+            "L2OutputOracle: checkpointing block hash failed: block hash does not match the hash at the expected height"
         );
         historicBlockHashes[_blockNumber] = _blockHash;
     }
