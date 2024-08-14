@@ -258,7 +258,7 @@ func (l *L2OutputSubmitter) SubmitAggProofs(ctx context.Context) error {
 			return fmt.Errorf("failed to fetch output at block %d: %w", aggProof.EndBlock, err)
 		}
 
-		l.proposeOutput(ctx, output, aggProof.Proof)
+		l.proposeOutput(ctx, output, aggProof.Proof, aggProof.L1BlockNumber, common.HexToHash(aggProof.L1BlockHash))
 		l.Log.Info("AGG proof submitted on-chain", "start", aggProof.StartBlock, "end", aggProof.EndBlock)
 	}
 
@@ -369,18 +369,18 @@ func (l *L2OutputSubmitter) FetchOutput(ctx context.Context, block uint64) (*eth
 }
 
 // ProposeL2OutputTxData creates the transaction data for the ProposeL2Output function
-func (l *L2OutputSubmitter) ProposeL2OutputTxData(output *eth.OutputResponse, proof []byte) ([]byte, error) {
-	return proposeL2OutputTxData(l.l2ooABI, output, proof)
+func (l *L2OutputSubmitter) ProposeL2OutputTxData(output *eth.OutputResponse, proof []byte, l1BlockNum uint64, l1BlockHash common.Hash) ([]byte, error) {
+	return proposeL2OutputTxData(l.l2ooABI, output, proof, l1BlockNum, l1BlockHash)
 }
 
 // proposeL2OutputTxData creates the transaction data for the ProposeL2Output function
-func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse, proof []byte) ([]byte, error) {
+func proposeL2OutputTxData(abi *abi.ABI, output *eth.OutputResponse, proof []byte, l1BlockNum uint64, l1BlockHash common.Hash) ([]byte, error) {
 	return abi.Pack(
 		"proposeL2Output",
 		output.OutputRoot,
 		new(big.Int).SetUint64(output.BlockRef.Number),
-		output.Status.CurrentL1.Hash,
-		new(big.Int).SetUint64(output.Status.CurrentL1.Number),
+		l1BlockHash,
+		l1BlockNum,
 		proof)
 }
 
@@ -434,7 +434,7 @@ func (l *L2OutputSubmitter) waitForL1Head(ctx context.Context, blockNum uint64) 
 }
 
 // sendTransaction creates & sends transactions through the underlying transaction manager.
-func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.OutputResponse, proof []byte) error {
+func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.OutputResponse, proof []byte, l1BlockNum uint64, l1BlockHash common.Hash) error {
 	err := l.waitForL1Head(ctx, output.Status.HeadL1.Number+1)
 	if err != nil {
 		return err
@@ -457,7 +457,7 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 			return err
 		}
 	} else {
-		data, err := l.ProposeL2OutputTxData(output, proof)
+		data, err := l.ProposeL2OutputTxData(output, proof, l1BlockNum, l1BlockHash)
 		if err != nil {
 			return err
 		}
@@ -476,8 +476,8 @@ func (l *L2OutputSubmitter) sendTransaction(ctx context.Context, output *eth.Out
 	} else {
 		l.Log.Info("Proposer tx successfully published",
 			"tx_hash", receipt.TxHash,
-			"l1blocknum", output.Status.CurrentL1.Number,
-			"l1blockhash", output.Status.CurrentL1.Hash)
+			"l1blocknum", l1BlockNum,
+			"l1blockhash", l1BlockHash)
 	}
 	return nil
 }
@@ -641,22 +641,22 @@ func (l *L2OutputSubmitter) loopDGF(ctx context.Context) {
 				}
 			}
 
-			l.proposeOutput(ctx, output, nil)
+			l.proposeOutput(ctx, output, nil, 0, common.Hash{})
 		case <-l.done:
 			return
 		}
 	}
 }
 
-func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.OutputResponse, proof []byte) {
+func (l *L2OutputSubmitter) proposeOutput(ctx context.Context, output *eth.OutputResponse, proof []byte, l1BlockNum uint64, l1BlockHash common.Hash) {
 	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	if err := l.sendTransaction(cCtx, output, proof); err != nil {
+	if err := l.sendTransaction(cCtx, output, proof, l1BlockNum, l1BlockHash); err != nil {
 		l.Log.Error("Failed to send proposal transaction",
 			"err", err,
-			"l1blocknum", output.Status.CurrentL1.Number,
-			"l1blockhash", output.Status.CurrentL1.Hash,
+			"l1blocknum", l1BlockNum,
+			"l1blockhash", l1BlockHash,
 			"l1head", output.Status.HeadL1.Number,
 			"proof", proof)
 		return

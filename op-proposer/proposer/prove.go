@@ -103,7 +103,7 @@ func (l *L2OutputSubmitter) RequestQueuedProofs(ctx context.Context) error {
 			// wait for the next loop so that we have the version with the block info added
 			return nil
 		} else {
-			l.Log.Info("previous block data was there")
+			l.Log.Info("found agg proof with already checkpointed l1 block info")
 		}
 	} else {
 		currentRequestedProofs, err := l.db.CountRequestedProofs()
