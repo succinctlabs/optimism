@@ -668,7 +668,11 @@ func (l *L2OutputSubmitter) checkpointBlockHash(ctx context.Context) (uint64, co
 	cCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	header, err := l.Txmgr.BlockHeader(cCtx)
+	currBlockNum, err := l.L1Client.BlockNumber(cCtx)
+	if err != nil {
+		return 0, common.Hash{}, err
+	}
+	header, err := l.L1Client.HeaderByNumber(cCtx, new(big.Int).SetUint64(currBlockNum-1))
 	if err != nil {
 		return 0, common.Hash{}, err
 	}

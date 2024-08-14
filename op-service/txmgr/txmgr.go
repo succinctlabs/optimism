@@ -73,9 +73,6 @@ type TxManager interface {
 	// BlockNumber returns the most recent block number from the underlying network.
 	BlockNumber(ctx context.Context) (uint64, error)
 
-	// BlockHeader returns the most recent block header from the underlying network.
-	BlockHeader(ctx context.Context) (*types.Header, error)
-
 	// Close the underlying connection
 	Close()
 	IsClosed() bool
@@ -163,14 +160,6 @@ func (m *SimpleTxManager) From() common.Address {
 
 func (m *SimpleTxManager) BlockNumber(ctx context.Context) (uint64, error) {
 	return m.backend.BlockNumber(ctx)
-}
-
-func (m *SimpleTxManager) BlockHeader(ctx context.Context) (*types.Header, error) {
-	blockNumber, err := m.backend.BlockNumber(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return m.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber-1))
 }
 
 // Close closes the underlying connection, and sets the closed flag.
