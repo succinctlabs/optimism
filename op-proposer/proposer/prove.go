@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -19,6 +21,7 @@ func (l *L2OutputSubmitter) ProcessPendingProofs() error {
 	if err != nil {
 		return err
 	}
+	l.Log.Info("Got all pending proofs from DB.", "count", len(reqs))
 	for _, req := range reqs {
 		status, proof, err := l.GetProofStatus(req.ProverRequestID)
 		if err != nil {
@@ -241,9 +244,14 @@ func (l *L2OutputSubmitter) RequestProofFromServer(urlPath string, jsonBody []by
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 3 * time.Minute,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return "", fmt.Errorf("request timed out after 3 minutes: %w", err)
+		}
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -278,15 +286,20 @@ func (l *L2OutputSubmitter) GetProofStatus(proofId string) (string, []byte, erro
 		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
+		if err, ok := err.(net.Error); ok && err.Timeout() {
+			return "", nil, fmt.Errorf("request timed out after 5 seconds: %w", err)
+		}
 		return "", nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Errorf("Error reading the response body: %v", err)
 	}
