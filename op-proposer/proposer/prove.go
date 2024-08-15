@@ -287,7 +287,7 @@ func (l *L2OutputSubmitter) GetProofStatus(proofId string) (string, []byte, erro
 	}
 
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
