@@ -292,7 +292,7 @@ func (l *L2OutputSubmitter) GetProofStatus(proofId string) (string, []byte, erro
 	resp, err := client.Do(req)
 	if err != nil {
 		if err, ok := err.(net.Error); ok && err.Timeout() {
-			return "", nil, fmt.Errorf("request timed out after 5 seconds: %w", err)
+			return "", nil, fmt.Errorf("request timed out after 30 seconds: %w", err)
 		}
 		return "", nil, fmt.Errorf("failed to send request: %w", err)
 	}
