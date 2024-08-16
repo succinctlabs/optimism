@@ -17,6 +17,40 @@ import (
 )
 
 func (l *L2OutputSubmitter) ProcessPendingProofs() error {
+	failedReqs, err := l.db.GetProofsFailedOnServer()
+	if err != nil {
+		return fmt.Errorf("failed to get proofs failed on server: %w", err)
+	}
+	for _, req := range failedReqs {
+		// If an AGG proof failed, we're in trouble.
+		// Try again.
+		if req.Type == proofrequest.TypeAGG {
+			l.Log.Error("agg proof failed, adding to db to retry", "req", req)
+
+			err = l.db.NewEntryWithReqAddedTimestamp("AGG", req.StartBlock, req.EndBlock, 0)
+			if err != nil {
+				l.Log.Error("failed to add new proof request", "err")
+				return err
+			}
+		}
+
+		// If a SPAN proof failed, assume it was too big.
+		// Therefore, create two new entries for the original proof split in half.
+		l.Log.Info("span proof failed, splitting in half to retry", "req", req)
+		tmpStart := req.StartBlock
+		tmpEnd := tmpStart + ((req.EndBlock - tmpStart) / 2)
+		for i := 0; i < 2; i++ {
+			err = l.db.NewEntryWithReqAddedTimestamp("SPAN", tmpStart, tmpEnd, 0)
+			if err != nil {
+				l.Log.Error("failed to add new proof request", "err", err)
+				return err
+			}
+
+			tmpStart = tmpEnd + 1
+			tmpEnd = req.EndBlock
+		}
+	}
+
 	reqs, err := l.db.GetAllPendingProofs()
 	if err != nil {
 		return err

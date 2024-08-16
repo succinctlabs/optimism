@@ -222,7 +222,25 @@ func (db *ProofDB) GetAllPendingProofs() ([]*ent.ProofRequest, error) {
 		if ent.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to query completed AGG proof: %w", err)
+		return nil, fmt.Errorf("failed to query pending proof: %w", err)
+	}
+
+	return proofs, nil
+}
+
+func (db *ProofDB) GetProofsFailedOnServer() ([]*ent.ProofRequest, error) {
+	proofs, err := db.client.ProofRequest.Query().
+		Where(
+			proofrequest.StatusEQ(proofrequest.StatusFAILED),
+			proofrequest.ProverRequestIDEQ(""),
+		).
+		All(context.Background())
+
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query failed proof: %w", err)
 	}
 
 	return proofs, nil
