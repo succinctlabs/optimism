@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// Span batch request is a request to find all span batches in a given block range.
 type SpanBatchRequest struct {
 	StartBlock  uint64 `json:"startBlock"`
 	EndBlock    uint64 `json:"endBlock"`
@@ -22,13 +23,9 @@ type SpanBatchRequest struct {
 	BatchSender string `json:"batchSender"`
 }
 
-type SpanBatchRange struct {
-	Start uint64 `json:"start"`
-	End   uint64 `json:"end"`
-}
-
+// Response to a span batch request.
 type SpanBatchResponse struct {
-	Ranges []SpanBatchRange `json:"ranges"`
+	Ranges []utils.SpanBatchRange `json:"ranges"`
 }
 
 func main() {
@@ -39,6 +36,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
+// Return all of the span batches in a given L2 block range.
 func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 	var req SpanBatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -64,13 +62,7 @@ func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := SpanBatchResponse{
-		Ranges: make([]SpanBatchRange, len(ranges)),
-	}
-	for i, r := range ranges {
-		response.Ranges[i] = SpanBatchRange{
-			Start: r[0],
-			End:   r[1],
-		}
+		Ranges: ranges,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

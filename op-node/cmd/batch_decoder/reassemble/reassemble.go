@@ -86,6 +86,7 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 
 // Loads the frames from the given directory and re-assembles the channel and searches for the given L2 block.
 func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
+	// TODO: This can be optimized by only loading the frames once & also accepting a list of blocks to search for and returning a list of ranges.
 	frames := LoadFrames(config.InDirectory, config.BatchInbox)
 	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
 	for _, frame := range frames {
@@ -110,8 +111,6 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpan
 			if l2Block >= startBlock && l2Block <= endBlock {
 				return startBlock, endBlock, nil
 			} else if l2Block+maxSpanBatchDeviation < startBlock {
-				fmt.Printf("L2 block %v is too old\n", l2Block)
-				fmt.Printf("Start block: %v\n", startBlock)
 				return l2Block, startBlock - 1, MaxDeviationExceededError
 			}
 		}

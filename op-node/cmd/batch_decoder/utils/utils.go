@@ -32,31 +32,19 @@ type BatchDecoderConfig struct {
 	DataDir           string
 }
 
-// Get the span batches within a range of L2 blocks. First, fetch the span batches from the L1 origin of the start block to the finalized L1 block. (This can take a while)
-// Then, reassemble the span batches within the range for the given L2 blocks.
-func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([][2]uint64, error) {
-	// Get the L1 origin corresponding to the start block
-	// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
-	rollupCfg, err := rollup.LoadOPStackRollupConfig(config.L2ChainID.Uint64())
-	if err == nil {
-		// prioritize superchain config
-		if config.L2GenesisTime != rollupCfg.Genesis.L2Time {
-			config.L2GenesisTime = rollupCfg.Genesis.L2Time
-			fmt.Printf("L2GenesisTime overridden: %v\n", config.L2GenesisTime)
-		}
-		if config.L2GenesisBlock != rollupCfg.Genesis.L2.Number {
-			config.L2GenesisBlock = rollupCfg.Genesis.L2.Number
-			fmt.Printf("L2GenesisBlock overridden: %v\n", config.L2GenesisBlock)
-		}
-		if config.L2BlockTime != rollupCfg.BlockTime {
-			config.L2BlockTime = rollupCfg.BlockTime
-			fmt.Printf("L2BlockTime overridden: %v\n", config.L2BlockTime)
-		}
-		if config.BatchInboxAddress != rollupCfg.BatchInboxAddress {
-			config.BatchInboxAddress = rollupCfg.BatchInboxAddress
-			fmt.Printf("BatchInboxAddress overridden: %v\n", config.BatchInboxAddress)
-		}
+// Represents a span batch range.
+type SpanBatchRange struct {
+	Start uint64 `json:"start"`
+	End   uint64 `json:"end"`
+}
+
+// GetAllSpanBatchesInBlockRange fetches span batches within a range of L2 blocks.
+func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([]SpanBatchRange, error) {
+	rollupCfg, err := setupConfig(&config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup config: %w", err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -70,6 +58,65 @@ func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([][2]uint64, erro
 		return nil, fmt.Errorf("failed to get L1 origin and finalized: %w", err)
 	}
 
+	err = fetchBatches(config, rollupCfg, l1Origin, finalizedL1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch batches: %w", err)
+	}
+
+	ranges, err := getSpanBatchRanges(config, rollupCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get span batch ranges: %w", err)
+	}
+
+	return ranges, nil
+}
+
+func setupConfig(config *BatchDecoderConfig) (*rollup.Config, error) {
+	rollupCfg, err := rollup.LoadOPStackRollupConfig(config.L2ChainID.Uint64())
+	if err != nil {
+		return nil, err
+	}
+
+	if config.L2GenesisTime != rollupCfg.Genesis.L2Time {
+		config.L2GenesisTime = rollupCfg.Genesis.L2Time
+		fmt.Printf("L2GenesisTime overridden: %v\n", config.L2GenesisTime)
+	}
+	if config.L2GenesisBlock != rollupCfg.Genesis.L2.Number {
+		config.L2GenesisBlock = rollupCfg.Genesis.L2.Number
+		fmt.Printf("L2GenesisBlock overridden: %v\n", config.L2GenesisBlock)
+	}
+	if config.L2BlockTime != rollupCfg.BlockTime {
+		config.L2BlockTime = rollupCfg.BlockTime
+		fmt.Printf("L2BlockTime overridden: %v\n", config.L2BlockTime)
+	}
+	if config.BatchInboxAddress != rollupCfg.BatchInboxAddress {
+		config.BatchInboxAddress = rollupCfg.BatchInboxAddress
+		fmt.Printf("BatchInboxAddress overridden: %v\n", config.BatchInboxAddress)
+	}
+
+	return rollupCfg, nil
+}
+
+func getL1OriginAndFinalized(rollupClient *sources.RollupClient, startBlock, endBlock uint64) (uint64, uint64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	output, err := rollupClient.OutputAtBlock(ctx, startBlock)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get output at start block: %w", err)
+	}
+	startL1Origin := output.BlockRef.L1Origin.Number
+
+	output, err = rollupClient.OutputAtBlock(ctx, endBlock)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get output at end block: %w", err)
+	}
+	endL1Origin := output.BlockRef.L1Origin.Number
+
+	return startL1Origin, endL1Origin, nil
+}
+
+func fetchBatches(config BatchDecoderConfig, rollupCfg *rollup.Config, l1Origin, finalizedL1 uint64) error {
 	fetchConfig := fetch.Config{
 		Start:   l1Origin,
 		End:     finalizedL1,
@@ -84,23 +131,42 @@ func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([][2]uint64, erro
 
 	l1Client, err := ethclient.Dial(config.L1RPC)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial L1 client: %w", err)
+		return fmt.Errorf("failed to dial L1 client: %w", err)
 	}
-	var beacon *sources.L1BeaconClient
-	if config.L1Beacon != "" {
-		beaconClient := sources.NewBeaconHTTPClient(client.NewBasicHTTPClient(config.L1Beacon, nil))
-		beaconCfg := sources.L1BeaconClientConfig{FetchAllSidecars: false}
-		beacon = sources.NewL1BeaconClient(beaconClient, beaconCfg)
-		_, err := beacon.GetVersion(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check L1 Beacon API version: %w", err)
-		}
-	} else {
-		fmt.Println("L1 Beacon endpoint not set. Unable to fetch post-ecotone channel frames")
+
+	beacon, err := setupBeacon(config)
+	if err != nil {
+		return err
 	}
+
 	totalValid, totalInvalid := fetch.Batches(l1Client, beacon, fetchConfig)
 	fmt.Printf("Fetched batches in range [%v,%v). Found %v valid & %v invalid batches\n", fetchConfig.Start, fetchConfig.End, totalValid, totalInvalid)
 
+	return nil
+}
+
+func setupBeacon(config BatchDecoderConfig) (*sources.L1BeaconClient, error) {
+	if config.L1Beacon == "" {
+		fmt.Println("L1 Beacon endpoint not set. Unable to fetch post-ecotone channel frames")
+		return nil, nil
+	}
+
+	beaconClient := sources.NewBeaconHTTPClient(client.NewBasicHTTPClient(config.L1Beacon, nil))
+	beaconCfg := sources.L1BeaconClientConfig{FetchAllSidecars: false}
+	beacon := sources.NewL1BeaconClient(beaconClient, beaconCfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := beacon.GetVersion(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check L1 Beacon API version: %w", err)
+	}
+
+	return beacon, nil
+}
+
+func getSpanBatchRanges(config BatchDecoderConfig, rollupCfg *rollup.Config) ([]SpanBatchRange, error) {
 	reassembleConfig := reassemble.Config{
 		BatchInbox:    config.BatchInboxAddress,
 		InDirectory:   config.DataDir,
@@ -110,54 +176,26 @@ func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([][2]uint64, erro
 		L2BlockTime:   config.L2BlockTime,
 	}
 
-	ranges, err := GetSpanBatchRanges(reassembleConfig, rollupCfg, config.StartBlock, config.EndBlock, 1000000)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get span batch ranges: %w", err)
-	}
-
-	return ranges, nil
+	return GetSpanBatchRanges(reassembleConfig, rollupCfg, config.StartBlock, config.EndBlock, 1000000)
 }
 
-// Get a list of span batch ranges for a given L2 block range.
-// If the end block is reached, the last span batch range will end at end block, instead of the span batch's end block.
-func GetSpanBatchRanges(config reassemble.Config, rollupCfg *rollup.Config, startBlock uint64, endBlock uint64, maxSpanBatchDeviation uint64) ([][2]uint64, error) {
-	var ranges [][2]uint64
+// GetSpanBatchRanges returns a list of span batch ranges for a given L2 block range.
+func GetSpanBatchRanges(config reassemble.Config, rollupCfg *rollup.Config, startBlock uint64, endBlock uint64, maxSpanBatchDeviation uint64) ([]SpanBatchRange, error) {
+	var ranges []SpanBatchRange
 	currentStart := startBlock
 
 	for currentStart < endBlock {
-		_, spanEnd, err := reassemble.GetSpanBatchRange(config, rollupCfg, currentStart, 1000000)
+		_, spanEnd, err := reassemble.GetSpanBatchRange(config, rollupCfg, currentStart, maxSpanBatchDeviation)
 		batchEnd := spanEnd
 		if err != nil {
-			// If we hit an error, log it as a warning
 			fmt.Printf("Error getting span batch range: %v\n", err)
 			batchEnd = currentStart + 100
 		}
 		if batchEnd > endBlock {
 			batchEnd = endBlock
 		}
-		ranges = append(ranges, [2]uint64{currentStart, batchEnd})
+		ranges = append(ranges, SpanBatchRange{Start: currentStart, End: batchEnd})
 		currentStart = batchEnd + 1
 	}
 	return ranges, nil
-}
-
-// Get the L1 origin corresponding to the given L2 block and the latest finalized L1 block.
-func getL1OriginAndFinalized(rollupClient *sources.RollupClient, startBlock uint64, endBlock uint64) (uint64, uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	output, err := rollupClient.OutputAtBlock(ctx, startBlock)
-	if err != nil {
-		return 0, 0, err
-	}
-	startL1Origin := output.BlockRef.L1Origin.Number
-
-	// Get L1 origin for the end block
-	output, err = rollupClient.OutputAtBlock(ctx, endBlock)
-	if err != nil {
-		return 0, 0, err
-	}
-	endL1Origin := output.BlockRef.L1Origin.Number
-
-	return startL1Origin, endL1Origin, nil
 }
