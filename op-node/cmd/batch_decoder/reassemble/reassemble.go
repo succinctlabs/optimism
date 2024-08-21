@@ -109,6 +109,8 @@ func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpan
 			if l2Block >= startBlock && l2Block <= endBlock {
 				return startBlock, endBlock, nil
 			} else if l2Block+maxSpanBatchDeviation < startBlock {
+				fmt.Printf("L2 block %v is too old\n", l2Block)
+				fmt.Printf("Start block: %v\n", startBlock)
 				return l2Block, startBlock - 1, MaxDeviationExceededError
 			}
 		}
