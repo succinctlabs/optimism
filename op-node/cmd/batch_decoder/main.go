@@ -10,10 +10,10 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
+	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/utils"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-service/client"
-	"github.com/ethereum-optimism/optimism/op-service/dial"
 	"github.com/ethereum-optimism/optimism/op-service/sources"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -264,98 +264,27 @@ func main() {
 				},
 			},
 			Action: func(cliCtx *cli.Context) error {
-				var (
-					L2GenesisTime     uint64         = cliCtx.Uint64("l2-genesis-timestamp")
-					L2GenesisBlock    uint64         = cliCtx.Uint64("l2-genesis-block")
-					L2BlockTime       uint64         = cliCtx.Uint64("l2-block-time")
-					BatchInboxAddress common.Address = common.HexToAddress(cliCtx.String("inbox"))
-					StartBlock        uint64         = cliCtx.Uint64("start")
-					EndBlock          uint64         = cliCtx.Uint64("end")
-				)
-
-				// Get the L1 origin corresponding to the start block
-				// nextBlock is equal to the highest value in the `EndBlock` column of the db, plus 1
-				L2ChainID := new(big.Int).SetUint64(cliCtx.Uint64("l2-chain-id"))
-				rollupCfg, err := rollup.LoadOPStackRollupConfig(L2ChainID.Uint64())
-				if err == nil {
-					// prioritize superchain config
-					if L2GenesisTime != rollupCfg.Genesis.L2Time {
-						L2GenesisTime = rollupCfg.Genesis.L2Time
-						fmt.Printf("L2GenesisTime overridden: %v\n", L2GenesisTime)
-					}
-					if L2GenesisBlock != rollupCfg.Genesis.L2.Number {
-						L2GenesisBlock = rollupCfg.Genesis.L2.Number
-						fmt.Printf("L2GenesisBlock overridden: %v\n", L2GenesisBlock)
-					}
-					if L2BlockTime != rollupCfg.BlockTime {
-						L2BlockTime = rollupCfg.BlockTime
-						fmt.Printf("L2BlockTime overridden: %v\n", L2BlockTime)
-					}
-					if BatchInboxAddress != rollupCfg.BatchInboxAddress {
-						BatchInboxAddress = rollupCfg.BatchInboxAddress
-						fmt.Printf("BatchInboxAddress overridden: %v\n", BatchInboxAddress)
-					}
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-
-				rollupClient, err := dial.DialRollupClientWithTimeout(ctx, dial.DefaultDialTimeout, nil, cliCtx.String("l2.node"))
-				if err != nil {
-					log.Fatal(err)
+				config := utils.BatchDecoderConfig{
+					L2GenesisTime:     cliCtx.Uint64("l2-genesis-timestamp"),
+					L2GenesisBlock:    cliCtx.Uint64("l2-genesis-block"),
+					L2BlockTime:       cliCtx.Uint64("l2-block-time"),
+					BatchInboxAddress: common.HexToAddress(cliCtx.String("inbox")),
+					StartBlock:        cliCtx.Uint64("start"),
+					EndBlock:          cliCtx.Uint64("end"),
+					L2ChainID:         new(big.Int).SetUint64(cliCtx.Uint64("l2-chain-id")),
+					L2Node:            cliCtx.String("l2.node"),
+					L1RPC:             cliCtx.String("l1"),
+					L1Beacon:          cliCtx.String("l1.beacon"),
+					BatchSender:       cliCtx.String("sender"),
+					// TODO: If this DataDir gets large, then we need to remove old data.
+					DataDir: cliCtx.String("in"),
 				}
 
-				l1Origin, finalizedL1, err := getL1OriginAndFinalized(rollupClient, StartBlock)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				fetchConfig := fetch.Config{
-					Start:   l1Origin,
-					End:     finalizedL1,
-					ChainID: rollupCfg.L1ChainID,
-					BatchSenders: map[common.Address]struct{}{
-						common.HexToAddress(cliCtx.String("sender")): {},
-					},
-					BatchInbox:         BatchInboxAddress,
-					OutDirectory:       cliCtx.String("in"),
-					ConcurrentRequests: 10,
-				}
-
-				l1Client, err := ethclient.Dial(cliCtx.String("l1"))
-				if err != nil {
-					log.Fatal(err)
-				}
-				beaconAddr := cliCtx.String("l1.beacon")
-				var beacon *sources.L1BeaconClient
-				if beaconAddr != "" {
-					beaconClient := sources.NewBeaconHTTPClient(client.NewBasicHTTPClient(beaconAddr, nil))
-					beaconCfg := sources.L1BeaconClientConfig{FetchAllSidecars: false}
-					beacon = sources.NewL1BeaconClient(beaconClient, beaconCfg)
-					_, err := beacon.GetVersion(ctx)
-					if err != nil {
-						log.Fatal(fmt.Errorf("failed to check L1 Beacon API version: %w", err))
-					}
-				} else {
-					fmt.Println("L1 Beacon endpoint not set. Unable to fetch post-ecotone channel frames")
-				}
-				totalValid, totalInvalid := fetch.Batches(l1Client, beacon, fetchConfig)
-				fmt.Printf("Fetched batches in range [%v,%v). Found %v valid & %v invalid batches\n", fetchConfig.Start, fetchConfig.End, totalValid, totalInvalid)
-
-				config := reassemble.Config{
-					BatchInbox:    BatchInboxAddress,
-					InDirectory:   cliCtx.String("in"),
-					OutDirectory:  "",
-					L2ChainID:     L2ChainID,
-					L2GenesisTime: L2GenesisTime,
-					L2BlockTime:   L2BlockTime,
-				}
-
-				ranges, err := GetSpanBatchRanges(config, rollupCfg, StartBlock, EndBlock, 1000000)
+				ranges, err := utils.GetAllSpanBatchesInBlockRange(config)
 				if err != nil {
 					log.Fatal(err)
 				}
 				fmt.Printf("Span batch ranges: %v\n", ranges)
-
 				return nil
 			},
 		},
@@ -404,55 +333,4 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// Get a list of span batch ranges for a given L2 block range
-func GetSpanBatchRanges(config reassemble.Config, rollupCfg *rollup.Config, startBlock uint64, endBlock uint64, maxSpanBatchDeviation uint64) ([]uint64, error) {
-	var ranges []uint64
-	ranges = append(ranges, startBlock)
-
-	start, end, err := reassemble.GetSpanBatchRange(config, rollupCfg, startBlock, 1000000)
-	currentStart := startBlock + 100
-	if err != nil {
-		fmt.Printf("Error getting span batch range: %v\n", err)
-	} else {
-		fmt.Printf("Span batch range: [%v,%v)\n", start, end)
-		currentStart = end
-	}
-
-	for currentStart < endBlock {
-		ranges = append(ranges, currentStart)
-		spanStart, spanEnd, err := reassemble.GetSpanBatchRange(config, rollupCfg, currentStart, 1000000)
-		if err != nil {
-			// If we hit an error, log it as a warning
-			fmt.Printf("Error getting span batch range: %v\n", err)
-			currentStart += 100
-		} else {
-			fmt.Printf("Span batch range: [%v,%v)\n", spanStart, spanEnd)
-			currentStart = spanEnd + 1
-		}
-	}
-	ranges = append(ranges, endBlock)
-	return ranges, nil
-}
-
-// Get the L1 origin corresponding to the given L2 block and the latest finalized L1 block.
-func getL1OriginAndFinalized(rollupClient *sources.RollupClient, l2Block uint64) (uint64, uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	output, err := rollupClient.OutputAtBlock(ctx, l2Block)
-	if err != nil {
-		return 0, 0, err
-	}
-	l1Origin := output.BlockRef.L1Origin.Number
-
-	// get the latest finalized L1
-	status, err := rollupClient.SyncStatus(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	finalizedL1 := status.FinalizedL1.Number
-
-	return l1Origin, finalizedL1, nil
 }

@@ -84,6 +84,7 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 	}
 }
 
+// Loads the frames from the given directory and re-assembles the channel and searches for the given L2 block.
 func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
 	frames := LoadFrames(config.InDirectory, config.BatchInbox)
 	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
