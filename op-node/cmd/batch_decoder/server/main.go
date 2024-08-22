@@ -53,7 +53,8 @@ func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 		BatchSender: req.BatchSender,
 		StartBlock:  req.StartBlock,
 		EndBlock:    req.EndBlock,
-		DataDir: "/tmp/batch_decoder/transactions_cache",
+		// TODO: Make directory specific to L2 chain. This avoids race conditions when multiple chains are running on the same machine.
+		DataDir: fmt.Sprintf("/tmp/batch_decoder/%d/transactions_cache", req.L2ChainID),
 	}
 
 	ranges, err := utils.GetAllSpanBatchesInBlockRange(config)
