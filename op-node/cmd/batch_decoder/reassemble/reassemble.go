@@ -122,13 +122,10 @@ func GetSpanBatchRanges(config Config, rollupCfg *rollup.Config, startBlock, end
 			batchStartBlock := TimestampToBlock(rollupCfg, b.GetTimestamp())
 			spanBatch, success := b.AsSpanBatch()
 			if !success {
-				log.Printf("couldn't convert batch %v to span batch\n", idx)
-				continue
+				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
 			}
 			blockCount := spanBatch.GetBlockCount()
 			batchEndBlock := batchStartBlock + uint64(blockCount) - 1
-
-			fmt.Printf("batchStartBlock: %v, batchEndBlock: %v\n", batchStartBlock, batchEndBlock)
 
 			if batchStartBlock > endBlock || batchEndBlock < startBlock {
 				continue
@@ -137,8 +134,6 @@ func GetSpanBatchRanges(config Config, rollupCfg *rollup.Config, startBlock, end
 			}
 		}
 	}
-
-	fmt.Printf("Ranges: %v\n", ranges)
 
 	return ranges, nil
 }

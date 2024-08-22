@@ -53,7 +53,6 @@ func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 		BatchSender: req.BatchSender,
 		StartBlock:  req.StartBlock,
 		EndBlock:    req.EndBlock,
-		// TODO: Should we clear the out directory every time before writing to it?
 		DataDir: "/tmp/batch_decoder/transactions_cache",
 	}
 
