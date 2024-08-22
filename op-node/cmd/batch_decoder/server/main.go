@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/reassemble"
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/utils"
 
 	"github.com/gorilla/mux"
@@ -25,7 +26,7 @@ type SpanBatchRequest struct {
 
 // Response to a span batch request.
 type SpanBatchResponse struct {
-	Ranges []utils.SpanBatchRange `json:"ranges"`
+	Ranges []reassemble.SpanBatchRange `json:"ranges"`
 }
 
 func main() {
@@ -52,11 +53,13 @@ func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 		BatchSender: req.BatchSender,
 		StartBlock:  req.StartBlock,
 		EndBlock:    req.EndBlock,
-		DataDir:     "/tmp/batch_decoder/transactions_cache_new", // You might want to make this configurable
+		// TODO: Should we clear the out directory every time before writing to it?
+		DataDir: "/tmp/batch_decoder/transactions_cache",
 	}
 
 	ranges, err := utils.GetAllSpanBatchesInBlockRange(config)
 	if err != nil {
+		fmt.Printf("Error getting span batch ranges: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -64,6 +67,8 @@ func handleSpanBatchRanges(w http.ResponseWriter, r *http.Request) {
 	response := SpanBatchResponse{
 		Ranges: ranges,
 	}
+
+	fmt.Printf("Response: %v\n", response)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

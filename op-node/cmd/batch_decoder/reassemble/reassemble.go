@@ -46,8 +46,8 @@ type Config struct {
 	L2BlockTime   uint64
 }
 
-var NoSpanBatchFoundError = errors.New("no span batch found for the given block")
-var MaxDeviationExceededError = errors.New("max deviation exceeded")
+var ErrNoSpanBatchFound = errors.New("no span batch found for the given block")
+var ErrMaxDeviationExceeded = errors.New("max deviation exceeded")
 
 func LoadFrames(directory string, inbox common.Address) []FrameWithMetadata {
 	txns := loadTransactions(directory, inbox)
@@ -84,38 +84,63 @@ func Channels(config Config, rollupCfg *rollup.Config) {
 	}
 }
 
-// Loads the frames from the given directory and re-assembles the channel and searches for the given L2 block.
+// GetSpanBatchRange returns the start and end block of the span batch containing the given L2 block
 func GetSpanBatchRange(config Config, rollupCfg *rollup.Config, l2Block, maxSpanBatchDeviation uint64) (uint64, uint64, error) {
-	// TODO: This can be optimized by only loading the frames once & also accepting a list of blocks to search for and returning a list of ranges.
+	ranges, err := GetSpanBatchRanges(config, rollupCfg, l2Block, l2Block, maxSpanBatchDeviation)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(ranges) == 0 {
+		return 0, 0, ErrNoSpanBatchFound
+	}
+	return ranges[0].Start, ranges[0].End, nil
+}
+
+// SpanBatchRange represents a range of L2 blocks covered by a span batch
+type SpanBatchRange struct {
+	Start uint64 `json:"start"`
+	End   uint64 `json:"end"`
+}
+
+// GetSpanBatchRanges returns all span batch ranges between startBlock and endBlock
+func GetSpanBatchRanges(config Config, rollupCfg *rollup.Config, startBlock, endBlock, maxSpanBatchDeviation uint64) ([]SpanBatchRange, error) {
 	frames := LoadFrames(config.InDirectory, config.BatchInbox)
 	framesByChannel := make(map[derive.ChannelID][]FrameWithMetadata)
 	for _, frame := range frames {
 		framesByChannel[frame.Frame.ID] = append(framesByChannel[frame.Frame.ID], frame)
 	}
+
+	var ranges []SpanBatchRange
+
 	for id, frames := range framesByChannel {
 		ch := processFrames(config, rollupCfg, id, frames)
 		if len(ch.Batches) == 0 {
 			log.Fatalf("no span batches in channel")
-			return 0, 0, errors.New("no span batches in channel")
 		}
 
 		for idx, b := range ch.Batches {
-			startBlock := TimestampToBlock(rollupCfg, b.GetTimestamp())
+			batchStartBlock := TimestampToBlock(rollupCfg, b.GetTimestamp())
 			spanBatch, success := b.AsSpanBatch()
 			if !success {
-				log.Fatalf("couldn't convert batch %v to span batch\n", idx)
-				return 0, 0, errors.New("couldn't convert batch to span batch")
+				log.Printf("couldn't convert batch %v to span batch\n", idx)
+				continue
 			}
 			blockCount := spanBatch.GetBlockCount()
-			endBlock := startBlock + uint64(blockCount) - 1
-			if l2Block >= startBlock && l2Block <= endBlock {
-				return startBlock, endBlock, nil
-			} else if l2Block+maxSpanBatchDeviation < startBlock {
-				return l2Block, startBlock - 1, MaxDeviationExceededError
+			batchEndBlock := batchStartBlock + uint64(blockCount) - 1
+
+			fmt.Printf("batchStartBlock: %v, batchEndBlock: %v\n", batchStartBlock, batchEndBlock)
+
+			if batchStartBlock > endBlock || batchEndBlock < startBlock {
+				continue
+			} else {
+				ranges = append(ranges, SpanBatchRange{Start: max(startBlock, batchStartBlock), End: min(endBlock, batchEndBlock)})
 			}
 		}
 	}
-	return 0, 0, NoSpanBatchFoundError
+
+	fmt.Printf("Ranges: %v\n", ranges)
+
+	return ranges, nil
 }
 
 func TimestampToBlock(rollupCfg *rollup.Config, l2Timestamp uint64) uint64 {

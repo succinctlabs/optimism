@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
+
+	// "os"
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-node/cmd/batch_decoder/fetch"
@@ -32,15 +35,9 @@ type BatchDecoderConfig struct {
 	DataDir           string
 }
 
-// Represents a span batch range.
-type SpanBatchRange struct {
-	Start uint64 `json:"start"`
-	End   uint64 `json:"end"`
-}
-
 // GetAllSpanBatchesInBlockRange fetches span batches within a range of L2 blocks.
-func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([]SpanBatchRange, error) {
-	rollupCfg, err := setupConfig(&config)
+func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([]reassemble.SpanBatchRange, error) {
+	rollupCfg, err := setupBatchDecoderConfig(&config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup config: %w", err)
 	}
@@ -53,17 +50,36 @@ func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([]SpanBatchRange,
 		return nil, fmt.Errorf("failed to dial rollup client: %w", err)
 	}
 
-	l1Origin, finalizedL1, err := getL1OriginAndFinalized(rollupClient, config.StartBlock, config.EndBlock)
+	l1Origin, finalizedL1, err := getL1Origins(rollupClient, config.StartBlock, config.EndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get L1 origin and finalized: %w", err)
 	}
 
+	// Clear the out directory so that loading the transaction frames is fast. Otherwise, when loading thousands of transactions,
+	// this process can become quite slow.
+	err = os.RemoveAll(config.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clear out directory: %w", err)
+	}
+
+	// Step on the L1 and store all batches posted in config.DataDir.
 	err = fetchBatches(config, rollupCfg, l1Origin, finalizedL1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch batches: %w", err)
 	}
 
-	ranges, err := getSpanBatchRanges(config, rollupCfg)
+	// Reassemble the batches into span batches from the stored transaction frames in config.DataDir.
+	reassembleConfig := reassemble.Config{
+		BatchInbox:    config.BatchInboxAddress,
+		InDirectory:   config.DataDir,
+		OutDirectory:  "",
+		L2ChainID:     config.L2ChainID,
+		L2GenesisTime: config.L2GenesisTime,
+		L2BlockTime:   config.L2BlockTime,
+	}
+
+	// Get all span batch ranges in the given L2 block range.
+	ranges, err := reassemble.GetSpanBatchRanges(reassembleConfig, rollupCfg, config.StartBlock, config.EndBlock, 1000000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get span batch ranges: %w", err)
 	}
@@ -71,7 +87,7 @@ func GetAllSpanBatchesInBlockRange(config BatchDecoderConfig) ([]SpanBatchRange,
 	return ranges, nil
 }
 
-func setupConfig(config *BatchDecoderConfig) (*rollup.Config, error) {
+func setupBatchDecoderConfig(config *BatchDecoderConfig) (*rollup.Config, error) {
 	rollupCfg, err := rollup.LoadOPStackRollupConfig(config.L2ChainID.Uint64())
 	if err != nil {
 		return nil, err
@@ -97,7 +113,8 @@ func setupConfig(config *BatchDecoderConfig) (*rollup.Config, error) {
 	return rollupCfg, nil
 }
 
-func getL1OriginAndFinalized(rollupClient *sources.RollupClient, startBlock, endBlock uint64) (uint64, uint64, error) {
+// Get the L1 origin corresponding to the given L2 block and the latest finalized L1 block.
+func getL1Origins(rollupClient *sources.RollupClient, startBlock, endBlock uint64) (uint64, uint64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -111,7 +128,10 @@ func getL1OriginAndFinalized(rollupClient *sources.RollupClient, startBlock, end
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get output at end block: %w", err)
 	}
-	endL1Origin := output.BlockRef.L1Origin.Number
+
+	// TODO: Change 12 to the L1 block time
+	l1BlockTime := 12
+	endL1Origin := output.BlockRef.L1Origin.Number + (uint64(60/l1BlockTime) * 10)
 
 	return startL1Origin, endL1Origin, nil
 }
@@ -164,38 +184,4 @@ func setupBeacon(config BatchDecoderConfig) (*sources.L1BeaconClient, error) {
 	}
 
 	return beacon, nil
-}
-
-func getSpanBatchRanges(config BatchDecoderConfig, rollupCfg *rollup.Config) ([]SpanBatchRange, error) {
-	reassembleConfig := reassemble.Config{
-		BatchInbox:    config.BatchInboxAddress,
-		InDirectory:   config.DataDir,
-		OutDirectory:  "",
-		L2ChainID:     config.L2ChainID,
-		L2GenesisTime: config.L2GenesisTime,
-		L2BlockTime:   config.L2BlockTime,
-	}
-
-	return GetSpanBatchRanges(reassembleConfig, rollupCfg, config.StartBlock, config.EndBlock, 1000000)
-}
-
-// GetSpanBatchRanges returns a list of span batch ranges for a given L2 block range.
-func GetSpanBatchRanges(config reassemble.Config, rollupCfg *rollup.Config, startBlock uint64, endBlock uint64, maxSpanBatchDeviation uint64) ([]SpanBatchRange, error) {
-	var ranges []SpanBatchRange
-	currentStart := startBlock
-
-	for currentStart < endBlock {
-		_, spanEnd, err := reassemble.GetSpanBatchRange(config, rollupCfg, currentStart, maxSpanBatchDeviation)
-		batchEnd := spanEnd
-		if err != nil {
-			fmt.Printf("Error getting span batch range: %v\n", err)
-			batchEnd = currentStart + 100
-		}
-		if batchEnd > endBlock {
-			batchEnd = endBlock
-		}
-		ranges = append(ranges, SpanBatchRange{Start: currentStart, End: batchEnd})
-		currentStart = batchEnd + 1
-	}
-	return ranges, nil
 }

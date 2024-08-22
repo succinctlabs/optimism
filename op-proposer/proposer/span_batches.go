@@ -46,10 +46,10 @@ func (l *L2OutputSubmitter) DeriveNewSpanBatches(ctx context.Context) error {
 	for {
 		// use batch decoder to reassemble the batches from disk to determine the start and end of relevant span batch
 		start, end, err := l.GenerateSpanBatchRange(ctx, nextBlock, l.DriverSetup.Cfg.MaxSpanBatchDeviation)
-		if err == reassemble.NoSpanBatchFoundError {
+		if err == reassemble.ErrNoSpanBatchFound {
 			l.Log.Info("no span batch found", "nextBlock", nextBlock)
 			break
-		} else if err == reassemble.MaxDeviationExceededError {
+		} else if err == reassemble.ErrMaxDeviationExceeded {
 			l.Log.Info("max deviation exceeded, autofilling", "start", start, "end", end)
 		} else if err != nil {
 			l.Log.Error("failed to generate span batch range", "err", err)
