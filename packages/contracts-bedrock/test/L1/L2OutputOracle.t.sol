@@ -252,7 +252,7 @@ contract L2OutputOracle_proposeL2Output_Test is CommonTest {
 
     /// @dev Tests that `proposeL2Output` reverts when given a block number
     ///      that has a timestamp in the future.
-    function test_proposeL2Output_futureTimetamp_reverts() external {
+    function test_proposeL2Output_futureTimestamp_reverts() external {
         uint256 nextBlockNumber = l2OutputOracle.nextBlockNumber();
         uint256 nextTimestamp = l2OutputOracle.computeL2Timestamp(nextBlockNumber);
         vm.warp(nextTimestamp);
