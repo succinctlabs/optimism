@@ -1,6 +1,7 @@
 module github.com/ethereum-optimism/optimism
 
 go 1.21
+toolchain go1.24.1
 
 require (
 	github.com/andybalholm/brotli v1.1.0
@@ -46,7 +47,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/sync v0.8.0
 	golang.org/x/term v0.23.0
-	golang.org/x/time v0.6.0
+	golang.org/x/time v0.11.0
 )
 
 require (
