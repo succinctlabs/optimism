@@ -13,7 +13,7 @@ jobs:
     container:
       image: us-docker.pkg.dev/oplabs-tools-artifacts/images/ci-builder:v0.49.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run Slither
         uses: crytic/slither-action@v0.4.0
