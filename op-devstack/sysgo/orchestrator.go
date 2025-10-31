@@ -49,7 +49,7 @@ type Orchestrator struct {
 	testSequencers locks.RWMap[stack.TestSequencerID, *TestSequencer]
 	batchers       locks.RWMap[stack.L2BatcherID, *L2Batcher]
 	challengers    locks.RWMap[stack.L2ChallengerID, *L2Challenger]
-	proposers      locks.RWMap[stack.L2ProposerID, *L2Proposer]
+	proposers      locks.RWMap[stack.L2ProposerID, L2Prop]
 
 	// service name => prometheus endpoints to scrape
 	l2MetricsEndpoints locks.RWMap[string, []PrometheusMetricsTarget]
@@ -134,7 +134,7 @@ func (o *Orchestrator) Hydrate(sys stack.ExtensibleSystem) {
 	o.testSequencers.Range(rangeHydrateFn[stack.TestSequencerID, *TestSequencer](sys))
 	o.batchers.Range(rangeHydrateFn[stack.L2BatcherID, *L2Batcher](sys))
 	o.challengers.Range(rangeHydrateFn[stack.L2ChallengerID, *L2Challenger](sys))
-	o.proposers.Range(rangeHydrateFn[stack.L2ProposerID, *L2Proposer](sys))
+	o.proposers.Range(rangeHydrateFn[stack.L2ProposerID, L2Prop](sys))
 	if o.syncTester != nil {
 		o.syncTester.hydrate(sys)
 	}
