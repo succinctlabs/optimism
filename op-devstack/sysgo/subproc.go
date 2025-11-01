@@ -18,7 +18,8 @@ type SubProcess struct {
 	stdOutLogs logpipe.LogProcessor
 	stdErrLogs logpipe.LogProcessor
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	onExit func(error)
 }
 
 func NewSubProcess(p devtest.P, stdOutLogs, stdErrLogs logpipe.LogProcessor) *SubProcess {
@@ -43,6 +44,27 @@ func (sp *SubProcess) Start(cmdPath string, args []string, env []string) error {
 		return err
 	}
 	sp.cmd = cmd
+
+	go func(cmd *exec.Cmd) {
+		err := cmd.Wait()
+		sp.mu.Lock()
+		if sp.cmd == cmd {
+			sp.cmd = nil
+		}
+		cb := sp.onExit
+		sp.mu.Unlock()
+
+		if cb != nil {
+			cb(err)
+		}
+
+		if err != nil {
+			sp.p.Logger().Error("Sub-process crashed", "err", err)
+		} else {
+			sp.p.Logger().Info("Sub-process exited")
+		}
+	}(cmd)
+
 	sp.p.Cleanup(func() {
 		err := sp.Stop(true)
 		if err != nil {
@@ -69,7 +91,7 @@ func (sp *SubProcess) Stop(interrupt bool) error {
 		}
 	}
 
-	if _, err := sp.cmd.Process.Wait(); err != nil {
+	if err := sp.cmd.Wait(); err != nil {
 		sp.p.Logger().Warn("Sub-process exited with error", "err", err)
 	} else {
 		sp.p.Logger().Info("Sub-process gracefully exited")
@@ -77,4 +99,10 @@ func (sp *SubProcess) Stop(interrupt bool) error {
 
 	sp.cmd = nil
 	return nil
+}
+
+func (sp *SubProcess) OnExit(fn func(error)) {
+	sp.mu.Lock()
+	sp.onExit = fn
+	sp.mu.Unlock()
 }

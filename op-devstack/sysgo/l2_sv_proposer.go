@@ -79,7 +79,9 @@ func (k *L2SVProposer) Start() {
 	logErr := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stderr"))
 
 	userRPCChan := make(chan string, 1)
+	defer close(userRPCChan)
 	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
+	defer close(metricsTargetChan)
 
 	onLogEntry := func(e logpipe.LogEntry) {
 		msg := e.LogMessage()
@@ -107,15 +109,15 @@ func (k *L2SVProposer) Start() {
 	})
 	k.sub = NewSubProcess(k.p, stdOutLogs, stdErrLogs)
 
-	startErr := k.sub.Start(k.execPath, k.args, k.env)
-	if startErr != nil {
-		k.mu.Unlock()
-		k.p.Require().NoError(startErr, "Must start")
-		return
-	}
+	k.sub.OnExit(func(err error) {
+		go k.Stop()
+		if err != nil {
+			k.p.Require().NoError(err, "SV proposer died unexpectedly")
+		}
+	})
 
-	// we are DONE touching k.* shared state
-	k.mu.Unlock()
+	err := k.sub.Start(k.execPath, k.args, k.env)
+	k.p.Require().NoError(err, "Must start")
 
 	var userRPCAddr string
 	k.p.Require().NoError(tasks.Await(k.p.Ctx(), userRPCChan, &userRPCAddr), "need user RPC")
