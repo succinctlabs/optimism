@@ -55,9 +55,9 @@ func (p *L2SVProposer) hydrate(system stack.ExtensibleSystem) {
 
 func (k *L2SVProposer) Start() {
 	k.mu.Lock()
-	defer k.mu.Unlock()
 	if k.sub != nil {
 		k.p.Logger().Warn("Validity Proposer already started")
+		k.mu.Unlock()
 		return
 	}
 
@@ -108,12 +108,11 @@ func (k *L2SVProposer) Start() {
 		logErr(e)
 	})
 	k.sub = NewSubProcess(k.p, stdOutLogs, stdErrLogs)
+	k.mu.Unlock()
 
 	k.sub.OnExit(func(err error) {
-		go k.Stop()
-		if err != nil {
-			k.p.Require().NoError(err, "SV proposer died unexpectedly")
-		}
+		k.embeddedPG.stop()
+		k.p.Require().NoError(err, "validity proposer exited unexpectedly")
 	})
 
 	err := k.sub.Start(k.execPath, k.args, k.env)
@@ -144,11 +143,6 @@ func (k *L2SVProposer) Stop() {
 	err := k.sub.Stop(true)
 	k.p.Require().NoError(err, "Must stop")
 	k.sub = nil
-
-	if k.embeddedPG != nil {
-		k.embeddedPG.stop()
-		k.embeddedPG = nil
-	}
 }
 
 func (k *L2SVProposer) UserRPC() string {
@@ -207,11 +201,12 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	p.Require().NoError(err, "must write l1 chain config")
 	p.Require().NoError(err, os.WriteFile(tempL1CfgPath, l1CfgData, 0o644))
 
-	embeddedPG, err := startEmbeddedPostgres()
+	embeddedPG, err := startEmbeddedPostgres(p)
 	p.Require().NoError(err, "must start embedded postgres (or read DATABASE_URL)")
 	p.Cleanup(func() {
 		if embeddedPG != nil {
 			embeddedPG.stop()
+			p.Logger().Info("Stopped embedded Postgres and removed temp dir")
 		}
 	})
 
@@ -263,16 +258,16 @@ type EmbeddedPG struct {
 	URL string
 }
 
-const (
-	pgUser      = "op-succinct"
-	pgDB        = "op-succinct"
-	pgPass      = "posgres"
-	runtimePath = ".pg-runtime"
-	dataPath    = ".pg-data"
-)
-
 // startEmbeddedPostgres starts a local postgres ONLY if we don't already have `DATABASE_URL`.
-func startEmbeddedPostgres() (*EmbeddedPG, error) {
+func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
+
+	const (
+		pgUser        = "op-succinct"
+		pgDB          = "op-succinct"
+		pgPass        = "posgres"
+		pgRuntimePath = "runtime"
+		pgDataPath    = "data"
+	)
 
 	// 1) Caller already provided a DB → just wrap it.
 	if v := os.Getenv("DATABASE_URL"); v != "" {
@@ -280,7 +275,10 @@ func startEmbeddedPostgres() (*EmbeddedPG, error) {
 	}
 
 	// 2) We need to start our own.
-	wd, _ := os.Getwd()
+	base := p.TempDir()
+	pgRoot, err := os.MkdirTemp(base, "embedded-pg-*")
+	runtimePath := filepath.Join(pgRoot, pgRuntimePath)
+	dataPath := filepath.Join(pgRoot, pgDataPath)
 
 	portStr, err := getAvailableLocalPort()
 	if err != nil {
@@ -296,11 +294,11 @@ func startEmbeddedPostgres() (*EmbeddedPG, error) {
 
 	cfg := embeddedpg.DefaultConfig().
 		Port(port).
-		Database(pgUser).
-		Username(pgDB).
+		Database(pgDB).
+		Username(pgUser).
 		Password(pgPass).
-		RuntimePath(filepath.Join(wd, runtimePath)).
-		DataPath(filepath.Join(wd, dataPath))
+		RuntimePath(runtimePath).
+		DataPath(dataPath)
 
 	pg := embeddedpg.NewDatabase(cfg)
 	if err := pg.Start(); err != nil {
@@ -317,11 +315,4 @@ func (e *EmbeddedPG) stop() {
 		return
 	}
 	_ = e.pg.Stop()
-
-	wd, _ := os.Getwd()
-	runtimePath := filepath.Join(wd, runtimePath)
-	dataPath := filepath.Join(wd, dataPath)
-	_ = os.RemoveAll(runtimePath)
-	_ = os.RemoveAll(dataPath)
-	fmt.Println("Removed embedded Postgres data at", runtimePath, "and", dataPath)
 }

@@ -57,12 +57,6 @@ func (sp *SubProcess) Start(cmdPath string, args []string, env []string) error {
 		if cb != nil {
 			cb(err)
 		}
-
-		if err != nil {
-			sp.p.Logger().Error("Sub-process crashed", "err", err)
-		} else {
-			sp.p.Logger().Info("Sub-process exited")
-		}
 	}(cmd)
 
 	sp.p.Cleanup(func() {
@@ -91,7 +85,7 @@ func (sp *SubProcess) Stop(interrupt bool) error {
 		}
 	}
 
-	if err := sp.cmd.Wait(); err != nil {
+	if _, err := sp.cmd.Process.Wait(); err != nil {
 		sp.p.Logger().Warn("Sub-process exited with error", "err", err)
 	} else {
 		sp.p.Logger().Info("Sub-process gracefully exited")
