@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum-optimism/optimism/op-service/tasks"
 	"github.com/ethereum-optimism/optimism/op-service/testutils/tcpproxy"
+	embeddedpg "github.com/fergusstrange/embedded-postgres"
 )
 
 type L2SVProposer struct {
@@ -30,6 +32,7 @@ type L2SVProposer struct {
 	env                []string
 	p                  devtest.P
 	sub                *SubProcess
+	embeddedPG         *EmbeddedPG
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
@@ -74,11 +77,9 @@ func (k *L2SVProposer) Start() {
 	// And inspect them along the way, to get the RPC server address.
 	logOut := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stdout"))
 	logErr := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stderr"))
-	userRPCChan := make(chan string, 1)
-	defer close(userRPCChan)
 
+	userRPCChan := make(chan string, 1)
 	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
-	defer close(metricsTargetChan)
 
 	onLogEntry := func(e logpipe.LogEntry) {
 		msg := e.LogMessage()
@@ -106,8 +107,15 @@ func (k *L2SVProposer) Start() {
 	})
 	k.sub = NewSubProcess(k.p, stdOutLogs, stdErrLogs)
 
-	err := k.sub.Start(k.execPath, k.args, k.env)
-	k.p.Require().NoError(err, "Must start")
+	startErr := k.sub.Start(k.execPath, k.args, k.env)
+	if startErr != nil {
+		k.mu.Unlock()
+		k.p.Require().NoError(startErr, "Must start")
+		return
+	}
+
+	// we are DONE touching k.* shared state
+	k.mu.Unlock()
 
 	var userRPCAddr string
 	k.p.Require().NoError(tasks.Await(k.p.Ctx(), userRPCChan, &userRPCAddr), "need user RPC")
@@ -130,9 +138,15 @@ func (k *L2SVProposer) Stop() {
 		k.p.Logger().Warn("validity proposer already stopped")
 		return
 	}
+
 	err := k.sub.Stop(true)
 	k.p.Require().NoError(err, "Must stop")
 	k.sub = nil
+
+	if k.embeddedPG != nil {
+		k.embeddedPG.stop()
+		k.embeddedPG = nil
+	}
 }
 
 func (k *L2SVProposer) UserRPC() string {
@@ -191,11 +205,21 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	p.Require().NoError(err, "must write l1 chain config")
 	p.Require().NoError(err, os.WriteFile(tempL1CfgPath, l1CfgData, 0o644))
 
+	embeddedPG, err := startEmbeddedPostgres()
+	p.Require().NoError(err, "must start embedded postgres (or read DATABASE_URL)")
+	p.Cleanup(func() {
+		if embeddedPG != nil {
+			embeddedPG.stop()
+		}
+	})
+
 	envVars := []string{
 		"L1_RPC=" + l1EL.UserRPC(),
 		"L1_NODE_RPC=" + l1CL.beaconHTTPAddr,
-		"L2_RPC=" + strings.ReplaceAll(l2EL.EngineRPC(), "ws://", "http://"),
-		"L2_NODE_RPC=" + l2CL.UserRPC(),
+		"L2_RPC=" + strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC=" + strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"DATABASE_URL=" + embeddedPG.URL,
+		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
 	}
 
 	if areMetricsEnabled() {
@@ -206,7 +230,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		p.Require().NoError(err, "WithL2SVProposer: getting metrics port")
 
 		envVars = append(envVars, propagateEnvVarOrDefault("SV_PROPOSER_METRICS_PORT", metricsPort))
-		envVars = append(envVars, "SV_PROPOSRE_METRICS_ENABLED=true")
+		envVars = append(envVars, "SV_PROPOSER_METRICS_ENABLED=true")
 	}
 
 	execPath := os.Getenv("SV_PROPOSER_EXEC_PATH")
@@ -221,6 +245,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		args:               []string{},
 		env:                envVars,
 		p:                  p,
+		embeddedPG:         embeddedPG,
 		l2MetricsRegistrar: orch,
 	}
 	p.Logger().Info("Starting validity proposer")
@@ -228,4 +253,73 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	p.Cleanup(k.Stop)
 	p.Logger().Info("validity proposer is up", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
+}
+
+// EmbeddedPG holds the running instance and the URL we pass to children.
+type EmbeddedPG struct {
+	pg  *embeddedpg.EmbeddedPostgres
+	URL string
+}
+
+const (
+	pgUser      = "op-succinct"
+	pgDB        = "op-succinct"
+	pgPass      = "posgres"
+	runtimePath = ".pg-runtime"
+	dataPath    = ".pg-data"
+)
+
+// startEmbeddedPostgres starts a local postgres ONLY if we don't already have `DATABASE_URL`.
+func startEmbeddedPostgres() (*EmbeddedPG, error) {
+
+	// 1) Caller already provided a DB → just wrap it.
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		return &EmbeddedPG{pg: nil, URL: v}, nil
+	}
+
+	// 2) We need to start our own.
+	wd, _ := os.Getwd()
+
+	portStr, err := getAvailableLocalPort()
+	if err != nil {
+		return nil, fmt.Errorf("getAvailableLocalPort: %w", err)
+	}
+
+	portInt, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, fmt.Errorf("get available port: %w", err)
+	}
+
+	port := uint32(portInt)
+
+	cfg := embeddedpg.DefaultConfig().
+		Port(port).
+		Database(pgUser).
+		Username(pgDB).
+		Password(pgPass).
+		RuntimePath(filepath.Join(wd, runtimePath)).
+		DataPath(filepath.Join(wd, dataPath))
+
+	pg := embeddedpg.NewDatabase(cfg)
+	if err := pg.Start(); err != nil {
+		return nil, fmt.Errorf("start embedded postgres: %w", err)
+	}
+
+	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s", pgUser, pgPass, port, pgDB)
+	return &EmbeddedPG{pg: pg, URL: url}, nil
+}
+
+// stop stops PG if we actually started it.
+func (e *EmbeddedPG) stop() {
+	if e == nil || e.pg == nil {
+		return
+	}
+	_ = e.pg.Stop()
+
+	wd, _ := os.Getwd()
+	runtimePath := filepath.Join(wd, runtimePath)
+	dataPath := filepath.Join(wd, dataPath)
+	_ = os.RemoveAll(runtimePath)
+	_ = os.RemoveAll(dataPath)
+	fmt.Println("Removed embedded Postgres data at", runtimePath, "and", dataPath)
 }
