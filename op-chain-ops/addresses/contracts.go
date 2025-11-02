@@ -74,6 +74,7 @@ type OpChainCoreContracts struct {
 	L1StandardBridgeProxy             common.Address
 	L1CrossDomainMessengerProxy       common.Address
 	EthLockboxProxy                   common.Address
+	SP1MockVerifier                   common.Address
 }
 
 type OpChainFaultProofsContracts struct {
@@ -92,5 +93,6 @@ type OpChainAltDAContracts struct {
 }
 
 type OpChainLegacyContracts struct {
-	L2OutputOracleProxy common.Address
+	L2OutputOracleProxy      common.Address
+	OPSuccinctL2OutputOracle common.Address
 }

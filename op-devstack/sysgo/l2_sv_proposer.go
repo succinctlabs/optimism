@@ -210,11 +210,22 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		}
 	})
 
+	dgf := l2Net.deployment.disputeGameFactoryProxy
+	p.Logger().Info("Using DisputeGameFactory", "address", dgf)
+
+	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
+	p.Logger().Info("Using mock verifier", "address", mockVerifierAddr)
+
+	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
+	p.Logger().Info("Using L2OO", "address", l2ooAddr)
+
 	envVars := []string{
 		"L1_RPC=" + l1EL.UserRPC(),
 		"L1_NODE_RPC=" + l1CL.beaconHTTPAddr,
 		"L2_RPC=" + strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
 		"L2_NODE_RPC=" + strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS=" + mockVerifierAddr.String(),
+		"L2OO_ADDRESS=" + l2ooAddr.String(),
 		"DATABASE_URL=" + embeddedPG.URL,
 		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
 		"LOG_FORMAT=json",
