@@ -217,6 +217,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		"L2_NODE_RPC=" + strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"DATABASE_URL=" + embeddedPG.URL,
 		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
+		"LOG_FORMAT=json",
 	}
 
 	if areMetricsEnabled() {
