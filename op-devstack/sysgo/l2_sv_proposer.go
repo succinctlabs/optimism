@@ -1,11 +1,15 @@
 package sysgo
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +22,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum-optimism/optimism/op-service/tasks"
 	"github.com/ethereum-optimism/optimism/op-service/testutils/tcpproxy"
+	"github.com/ethereum/go-ethereum/log"
 	embeddedpg "github.com/fergusstrange/embedded-postgres"
 )
 
@@ -162,6 +167,7 @@ func WithSuperSVProposer(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELI
 }
 
 func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, proposerID stack.L2ProposerID, opts ...L2CLOption) {
+
 	p := orch.P().WithCtx(stack.ContextWithID(orch.P().Ctx(), l2CLID))
 
 	require := p.Require()
@@ -189,14 +195,14 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
 	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
 
-	tempKonaDir := p.TempDir()
+	tempOPSuccinctL2ooDir := p.TempDir()
 
-	tempRollupCfgPath := filepath.Join(tempKonaDir, "rollup.json")
+	tempRollupCfgPath := filepath.Join(tempOPSuccinctL2ooDir, "rollup.json")
 	rollupCfgData, err := json.Marshal(l2Net.rollupCfg)
 	p.Require().NoError(err, "must write rollup config")
 	p.Require().NoError(err, os.WriteFile(tempRollupCfgPath, rollupCfgData, 0o644))
 
-	tempL1CfgPath := filepath.Join(tempKonaDir, "l1-chain-config.json")
+	tempL1CfgPath := filepath.Join(tempOPSuccinctL2ooDir, "l1-chain-config.json")
 	l1CfgData, err := json.Marshal(l1ChainConfig)
 	p.Require().NoError(err, "must write l1 chain config")
 	p.Require().NoError(err, os.WriteFile(tempL1CfgPath, l1CfgData, 0o644))
@@ -227,6 +233,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		"VERIFIER_ADDRESS=" + mockVerifierAddr.String(),
 		"L2OO_ADDRESS=" + l2ooAddr.String(),
 		"DATABASE_URL=" + embeddedPG.URL,
+		propagateEnvVarOrDefault("PRIVATE_KEY", ""),
 		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
 		"LOG_FORMAT=json",
 	}
@@ -262,6 +269,131 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	p.Cleanup(k.Stop)
 	p.Logger().Info("validity proposer is up", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
+}
+
+// OPSuccinctL2OOChain describes the L2 resources required to synthesize the
+// `opsuccinctl2ooconfig.json` file for a chain.
+type OPSuccinctL2OOChain struct {
+	L2Network stack.L2NetworkID
+	L2EL      stack.L2ELNodeID
+	L2CL      stack.L2CLNodeID
+}
+
+// Runs the Rust helper that produces `opsuccinctl2ooconfig.json` once the devstack
+// nodes are online so that the `DeployOPSuccinct` script has the file ready.
+func WithOPSuccinctL2OOConfigGenerator(
+	l1EL stack.L1ELNodeID,
+	l1CL stack.L1CLNodeID,
+	chains ...OPSuccinctL2OOChain,
+) stack.Option[*Orchestrator] {
+	return stack.AfterDeploy(func(o *Orchestrator) {
+		if len(chains) == 0 {
+			return
+		}
+
+		rootPrefix, err := findMonorepoRoot("Cargo.lock")
+		o.P().Require().NoError(err, "failed to locate monorepo root")
+
+		repoRoot, err := filepath.Abs(rootPrefix)
+		o.P().Require().NoError(err, "failed to resolve monorepo root")
+
+		for _, chain := range chains {
+			err := o.generateOPSuccinctConfig(repoRoot, l1EL, l1CL, chain)
+			o.P().Require().NoError(err, "failed to generate opsuccinctl2ooconfig.json", "chain", chain.L2Network)
+		}
+	})
+}
+
+func (o *Orchestrator) generateOPSuccinctConfig(
+	repoRoot string,
+	l1ELID stack.L1ELNodeID,
+	l1CLID stack.L1CLNodeID,
+	chain OPSuccinctL2OOChain,
+) error {
+	logger := o.P().Logger().New("chain", chain.L2Network.String())
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	if !ok {
+		return fmt.Errorf("missing L1 EL node %s", l1ELID)
+	}
+	l1CL, ok := o.l1CLs.Get(l1CLID)
+	if !ok {
+		return fmt.Errorf("missing L1 CL node %s", l1CLID)
+	}
+	l2EL, ok := o.l2ELs.Get(chain.L2EL)
+	if !ok {
+		return fmt.Errorf("missing L2 EL node %s", chain.L2EL)
+	}
+	l2CL, ok := o.l2CLs.Get(chain.L2CL)
+	if !ok {
+		return fmt.Errorf("missing L2 CL node %s", chain.L2CL)
+	}
+	l2Net, ok := o.l2Nets.Get(chain.L2Network.ChainID())
+	if !ok {
+		return fmt.Errorf("missing L2 network %s", chain.L2Network)
+	}
+
+	envVars := map[string]string{
+		"L1_RPC": l1EL.UserRPC(),
+		"L1_NODE_RPC": l1CL.beaconHTTPAddr,
+		"L2_RPC": strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC": strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS":  l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY": "",
+		"RUST_LOG": "info",
+	}
+
+	envDir := o.P().TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("opsuccinctl2oo-%s.env", strings.ReplaceAll(chain.L2Network.String(), "/", "_")))
+	if err := writeEnvFile(envFile, envVars); err != nil {
+		return fmt.Errorf("failed to write opsuccinct env: %w", err)
+	}
+
+	logger.Info("Generating opsuccinct L2OO config", "env", envFile)
+	if err := runFetchL2OOConfig(o.P().Ctx(), repoRoot, envFile, logger); err != nil {
+		return err
+	}
+
+	logger.Info("Generated opsuccinct L2OO config")
+	return nil
+}
+
+func runFetchL2OOConfig(ctx context.Context, repoRoot, envFile string, logger log.Logger) error {
+	logger.Info("Running fetch-l2oo-config")
+	cmd := exec.CommandContext(ctx, "cargo", "run", "--bin", "fetch-l2oo-config", "--release", "--", "--env-file", envFile)
+	cmd.Dir = repoRoot
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	logger.Info("Executing fetch-l2oo-config", "cmd", strings.Join(cmd.Args, " "))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("fetch-l2oo-config failed: %w\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	stdoutStr := strings.TrimSpace(stdout.String())
+	if stdoutStr != "" {
+		logger.Info("fetch-l2oo-config output", "stdout", stdoutStr)
+	}
+	return nil
+}
+
+func writeEnvFile(path string, kv map[string]string) error {
+	var keys []string
+	for k := range kv {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	for _, k := range keys {
+		val := kv[k]
+		if val == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "%s=%s\n", k, val)
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
 
 // EmbeddedPG holds the running instance and the URL we pass to children.
