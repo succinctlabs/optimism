@@ -334,13 +334,13 @@ func (o *Orchestrator) generateOPSuccinctConfig(
 	}
 
 	envVars := map[string]string{
-		"L1_RPC": l1EL.UserRPC(),
-		"L1_NODE_RPC": l1CL.beaconHTTPAddr,
-		"L2_RPC": strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC": strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS":  l2Net.deployment.sp1MockVerifier.Hex(),
-		"PRIVATE_KEY": "",
-		"RUST_LOG": "info",
+		"L1_RPC":           l1EL.UserRPC(),
+		"L1_NODE_RPC":      l1CL.beaconHTTPAddr,
+		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY":      "",
+		"RUST_LOG":         "info",
 	}
 
 	envDir := o.P().TempDir()

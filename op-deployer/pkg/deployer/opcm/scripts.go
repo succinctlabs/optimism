@@ -16,6 +16,8 @@ type Scripts struct {
 	DeployMIPS            DeployMIPSScript
 	DeploySuperchain      DeploySuperchainScript
 	DeployOPChain         DeployOPChainScript
+	DeploySP1MockVerifier DeploySP1MockVerifierScript
+	OPSuccinctDeployer    OPSuccinctDeployerScript
 }
 
 // NewScripts collects all the deployment scripts, raising exceptions if any of them
@@ -61,6 +63,16 @@ func NewScripts(host *script.Host) (*Scripts, error) {
 		return nil, fmt.Errorf("failed to load DeployOPChain script: %w", err)
 	}
 
+	deploySP1MockVerifier, err := NewDeploySP1MockVerifierScript(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load DeploySP1MockVerifier script: %w", err)
+	}
+
+	opSuccinctDeployer, err := NewOPSuccinctDeployerScript(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load OPSuccinctDeployer script: %w", err)
+	}
+
 	return &Scripts{
 		DeployAlphabetVM:      deployAlphabetVM,
 		DeployAltDA:           deployAltDA,
@@ -70,5 +82,7 @@ func NewScripts(host *script.Host) (*Scripts, error) {
 		DeployImplementations: deployImplementations,
 		DeploySuperchain:      deploySuperchain,
 		DeployOPChain:         deployOPChain,
+		DeploySP1MockVerifier: deploySP1MockVerifier,
+		OPSuccinctDeployer:    opSuccinctDeployer,
 	}, nil
 }

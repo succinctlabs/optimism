@@ -350,6 +350,11 @@ func ApplyPipeline(
 			func() error {
 				return pipeline.GenerateL2Genesis(pEnv, intent, bundle, st, chainID)
 			},
+		}, pipelineStage{
+			fmt.Sprintf("sp1-mock-verifier-%s", chainID.Hex()),
+			func() error {
+				return pipeline.DeploySP1MockVerifier(pEnv, st, chainID)
+			},
 		})
 	}
 

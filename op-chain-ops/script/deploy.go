@@ -56,12 +56,19 @@ type DeployScriptWithOutput[I any, O any] interface {
 	Run(input I) (output O, err error)
 }
 
+// DeployScriptWithoutInput is a specific DeployScriptWithoutOutput that does not accept any input
+type DeployScriptWithoutInput[O any] interface {
+	ForgeScript
+	Run() (output O, err error)
+}
+
 // We make sure that our implementations match the interfaces above
 var (
 	_ ForgeScriptBackend               = (*forgeScriptBackendImpl)(nil)
 	_ ForgeScript                      = (*forgeScriptImpl)(nil)
 	_ DeployScriptWithoutOutput[any]   = (*deployScriptWithoutOutputImpl[any])(nil)
 	_ DeployScriptWithOutput[any, any] = (*deployScriptWithOutputImpl[any, any])(nil)
+	_ DeployScriptWithoutInput[any]    = (*deployScriptWithoutInputImpl[any])(nil)
 )
 
 // NewForgeScriptBackend creates an instance of ForgeScriptBackend
@@ -112,6 +119,16 @@ func NewDeployScriptWithOutputFromFile[I any, O any](host *Host, fileName string
 	}
 
 	return NewDeployScriptWithOutput[I, O](script, "run")
+}
+
+func NewDeployScriptWithoutInputFromFile[O any](host *Host, fileName string, name string) (DeployScriptWithoutInput[O], error) {
+	script, err := NewForgeScriptFromFile(host, fileName, name)
+	if err != nil {
+		fmt.Println("Error loading script:", err)
+		return nil, err
+	}
+
+	return newDeployScriptWithoutInput[O](script, "run")
 }
 
 // NewDeployScriptWithoutOutput creates an instance of DeployScriptWithoutOutput[I], a void-returning deploy script
@@ -175,6 +192,43 @@ func newDeployScriptWithOutput[I any, O any](script ForgeScript, methodName stri
 	return &deployScriptWithOutputImpl[I, O]{
 		deployScriptWithoutOutputImpl: *deployScriptWithoutOutputImpl,
 	}, nil
+}
+
+func newDeployScriptWithoutInput[O any](script ForgeScript, methodName string) (*deployScriptWithoutInputImpl[O], error) {
+	// Just to keep things DRY a bit
+	scriptName := script.Name()
+
+	// Make sure the method exists on the ABI
+	method, ok := script.ABI().Methods[methodName]
+	if !ok {
+		return nil, fmt.Errorf("script %s does not have a method called %s", scriptName, methodName)
+	}
+
+	// Then after all that we're good to create the script
+	return &deployScriptWithoutInputImpl[O]{
+		script: script,
+		method: method,
+	}, nil
+}
+
+type deployScriptWithoutInputImpl[O any] struct {
+	script ForgeScript
+	method abi.Method
+}
+
+// ABI implements ForgeScript.
+func (d *deployScriptWithoutInputImpl[O]) ABI() abi.ABI {
+	return d.script.ABI()
+}
+
+// Call implements ForgeScript.
+func (d *deployScriptWithoutInputImpl[O]) Call(input []byte) (result []byte, err error) {
+	return d.script.Call(input)
+}
+
+// Name implements ForgeScript.
+func (d *deployScriptWithoutInputImpl[O]) Name() string {
+	return d.script.Name()
 }
 
 // forgeScriptBackendImpl implements ForgeScriptBackend and encapsulates low-level deployment logic for scripts
@@ -337,6 +391,31 @@ func (d *deployScriptWithOutputImpl[I, O]) Run(input I) (output O, err error) {
 	result, err := d.deployScriptWithoutOutputImpl.run(input)
 	if err != nil {
 		return output, err
+	}
+
+	// We then decode the raw output to an anonymous struct
+	unpacked, err := d.ABI().Unpack(methodName, result)
+	if err != nil {
+		return output, fmt.Errorf("failed to decode output for %s method of script %s using data 0x%s: %w", methodName, scriptName, common.Bytes2Hex(result), err)
+	}
+
+	// And finally we convert the anonymous struct into our typed output
+	return *abi.ConvertType(unpacked[0], new(O)).(*O), nil
+}
+
+func (d *deployScriptWithoutInputImpl[O]) Run() (output O, err error) {
+	// Just to keep things DRY a tiny bit
+	scriptName := d.Name()
+	methodName := d.method.RawName
+
+	packed, err := d.ABI().Pack(methodName)
+	if err != nil {
+		return output, fmt.Errorf("failed to encode input for %s method of script %s: %w", methodName, scriptName, err)
+	}
+
+	result, err := d.Call(packed)
+	if err != nil {
+		return output, fmt.Errorf("failed to run %s method of script %s: %w", methodName, scriptName, err)
 	}
 
 	// We then decode the raw output to an anonymous struct
