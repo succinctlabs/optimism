@@ -178,7 +178,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 
 	// --- Embedded Postgres setup ---
 	embeddedPG, err := startEmbeddedPostgres(p)
-	p.Require().NoError(err, "must start embedded postgres (or read DATABASE_URL)")
+	require.NoError(err, "must start embedded postgres (or read DATABASE_URL)")
 	logger.Info("Using embedded Postgres", "url", embeddedPG.URL)
 	p.Cleanup(func() {
 		if embeddedPG != nil {
@@ -197,6 +197,9 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
+	cwd, err := os.Getwd()
+	require.NoError(err, "get cwd")
+
 	envVars := []string{
 		"L1_RPC=" + l1EL.UserRPC(),
 		"L1_NODE_RPC=" + l1CL.beaconHTTPAddr,
@@ -207,6 +210,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"DATABASE_URL=" + embeddedPG.URL,
 		"PRIVATE_KEY=" + proposerKeyStr,
 		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
+		"L1_CONFIG_DIR=" + l1ConfigDir(cwd),
+		"L2_CONFIG_DIR=" + l2ConfigDir(cwd),
 		"LOG_FORMAT=json",
 	}
 
@@ -309,6 +314,17 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
+	cwd, err := os.Getwd()
+	require.NoError(err, "get cwd")
+
+	l1_config_dir := l1ConfigDir(cwd)
+	err = os.MkdirAll(l1_config_dir, 0o755)
+	require.NoError(err, "mkdir l1 config dir")
+
+	l2_config_dir := l2ConfigDir(cwd)
+	os.MkdirAll(l2_config_dir, 0o755)
+	require.NoError(err, "mkdir l2 config dir")
+
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
 		"L1_NODE_RPC":      l1CL.beaconHTTPAddr,
@@ -316,6 +332,8 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":      l1PAOKeyStr,
+		"L1_CONFIG_DIR":    l1_config_dir,
+		"L2_CONFIG_DIR":    l2_config_dir,
 		"RUST_LOG":         "info",
 	}
 
@@ -327,7 +345,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	l1ChainConfig := l1Net.genesis.Config
 
-	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), logger)
+	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1_config_dir, logger)
 	if err != nil {
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
@@ -345,19 +363,9 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 func writeL1ChainConfig(
 	l1ChainConfig any,
 	l1ChainID fmt.Stringer,
+	dir string,
 	logger log.Logger,
 ) error {
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
-
-	dir := filepath.Join(cwd, "Configs", "L1")
-	if err = os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir %q: %w", dir, err)
-	}
-
 	path := filepath.Join(dir, l1ChainID.String()+".json")
 	logger.Info("writing L1 chain config for opsuccinct L2OO", "path", path)
 
@@ -371,6 +379,14 @@ func writeL1ChainConfig(
 	}
 
 	return nil
+}
+
+func l1ConfigDir(root string) string {
+	return filepath.Join(root, "Configs", "L1")
+}
+
+func l2ConfigDir(root string) string {
+	return filepath.Join(root, "Configs", "L2")
 }
 
 // execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
