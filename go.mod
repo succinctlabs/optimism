@@ -19,7 +19,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/docker/docker v27.5.1+incompatible
-	github.com/docker/go-connections v0.5.0
+	github.com/docker/go-connections v0.6.0
 	github.com/ethereum-optimism/go-ethereum-hdwallet v0.1.4-0.20251001155152-4eb15ccedf7e
 	github.com/ethereum-optimism/superchain-registry/validation v0.0.0-20251009180028-9b4658b9b7af
 	github.com/ethereum/go-ethereum v1.16.3
