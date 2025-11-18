@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
@@ -23,7 +25,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum-optimism/optimism/op-service/tasks"
-	"github.com/ethereum-optimism/optimism/op-service/testutils/tcpproxy"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -36,7 +37,6 @@ type L2SVProposer struct {
 	id                 stack.L2ProposerID
 	service            *ps.ProposerService
 	userRPC            string
-	userProxy          *tcpproxy.Proxy
 	execPath           string
 	args               []string
 	p                  devtest.P
@@ -70,18 +70,6 @@ func (k *L2SVProposer) Start() {
 		return
 	}
 
-	// Create a proxy for the user RPC,
-	// so other services can connect, and stay connected, across restarts.
-	if k.userProxy == nil {
-		k.userProxy = tcpproxy.New(k.p.Logger())
-		k.p.Require().NoError(k.userProxy.Start())
-		k.p.Cleanup(func() {
-			k.userProxy.Close()
-		})
-		k.userRPC = "http://" + k.userProxy.Addr()
-	}
-
-	// Create the sub-process.
 	// We pipe sub-process logs to the test-logger.
 	// And inspect them along the way, to get the RPC server address.
 	logOut := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stdout"))
@@ -121,22 +109,34 @@ func (k *L2SVProposer) Start() {
 
 	k.sub.OnExit(func(err error) {
 		k.embeddedPG.stop()
+
+		if errors.Is(err, syscall.ECHILD) {
+			k.p.Logger().Info("validity proposer already reaped on shutdown", "err", err)
+			return
+		}
+
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+				sig := ws.Signal()
+				if sig == syscall.SIGINT || sig == syscall.SIGTERM {
+					k.p.Logger().Info("validity proposer interrupted during shutdown", "signal", sig)
+					return
+				}
+			}
+		}
+
 		k.p.Require().NoError(err, "validity proposer exited unexpectedly")
 	})
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
 
-	var userRPCAddr string
-	k.p.Require().NoError(tasks.Await(k.p.Ctx(), userRPCChan, &userRPCAddr), "need user RPC")
-
 	if areMetricsEnabled() {
 		var metricsTarget PrometheusMetricsTarget
 		k.p.Require().NoError(tasks.Await(k.p.Ctx(), metricsTargetChan, &metricsTarget), "need metrics endpoint")
 		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
 	}
-
-	k.userProxy.SetUpstream(ProxyAddr(k.p.Require(), userRPCAddr))
 }
 
 // Stops the validity proposer.
@@ -175,6 +175,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 	ctx := orch.P().Ctx()
 	ctx = stack.ContextWithID(ctx, proposerID)
 	p := orch.P().WithCtx(ctx)
+	logger := p.Logger()
 
 	require := p.Require()
 	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
@@ -198,23 +199,25 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
 	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
 
+	// --- Embedded Postgres setup ---
 	embeddedPG, err := startEmbeddedPostgres(p)
 	p.Require().NoError(err, "must start embedded postgres (or read DATABASE_URL)")
+	logger.Info("Using embedded Postgres", "url", embeddedPG.URL)
 	p.Cleanup(func() {
 		if embeddedPG != nil {
 			embeddedPG.stop()
-			p.Logger().Info("Stopped embedded Postgres and removed temp dir")
+			logger.Info("Stopped embedded Postgres and removed temp dir")
 		}
 	})
 
 	dgf := l2Net.deployment.disputeGameFactoryProxy
-	p.Logger().Info("Using DisputeGameFactory", "address", dgf)
+	logger.Info("Using DisputeGameFactory", "address", dgf)
 
 	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
-	p.Logger().Info("Using mock verifier", "address", mockVerifierAddr)
+	logger.Info("Using mock verifier", "address", mockVerifierAddr)
 
 	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
-	p.Logger().Info("Using L2OO", "address", l2ooAddr)
+	logger.Info("Using L2OO", "address", l2ooAddr)
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
 	require.NoError(err)
@@ -239,9 +242,6 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 	p.Require().NoError(err, "must write sv proposer env file")
 
 	if areMetricsEnabled() {
-		// NB: Instead of getAvailableLocalPort, we should pass "0" so the OS picks its
-		// own port, but that is not currently logged properly so we cannot parse it.
-		// See: https://github.com/op-rs/kona/issues/2987
 		metricsPort, err := getAvailableLocalPort()
 		p.Require().NoError(err, "WithL2SVProposer: getting metrics port")
 
@@ -265,8 +265,11 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 	}
 	p.Logger().Info("Starting validity proposer")
 	k.Start()
-	p.Cleanup(k.Stop)
-	p.Logger().Info("validity proposer is up", "rpc", k.UserRPC())
+	p.Cleanup(func() {
+		logger.Info("Stopping validity proposer")
+		k.Stop()
+	})
+	p.Logger().Info("validity proposer is running", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
@@ -464,7 +467,8 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 
 	// 1) Caller already provided a DB → just wrap it.
 	if v := os.Getenv("DATABASE_URL"); v != "" {
-		return &EmbeddedPG{pg: nil, URL: v}, nil
+ 		epg := &EmbeddedPG{pg: nil, URL: v}
+		return epg, nil
 	}
 
 	// 2) We need to start our own.
@@ -499,7 +503,8 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 	}
 
 	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s", pgUser, pgPass, port, pgDB)
-	return &EmbeddedPG{pg: pg, URL: url}, nil
+	epg := &EmbeddedPG{pg: pg, URL: url}
+    return epg, nil
 }
 
 // stop stops PG if we actually started it.
