@@ -193,32 +193,32 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	cwd, err := os.Getwd()
 	require.NoError(err, "get cwd")
 
-	envVars := []string{
-		"L1_RPC=" + l1EL.UserRPC(),
-		"L1_NODE_RPC=" + l1CL.beaconHTTPAddr,
-		"L2_RPC=" + strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC=" + strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS=" + mockVerifierAddr.String(),
-		"L2OO_ADDRESS=" + l2ooAddr.String(),
-		"DATABASE_URL=" + embeddedPG.URL,
-		"PRIVATE_KEY=" + proposerKeyStr,
-		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
-		"L1_CONFIG_DIR=" + l1ConfigDir(cwd),
-		"L2_CONFIG_DIR=" + l2ConfigDir(cwd),
-		"LOG_FORMAT=json",
+	envVars := map[string]string{
+		"L1_RPC":           l1EL.UserRPC(),
+		"L1_NODE_RPC":      l1CL.beaconHTTPAddr,
+		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"L2OO_ADDRESS":     l2ooAddr.String(),
+		"DATABASE_URL":     embeddedPG.URL,
+		"PRIVATE_KEY":      proposerKeyStr,
+		"L1_CONFIG_DIR":    l1ConfigDir(cwd),
+		"L2_CONFIG_DIR":    l2ConfigDir(cwd),
+		"LOG_FORMAT":       "json",
 	}
+
+	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
 		p.Require().NoError(err, "must get available port for metrics")
-
-		envVars = append(envVars, propagateEnvVarOrDefault("VALIDITY_PROPOSER_METRICS_PORT", metricsPort))
-		envVars = append(envVars, "VALIDITY_PROPOSER_METRICS_ENABLED=true")
+			setEnvFromEnvOrDefault(envVars, "VALIDITY_PROPOSER_METRICS_PORT", metricsPort)
+			envVars["VALIDITY_PROPOSER_METRICS_ENABLED"] = "true"
 	}
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("validity-proposer-%s.env", proposerID.String()))
-	err = os.WriteFile(envFile, []byte(strings.Join(envVars, "\n")), 0o600)
+	err = writeEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write validity proposer env file")
 
 	execPath := os.Getenv("VALIDITY_PROPOSER_EXEC_PATH")
@@ -310,4 +310,12 @@ func (e *EmbeddedPG) stop() {
 		return
 	}
 	_ = e.pg.Stop()
+}
+
+func setEnvFromEnvOrDefault(env map[string]string, key, def string) {
+    if v := os.Getenv(key); v != "" {
+        env[key] = v
+    } else if def != "" {
+        env[key] = def
+    }
 }
