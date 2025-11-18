@@ -79,7 +79,9 @@ func (k *L2SuccinctValidityProposer) Start() {
 	k.mu.Unlock()
 
 	k.sub.OnExit(func(err error) {
-		k.embeddedPG.stop()
+		if k.embeddedPG != nil {
+			k.embeddedPG.stop()
+		}
 
 		if errors.Is(err, syscall.ECHILD) {
 			k.p.Logger().Info("validity proposer already reaped on shutdown", "err", err)
@@ -212,8 +214,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
 		p.Require().NoError(err, "must get available port for metrics")
-			setEnvFromEnvOrDefault(envVars, "VALIDITY_PROPOSER_METRICS_PORT", metricsPort)
-			envVars["VALIDITY_PROPOSER_METRICS_ENABLED"] = "true"
+		setEnvFromEnvOrDefault(envVars, "VALIDITY_PROPOSER_METRICS_PORT", metricsPort)
+		envVars["VALIDITY_PROPOSER_METRICS_ENABLED"] = "true"
 	}
 
 	envDir := p.TempDir()
@@ -313,9 +315,9 @@ func (e *EmbeddedPG) stop() {
 }
 
 func setEnvFromEnvOrDefault(env map[string]string, key, def string) {
-    if v := os.Getenv(key); v != "" {
-        env[key] = v
-    } else if def != "" {
-        env[key] = def
-    }
+	if v := os.Getenv(key); v != "" {
+		env[key] = v
+	} else if def != "" {
+		env[key] = def
+	}
 }
