@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,30 +74,9 @@ func (k *L2SuccinctValidityProposer) Start() {
 	logOut := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stdout"))
 	logErr := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stderr"))
 
-	userRPCChan := make(chan string, 1)
-	defer close(userRPCChan)
-	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
-	defer close(metricsTargetChan)
-
-	onLogEntry := func(e logpipe.LogEntry) {
-		msg := e.LogMessage()
-		if msg == "RPC server bound to address" {
-			userRPCChan <- "http://" + e.FieldValue("addr").(string)
-		} else if metricsUrl, found := strings.CutPrefix(msg, "Serving metrics at: "); found {
-			// Matching messages like "Serving metrics at: http://0.0.0.0:9091"
-			if !strings.HasPrefix(metricsUrl, "http") {
-				metricsUrl = fmt.Sprintf("http://%s", metricsUrl)
-			}
-			parsedUrl, err := url.Parse(metricsUrl)
-			k.p.Require().NoError(err, "invalid metrics url output to logs", "log", msg)
-			k.p.Require().NotEmpty(parsedUrl.Port(), "empty port in logged metrics url", "log", msg)
-			metricsTargetChan <- NewPrometheusMetricsTarget(parsedUrl.Hostname(), parsedUrl.Port(), false)
-		}
-	}
 	stdOutLogs := logpipe.LogProcessor(func(line []byte) {
 		e := logpipe.ParseRustStructuredLogs(line)
 		logOut(e)
-		onLogEntry(e)
 	})
 	stdErrLogs := logpipe.LogProcessor(func(line []byte) {
 		e := logpipe.ParseRustStructuredLogs(line)
@@ -132,6 +110,7 @@ func (k *L2SuccinctValidityProposer) Start() {
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
 
+	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
 	if areMetricsEnabled() {
 		var metricsTarget PrometheusMetricsTarget
 		k.p.Require().NoError(tasks.Await(k.p.Ctx(), metricsTargetChan, &metricsTarget), "need metrics endpoint")
@@ -140,7 +119,6 @@ func (k *L2SuccinctValidityProposer) Start() {
 }
 
 // Stops the validity proposer.
-// warning: no restarts supported yet, since the RPC port is not remembered.
 func (k *L2SuccinctValidityProposer) Stop() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -172,8 +150,7 @@ func WithSuperSuccicntValidityProposer(proposerID stack.L2ProposerID,
 }
 
 func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
-	ctx := orch.P().Ctx()
-	ctx = stack.ContextWithID(ctx, proposerID)
+	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger()
 
@@ -210,9 +187,6 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		}
 	})
 
-	dgf := l2Net.deployment.disputeGameFactoryProxy
-	logger.Info("Using DisputeGameFactory", "address", dgf)
-
 	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
 	logger.Info("Using mock verifier", "address", mockVerifierAddr)
 
@@ -236,21 +210,21 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"LOG_FORMAT=json",
 	}
 
-	envDir := p.TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("l2-sv-proposer-%s.env", proposerID.String()))
-	err = os.WriteFile(envFile, []byte(strings.Join(envVars, "\n")), 0o600)
-	p.Require().NoError(err, "must write sv proposer env file")
-
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
 		p.Require().NoError(err, "must get available port for metrics")
 
-		envVars = append(envVars, propagateEnvVarOrDefault("SV_PROPOSER_METRICS_PORT", metricsPort))
-		envVars = append(envVars, "SV_PROPOSER_METRICS_ENABLED=true")
+		envVars = append(envVars, propagateEnvVarOrDefault("VALIDITY_PROPOSER_METRICS_PORT", metricsPort))
+		envVars = append(envVars, "VALIDITY_PROPOSER_METRICS_ENABLED=true")
 	}
 
-	execPath := os.Getenv("SV_PROPOSER_EXEC_PATH")
-	p.Require().NotEmpty(execPath, "SV_PROPOSER_EXEC_PATH environment variable must be set")
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("validity-proposer-%s.env", proposerID.String()))
+	err = os.WriteFile(envFile, []byte(strings.Join(envVars, "\n")), 0o600)
+	p.Require().NoError(err, "must write validity proposer env file")
+
+	execPath := os.Getenv("VALIDITY_PROPOSER_EXEC_PATH")
+	p.Require().NotEmpty(execPath, "VALIDITY_PROPOSER_EXEC_PATH environment variable must be set")
 	_, err = os.Stat(execPath)
 	p.Require().NotErrorIs(err, os.ErrNotExist, "executable must exist")
 
@@ -467,7 +441,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 
 	// 1) Caller already provided a DB → just wrap it.
 	if v := os.Getenv("DATABASE_URL"); v != "" {
- 		epg := &EmbeddedPG{pg: nil, URL: v}
+		epg := &EmbeddedPG{pg: nil, URL: v}
 		return epg, nil
 	}
 
@@ -504,7 +478,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 
 	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s", pgUser, pgPass, port, pgDB)
 	epg := &EmbeddedPG{pg: pg, URL: url}
-    return epg, nil
+	return epg, nil
 }
 
 // stop stops PG if we actually started it.
