@@ -32,7 +32,7 @@ import (
 	embeddedpg "github.com/fergusstrange/embedded-postgres"
 )
 
-type L2SVProposer struct {
+type L2SuccinctValidityProposer struct {
 	mu                 sync.Mutex
 	id                 stack.L2ProposerID
 	service            *ps.ProposerService
@@ -45,9 +45,9 @@ type L2SVProposer struct {
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
-var _ L2Prop = (*L2SVProposer)(nil)
+var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
 
-func (p *L2SVProposer) hydrate(system stack.ExtensibleSystem) {
+func (p *L2SuccinctValidityProposer) hydrate(system stack.ExtensibleSystem) {
 	require := system.T().Require()
 	rpcCl, err := client.NewRPC(system.T().Ctx(), system.Logger(), p.userRPC, client.WithLazyDial())
 	require.NoError(err)
@@ -62,7 +62,7 @@ func (p *L2SVProposer) hydrate(system stack.ExtensibleSystem) {
 	l2Net.(stack.ExtensibleL2Network).AddL2Proposer(bFrontend)
 }
 
-func (k *L2SVProposer) Start() {
+func (k *L2SuccinctValidityProposer) Start() {
 	k.mu.Lock()
 	if k.sub != nil {
 		k.p.Logger().Warn("Validity Proposer already started")
@@ -141,7 +141,7 @@ func (k *L2SVProposer) Start() {
 
 // Stops the validity proposer.
 // warning: no restarts supported yet, since the RPC port is not remembered.
-func (k *L2SVProposer) Stop() {
+func (k *L2SuccinctValidityProposer) Stop() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.sub == nil {
@@ -154,24 +154,24 @@ func (k *L2SVProposer) Stop() {
 	k.sub = nil
 }
 
-func (k *L2SVProposer) UserRPC() string {
+func (k *L2SuccinctValidityProposer) UserRPC() string {
 	return k.userRPC
 }
 
-func WithSVProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithL2SVProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
 }
 
-func WithSuperSVProposer(proposerID stack.L2ProposerID,
+func WithSuperSuccicntValidityProposer(proposerID stack.L2ProposerID,
 	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithL2SVProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
 }
 
-func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
+func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
 	ctx := orch.P().Ctx()
 	ctx = stack.ContextWithID(ctx, proposerID)
 	p := orch.P().WithCtx(ctx)
@@ -243,7 +243,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
-		p.Require().NoError(err, "WithL2SVProposer: getting metrics port")
+		p.Require().NoError(err, "must get available port for metrics")
 
 		envVars = append(envVars, propagateEnvVarOrDefault("SV_PROPOSER_METRICS_PORT", metricsPort))
 		envVars = append(envVars, "SV_PROPOSER_METRICS_ENABLED=true")
@@ -254,7 +254,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerI
 	_, err = os.Stat(execPath)
 	p.Require().NotErrorIs(err, os.ErrNotExist, "executable must exist")
 
-	k := &L2SVProposer{
+	k := &L2SuccinctValidityProposer{
 		id:                 proposerID,
 		userRPC:            "", // retrieved from logs
 		execPath:           execPath,
