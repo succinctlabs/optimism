@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
@@ -22,6 +24,9 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum-optimism/optimism/op-service/tasks"
 	"github.com/ethereum-optimism/optimism/op-service/testutils/tcpproxy"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	embeddedpg "github.com/fergusstrange/embedded-postgres"
 )
@@ -34,7 +39,6 @@ type L2SVProposer struct {
 	userProxy          *tcpproxy.Proxy
 	execPath           string
 	args               []string
-	env                []string
 	p                  devtest.P
 	sub                *SubProcess
 	embeddedPG         *EmbeddedPG
@@ -120,7 +124,7 @@ func (k *L2SVProposer) Start() {
 		k.p.Require().NoError(err, "validity proposer exited unexpectedly")
 	})
 
-	err := k.sub.Start(k.execPath, k.args, k.env)
+	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
 
 	var userRPCAddr string
@@ -154,31 +158,29 @@ func (k *L2SVProposer) UserRPC() string {
 	return k.userRPC
 }
 
-func WithSVProposer(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, proposerID stack.L2ProposerID) stack.Option[*Orchestrator] {
+func WithSVProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithL2SVProposerPostDeploy(orch, l2CLID, l1CLID, l1ELID, l2ELID, proposerID)
+		WithL2SVProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
 }
 
-func WithSuperSVProposer(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, proposerID stack.L2ProposerID) stack.Option[*Orchestrator] {
+func WithSuperSVProposer(proposerID stack.L2ProposerID,
+	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithL2SVProposerPostDeploy(orch, l2CLID, l1CLID, l1ELID, l2ELID, proposerID)
+		WithL2SVProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
 }
 
-func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, proposerID stack.L2ProposerID, opts ...L2CLOption) {
-
-	p := orch.P().WithCtx(stack.ContextWithID(orch.P().Ctx(), l2CLID))
+func WithL2SVProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
+	ctx := orch.P().Ctx()
+	ctx = stack.ContextWithID(ctx, proposerID)
+	p := orch.P().WithCtx(ctx)
 
 	require := p.Require()
+	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
 
-	l1Net, ok := orch.l1Nets.Get(l1CLID.ChainID())
-	require.True(ok, "l1 network required")
-
-	l2Net, ok := orch.l2Nets.Get(l2CLID.ChainID())
+	l2Net, ok := orch.l2Nets.Get(proposerID.ChainID())
 	require.True(ok, "l2 network required")
-
-	l1ChainConfig := l1Net.genesis.Config
 
 	l1EL, ok := orch.l1ELs.Get(l1ELID)
 	require.True(ok, "l1 EL node required")
@@ -190,22 +192,11 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	require.True(ok, "l2 EL node required")
 
 	l2CL, ok := orch.l2CLs.Get(l2CLID)
+	require.True(ok, "l2 CL node required")
 
 	cfg := DefaultL2CLConfig()
 	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
 	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
-
-	tempOPSuccinctL2ooDir := p.TempDir()
-
-	tempRollupCfgPath := filepath.Join(tempOPSuccinctL2ooDir, "rollup.json")
-	rollupCfgData, err := json.Marshal(l2Net.rollupCfg)
-	p.Require().NoError(err, "must write rollup config")
-	p.Require().NoError(err, os.WriteFile(tempRollupCfgPath, rollupCfgData, 0o644))
-
-	tempL1CfgPath := filepath.Join(tempOPSuccinctL2ooDir, "l1-chain-config.json")
-	l1CfgData, err := json.Marshal(l1ChainConfig)
-	p.Require().NoError(err, "must write l1 chain config")
-	p.Require().NoError(err, os.WriteFile(tempL1CfgPath, l1CfgData, 0o644))
 
 	embeddedPG, err := startEmbeddedPostgres(p)
 	p.Require().NoError(err, "must start embedded postgres (or read DATABASE_URL)")
@@ -225,6 +216,10 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
 	p.Logger().Info("Using L2OO", "address", l2ooAddr)
 
+	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
+	require.NoError(err)
+	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
+
 	envVars := []string{
 		"L1_RPC=" + l1EL.UserRPC(),
 		"L1_NODE_RPC=" + l1CL.beaconHTTPAddr,
@@ -233,10 +228,15 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		"VERIFIER_ADDRESS=" + mockVerifierAddr.String(),
 		"L2OO_ADDRESS=" + l2ooAddr.String(),
 		"DATABASE_URL=" + embeddedPG.URL,
-		propagateEnvVarOrDefault("PRIVATE_KEY", ""),
+		"PRIVATE_KEY=" + proposerKeyStr,
 		propagateEnvVarOrDefault("NETWORK_PRIVATE_KEY", ""),
 		"LOG_FORMAT=json",
 	}
+
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("l2-sv-proposer-%s.env", proposerID.String()))
+	err = os.WriteFile(envFile, []byte(strings.Join(envVars, "\n")), 0o600)
+	p.Require().NoError(err, "must write sv proposer env file")
 
 	if areMetricsEnabled() {
 		// NB: Instead of getAvailableLocalPort, we should pass "0" so the OS picks its
@@ -258,8 +258,7 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 		id:                 proposerID,
 		userRPC:            "", // retrieved from logs
 		execPath:           execPath,
-		args:               []string{},
-		env:                envVars,
+		args:               []string{"--env-file", envFile},
 		p:                  p,
 		embeddedPG:         embeddedPG,
 		l2MetricsRegistrar: orch,
@@ -271,67 +270,67 @@ func WithL2SVProposerPostDeploy(orch *Orchestrator, l2CLID stack.L2CLNodeID, l1C
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
-// OPSuccinctL2OOChain describes the L2 resources required to synthesize the
-// `opsuccinctl2ooconfig.json` file for a chain.
-type OPSuccinctL2OOChain struct {
-	L2Network stack.L2NetworkID
-	L2EL      stack.L2ELNodeID
-	L2CL      stack.L2CLNodeID
-}
-
-// Runs the Rust helper that produces `opsuccinctl2ooconfig.json` once the devstack
-// nodes are online so that the `DeployOPSuccinct` script has the file ready.
-func WithOPSuccinctL2OOConfigGenerator(
-	l1EL stack.L1ELNodeID,
+// Deploys an OPSuccinctL2OutputOracle contract for each specified chain, and
+// updates the orchestrator's L2 network deployments accordingly.
+func WithDeployOpSuccinctL2OutputOracle(
 	l1CL stack.L1CLNodeID,
-	chains ...OPSuccinctL2OOChain,
+	l1EL stack.L1ELNodeID,
+	l2CL stack.L2CLNodeID,
+	l2EL stack.L2ELNodeID,
 ) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(o *Orchestrator) {
-		if len(chains) == 0 {
-			return
-		}
-
 		rootPrefix, err := findMonorepoRoot("Cargo.lock")
 		o.P().Require().NoError(err, "failed to locate monorepo root")
 
 		repoRoot, err := filepath.Abs(rootPrefix)
 		o.P().Require().NoError(err, "failed to resolve monorepo root")
 
-		for _, chain := range chains {
-			err := o.generateOPSuccinctConfig(repoRoot, l1EL, l1CL, chain)
-			o.P().Require().NoError(err, "failed to generate opsuccinctl2ooconfig.json", "chain", chain.L2Network)
-		}
+		addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CL, l1EL, l2CL, l2EL)
+		o.P().Require().NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
+
+		l2Net, ok := o.l2Nets.Get(l2CL.ChainID())
+		o.P().Require().True(ok, "l2 network required")
+		l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
 	})
 }
 
-func (o *Orchestrator) generateOPSuccinctConfig(
+// deployOpSuccinctL2OutputOracle deploys an OPSuccinctL2OutputOracle contract
+func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	repoRoot string,
-	l1ELID stack.L1ELNodeID,
 	l1CLID stack.L1CLNodeID,
-	chain OPSuccinctL2OOChain,
-) error {
-	logger := o.P().Logger().New("chain", chain.L2Network.String())
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+) (string, error) {
+
+	p := o.P()
+	logger := p.Logger().New("chain", l2CLID.ChainID().String())
+	require := p.Require()
+
+	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
+	require.True(ok, "l1 network required")
+
+	l1CL, ok := o.l1CLs.Get(l1CLID)
+	require.True(ok, "l1 CL node required")
 
 	l1EL, ok := o.l1ELs.Get(l1ELID)
-	if !ok {
-		return fmt.Errorf("missing L1 EL node %s", l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
+	require.True(ok, "l2 network required")
+
+	l2CL, ok := o.l2CLs.Get(l2CLID)
+	require.True(ok, "l2 CL node required")
+
+	l2EL, ok := o.l2ELs.Get(l2ELID)
+	require.True(ok, "l2 EL node required")
+
+	l1ChainID := l1CLID.ChainID().ToBig()
+	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
+	if err != nil {
+		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
 	}
-	l1CL, ok := o.l1CLs.Get(l1CLID)
-	if !ok {
-		return fmt.Errorf("missing L1 CL node %s", l1CLID)
-	}
-	l2EL, ok := o.l2ELs.Get(chain.L2EL)
-	if !ok {
-		return fmt.Errorf("missing L2 EL node %s", chain.L2EL)
-	}
-	l2CL, ok := o.l2CLs.Get(chain.L2CL)
-	if !ok {
-		return fmt.Errorf("missing L2 CL node %s", chain.L2CL)
-	}
-	l2Net, ok := o.l2Nets.Get(chain.L2Network.ChainID())
-	if !ok {
-		return fmt.Errorf("missing L2 network %s", chain.L2Network)
-	}
+	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
@@ -339,43 +338,93 @@ func (o *Orchestrator) generateOPSuccinctConfig(
 		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
 		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
-		"PRIVATE_KEY":      "",
+		"PRIVATE_KEY":      l1PAOKeyStr,
 		"RUST_LOG":         "info",
 	}
 
-	envDir := o.P().TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("opsuccinctl2oo-%s.env", strings.ReplaceAll(chain.L2Network.String(), "/", "_")))
-	if err := writeEnvFile(envFile, envVars); err != nil {
-		return fmt.Errorf("failed to write opsuccinct env: %w", err)
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("opsuccinctl2oo-%s.env", strings.ReplaceAll(l2CLID.ChainID().String(), "-", "_")))
+	if err = writeEnvFile(envFile, envVars); err != nil {
+		return "", fmt.Errorf("failed to write opsuccinct env: %w", err)
 	}
 
-	logger.Info("Generating opsuccinct L2OO config", "env", envFile)
-	if err := runFetchL2OOConfig(o.P().Ctx(), repoRoot, envFile, logger); err != nil {
-		return err
+	l1ChainConfig := l1Net.genesis.Config
+
+	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), logger)
+	if err != nil {
+		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
 
-	logger.Info("Generated opsuccinct L2OO config")
+	logger.Info("Deploying OPSuccinctL2OutputOracle")
+	addr, err := execDeployOracle(o.P().Ctx(), repoRoot, envFile, logger)
+	if err != nil {
+		return "", err
+	}
+
+	logger.Info("Deployed OPSuccinctL2OutputOracle", "address", addr)
+	return addr, nil
+}
+
+func writeL1ChainConfig(
+	l1ChainConfig any,
+	l1ChainID fmt.Stringer,
+	logger log.Logger,
+) error {
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get cwd: %w", err)
+	}
+
+	dir := filepath.Join(cwd, "Configs", "L1")
+	if err = os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %q: %w", dir, err)
+	}
+
+	path := filepath.Join(dir, l1ChainID.String()+".json")
+	logger.Info("writing L1 chain config for opsuccinct L2OO", "path", path)
+
+	data, err := json.Marshal(l1ChainConfig)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+
 	return nil
 }
 
-func runFetchL2OOConfig(ctx context.Context, repoRoot, envFile string, logger log.Logger) error {
-	logger.Info("Running fetch-l2oo-config")
-	cmd := exec.CommandContext(ctx, "cargo", "run", "--bin", "fetch-l2oo-config", "--release", "--", "--env-file", envFile)
+// execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
+func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(ctx, "just", "deploy-oracle", envFile)
 	cmd.Dir = repoRoot
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	logger.Info("Executing fetch-l2oo-config", "cmd", strings.Join(cmd.Args, " "))
+	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("fetch-l2oo-config failed: %w\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+		return "", fmt.Errorf("deploy-oracle failed: %w\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
 	}
 
 	stdoutStr := strings.TrimSpace(stdout.String())
 	if stdoutStr != "" {
-		logger.Info("fetch-l2oo-config output", "stdout", stdoutStr)
+		logger.Info("deploy-oracle output", "stdout", stdoutStr)
 	}
-	return nil
+
+	// Try to parse the `== Return ==` section:
+	// 0: address 0x123...
+	reReturn := regexp.MustCompile(`(?m)^0:\s+address\s+(0x[0-9a-fA-F]{40})\b`)
+	if m := reReturn.FindStringSubmatch(stdoutStr); len(m) == 2 {
+		addr := m[1]
+		return addr, nil
+	}
+
+	return "", fmt.Errorf("deploy-oracle succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
 }
 
 func writeEnvFile(path string, kv map[string]string) error {
