@@ -150,15 +150,15 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	base := p.TempDir()
 
-	l1ConfigDir := l1ConfigDir(base)
-	err = os.MkdirAll(l1ConfigDir, 0o755)
+	l1CfgDir := l1ConfigDir(base)
+	err = os.MkdirAll(l1CfgDir, 0o755)
 	require.NoError(err, "mkdir l1 config dir")
 
-	l2ConfigDir := l2ConfigDir(base)
-	os.MkdirAll(l2ConfigDir, 0o755)
+	l2CfgDir := l2ConfigDir(base)
+	os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
-	WithValidityConfigDirsOption(o, l1ConfigDir, l2ConfigDir)
+	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
@@ -167,8 +167,8 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":      l1PAOKeyStr,
-		"L1_CONFIG_DIR":    l1ConfigDir,
-		"L2_CONFIG_DIR":    l2ConfigDir,
+		"L1_CONFIG_DIR":    l1CfgDir,
+		"L2_CONFIG_DIR":    l2CfgDir,
 		"RUST_LOG":         "info",
 	}
 
@@ -180,7 +180,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	l1ChainConfig := l1Net.genesis.Config
 
-	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1ConfigDir, logger)
+	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1CfgDir, logger)
 	if err != nil {
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
@@ -230,10 +230,6 @@ func execDeployMockVerifier(ctx context.Context, repoRoot, envFile string, logge
 
 	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
 	return execCommand(cmd, logger)
 }
 
@@ -243,10 +239,6 @@ func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.
 	cmd.Dir = repoRoot
 
 	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
 
 	return execCommand(cmd, logger)
 }
@@ -275,7 +267,7 @@ func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
 		return addr, nil
 	}
 
-	return "", fmt.Errorf("deploy-oracle succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
+	return "", fmt.Errorf("failed to parse deployed address from command output:\n%s", stdoutStr)
 }
 
 func writeEnvFile(path string, kv map[string]string) error {
