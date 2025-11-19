@@ -14,11 +14,76 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
+	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 )
+
+// Deploys an SP1MockVerifier contract for the specified L2 chain, and updates
+// the orchestrator's L2 network deployments accordingly.
+func WithDeploySP1MockVerifier(
+	l1EL stack.L1ELNodeID,
+	l2ChainID eth.ChainID,
+) stack.Option[*Orchestrator] {
+	return stack.AfterDeploy(func(o *Orchestrator) {
+		rootPrefix, err := findMonorepoRoot("Cargo.lock")
+		o.P().Require().NoError(err, "failed to locate monorepo root")
+
+		repoRoot, err := filepath.Abs(rootPrefix)
+		o.P().Require().NoError(err, "failed to resolve monorepo root")
+
+		addr, err := o.deploySP1MockVerifier(repoRoot, l1EL, l2ChainID)
+		o.P().Require().NoError(err, "failed to deploy SP1MockVerifier")
+
+		l2Net, ok := o.l2Nets.Get(l2ChainID)
+		o.P().Require().True(ok, "l2 network required")
+		l2Net.deployment.sp1MockVerifier = common.HexToAddress(addr)
+	})
+}
+
+// deploySP1MockVerifier deploys an SP1MockVerifier contract
+func (o *Orchestrator) deploySP1MockVerifier(
+	repoRoot string,
+	l1ELID stack.L1ELNodeID,
+	l2ChainID eth.ChainID,
+) (string, error) {
+
+	p := o.P()
+	logger := p.Logger().New("chain", l2ChainID.String())
+	require := p.Require()
+
+	l1ChainID := l1ELID.ChainID()
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID.ToBig()))
+	if err != nil {
+		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
+	}
+	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
+
+	envVars := map[string]string{
+		"L1_RPC":      l1EL.UserRPC(),
+		"PRIVATE_KEY": l1PAOKeyStr,
+	}
+
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("sp1-mock-verifier-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
+	if err = writeEnvFile(envFile, envVars); err != nil {
+		return "", fmt.Errorf("failed to write opsuccinct env: %w", err)
+	}
+
+	addr, err := execDeployMockVerifier(o.P().Ctx(), repoRoot, envFile, logger)
+	if err != nil {
+		return "", err
+	}
+
+	logger.Info("Deployed SP1MockVerifier", "address", addr)
+	return addr, nil
+}
 
 // Deploys an OPSuccinctL2OutputOracle contract for each specified chain, and
 // updates the orchestrator's L2 network deployments accordingly.
@@ -54,7 +119,8 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 ) (string, error) {
 
 	p := o.P()
-	logger := p.Logger().New("chain", l2CLID.ChainID().String())
+	l2ChainID := l2CLID.ChainID()
+	logger := p.Logger().New("chain", l2ChainID.String())
 	require := p.Require()
 
 	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
@@ -107,7 +173,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 
 	envDir := p.TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("opsuccinctl2oo-%s.env", strings.ReplaceAll(l2CLID.ChainID().String(), "-", "_")))
+	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-l2oo-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
 	if err = writeEnvFile(envFile, envVars); err != nil {
 		return "", fmt.Errorf("failed to write opsuccinct env: %w", err)
 	}
@@ -119,7 +185,6 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
 
-	logger.Info("Deploying OPSuccinctL2OutputOracle")
 	addr, err := execDeployOracle(o.P().Ctx(), repoRoot, envFile, logger)
 	if err != nil {
 		return "", err
@@ -158,24 +223,48 @@ func l2ConfigDir(base string) string {
 	return filepath.Join(base, "Configs", "L2")
 }
 
+// execDeployMockVerifier runs `just deploy-mock-verifier <envFile>` and parses the output
+func execDeployMockVerifier(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(ctx, "just", "deploy-mock-verifier", envFile)
+	cmd.Dir = repoRoot
+
+	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	return execCommand(cmd, logger)
+}
+
 // execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
 func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
 	cmd := exec.CommandContext(ctx, "just", "deploy-oracle", envFile)
 	cmd.Dir = repoRoot
 
+	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+
+	return execCommand(cmd, logger)
+}
+
+// execCommand runs the given command and parses the output for the deployed address
+func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("deploy-oracle failed: %w\nstdout:\n%s\nstderr:\n%s",
+		return "", fmt.Errorf("failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
 			err, stdout.String(), stderr.String())
 	}
 
 	stdoutStr := strings.TrimSpace(stdout.String())
 	if stdoutStr != "" {
-		logger.Info("deploy-oracle output", "stdout", stdoutStr)
+		logger.Info("Command stdout", "output", stdoutStr)
 	}
 
 	// Try to parse the `== Return ==` section:
