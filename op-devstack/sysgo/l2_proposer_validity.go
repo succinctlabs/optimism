@@ -210,10 +210,10 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	})
 
 	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
-	logger.Info("Using mock verifier", "address", mockVerifierAddr)
+	logger.Info("Using SP1MockVerifier", "address", mockVerifierAddr)
 
 	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
-	logger.Info("Using L2OO", "address", l2ooAddr)
+	logger.Info("Using OPSuccinctL2OutputOracle", "address", l2ooAddr)
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
 	require.NoError(err)

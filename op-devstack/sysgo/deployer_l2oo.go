@@ -73,7 +73,7 @@ func (o *Orchestrator) deploySP1MockVerifier(
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("sp1-mock-verifier-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
 	if err = writeEnvFile(envFile, envVars); err != nil {
-		return "", fmt.Errorf("failed to write opsuccinct env: %w", err)
+		return "", fmt.Errorf("failed to write sp1-mock-verifier env: %w", err)
 	}
 
 	addr, err := execDeployMockVerifier(o.P().Ctx(), repoRoot, envFile, logger)
@@ -175,7 +175,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-l2oo-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
 	if err = writeEnvFile(envFile, envVars); err != nil {
-		return "", fmt.Errorf("failed to write opsuccinct env: %w", err)
+		return "", fmt.Errorf("failed to write op-succinct-l2oo env: %w", err)
 	}
 
 	l1ChainConfig := l1Net.genesis.Config
@@ -243,31 +243,32 @@ func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.
 	return execCommand(cmd, logger)
 }
 
-// execCommand runs the given command and parses the output for the deployed address
 func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
-			err, stdout.String(), stderr.String())
-	}
+	err := cmd.Run()
 
 	stdoutStr := strings.TrimSpace(stdout.String())
-	if stdoutStr != "" {
-		logger.Info("Command stdout", "output", stdoutStr)
+	stderrStr := strings.TrimSpace(stderr.String())
+
+	if err != nil {
+		return "", fmt.Errorf("failed to deploy contract: %w\nstdout:\n%s\nstderr:\n%s",
+			err, stdoutStr, stderrStr)
 	}
 
-	// Try to parse the `== Return ==` section:
-	// 0: address 0x123...
 	reReturn := regexp.MustCompile(`(?m)^0:\s+address\s+(0x[0-9a-fA-F]{40})\b`)
 	if m := reReturn.FindStringSubmatch(stdoutStr); len(m) == 2 {
 		addr := m[1]
+		if strings.Contains(stderrStr, "transaction indexing is in progress") {
+			logger.Warn("ignoring indexing error and using parsed address",
+				"err", err, "address", addr)
+		}
 		return addr, nil
 	}
 
-	return "", fmt.Errorf("failed to parse deployed address from command output:\n%s", stdoutStr)
+	return "", fmt.Errorf("command succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
 }
 
 func writeEnvFile(path string, kv map[string]string) error {
