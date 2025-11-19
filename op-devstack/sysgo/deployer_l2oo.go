@@ -82,16 +82,17 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
-	cwd, err := os.Getwd()
-	require.NoError(err, "get cwd")
+	base := p.TempDir()
 
-	l1_config_dir := l1ConfigDir(cwd)
-	err = os.MkdirAll(l1_config_dir, 0o755)
+	l1ConfigDir := l1ConfigDir(base)
+	err = os.MkdirAll(l1ConfigDir, 0o755)
 	require.NoError(err, "mkdir l1 config dir")
 
-	l2_config_dir := l2ConfigDir(cwd)
-	os.MkdirAll(l2_config_dir, 0o755)
+	l2ConfigDir := l2ConfigDir(base)
+	os.MkdirAll(l2ConfigDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
+
+	WithValidityConfigDirsOption(o, l1ConfigDir, l2ConfigDir)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
@@ -100,8 +101,8 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":      l1PAOKeyStr,
-		"L1_CONFIG_DIR":    l1_config_dir,
-		"L2_CONFIG_DIR":    l2_config_dir,
+		"L1_CONFIG_DIR":    l1ConfigDir,
+		"L2_CONFIG_DIR":    l2ConfigDir,
 		"RUST_LOG":         "info",
 	}
 
@@ -113,7 +114,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	l1ChainConfig := l1Net.genesis.Config
 
-	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1_config_dir, logger)
+	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1ConfigDir, logger)
 	if err != nil {
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
@@ -149,12 +150,12 @@ func writeL1ChainConfig(
 	return nil
 }
 
-func l1ConfigDir(root string) string {
-	return filepath.Join(root, "Configs", "L1")
+func l1ConfigDir(base string) string {
+	return filepath.Join(base, "Configs", "L1")
 }
 
-func l2ConfigDir(root string) string {
-	return filepath.Join(root, "Configs", "L2")
+func l2ConfigDir(base string) string {
+	return filepath.Join(base, "Configs", "L2")
 }
 
 // execDeployOracle runs `just deploy-oracle <envFile>` and parses the output

@@ -54,6 +54,37 @@ func (p *L2SuccinctValidityProposer) hydrate(system stack.ExtensibleSystem) {
 	l2Net.(stack.ExtensibleL2Network).AddL2Proposer(bFrontend)
 }
 
+func (k *L2SuccinctValidityProposer) UserRPC() string {
+	return k.userRPC
+}
+
+type ValidityProposerConfig struct {
+	l1ConfigDir string
+	l2ConfigDir string
+}
+
+type ValidityProposerOption func(id stack.L2ProposerID, cfg *ValidityProposerConfig)
+
+func WithValidityProposerOption(o *Orchestrator, opt ValidityProposerOption) {
+	o.proposerOptions = append(o.proposerOptions, func(id stack.L2ProposerID, cfg any) {
+		c, ok := cfg.(*ValidityProposerConfig)
+		if !ok {
+			return
+		}
+		opt(id, c)
+	})
+}
+
+func WithValidityConfigDirsOption(
+	o *Orchestrator,
+	l1Dir, l2Dir string,
+) {
+	WithValidityProposerOption(o, func(id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.l1ConfigDir = l1Dir
+		cfg.l2ConfigDir = l2Dir
+	})
+}
+
 func (k *L2SuccinctValidityProposer) Start() {
 	k.mu.Lock()
 	if k.sub != nil {
@@ -127,10 +158,6 @@ func (k *L2SuccinctValidityProposer) Stop() {
 	k.sub = nil
 }
 
-func (k *L2SuccinctValidityProposer) UserRPC() string {
-	return k.userRPC
-}
-
 func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
 		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
@@ -192,8 +219,13 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
-	cwd, err := os.Getwd()
-	require.NoError(err, "get cwd")
+	vpCfg := &ValidityProposerConfig{}
+	for _, opt := range orch.proposerOptions {
+		opt(proposerID, vpCfg)
+	}
+
+	require.NotEmpty(vpCfg.l1ConfigDir, "validity proposer L1 config dir must be set")
+	require.NotEmpty(vpCfg.l2ConfigDir, "validity proposer L2 config dir must be set")
 
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
@@ -204,8 +236,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"L2OO_ADDRESS":     l2ooAddr.String(),
 		"DATABASE_URL":     embeddedPG.URL,
 		"PRIVATE_KEY":      proposerKeyStr,
-		"L1_CONFIG_DIR":    l1ConfigDir(cwd),
-		"L2_CONFIG_DIR":    l2ConfigDir(cwd),
+		"L1_CONFIG_DIR":    vpCfg.l1ConfigDir,
+		"L2_CONFIG_DIR":    vpCfg.l2ConfigDir,
 		"LOG_FORMAT":       "json",
 	}
 
