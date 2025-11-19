@@ -244,14 +244,14 @@ func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.
 }
 
 func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
-    var stdout, stderr bytes.Buffer
-    cmd.Stdout = &stdout
-    cmd.Stderr = &stderr
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-    err := cmd.Run()
+	err := cmd.Run()
 
-    stdoutStr := strings.TrimSpace(stdout.String())
-    stderrStr := strings.TrimSpace(stderr.String())
+	stdoutStr := strings.TrimSpace(stdout.String())
+	stderrStr := strings.TrimSpace(stderr.String())
 
 	re := regexp.MustCompile(`(?m)^0:\s+address\s+(0x[0-9a-fA-F]{40})\b`)
 	match := re.FindStringSubmatch(stdoutStr)
@@ -270,12 +270,12 @@ func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
 		return addr, nil
 	}
 
-    if err != nil {
-        return "", fmt.Errorf("failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
-            err, stdoutStr, stderrStr)
-    }
+	if err != nil {
+		return "", fmt.Errorf("failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
+			err, stdoutStr, stderrStr)
+	}
 
-    return "", fmt.Errorf("command succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
+	return "", fmt.Errorf("command succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
 }
 
 func writeEnvFile(path string, kv map[string]string) error {
