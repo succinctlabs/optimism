@@ -124,7 +124,6 @@ func (k *L2SuccinctValidityProposer) Start() {
 			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 				sig := ws.Signal()
 				if sig == syscall.SIGINT || sig == syscall.SIGTERM {
-					k.p.Logger().Info("validity proposer interrupted during shutdown", "signal", sig)
 					return
 				}
 			}
