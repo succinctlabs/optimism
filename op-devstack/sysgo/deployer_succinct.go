@@ -373,7 +373,7 @@ func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint6
 	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
 	target.Add(target, big.NewInt(1))
 
-	block, err := geth.WaitForBlockToBeFinalized(target, res, 30*time.Minute)
+	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
 	if err != nil {
 		o.P().Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
 		return 0, err
