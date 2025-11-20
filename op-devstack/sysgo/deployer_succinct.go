@@ -181,15 +181,17 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
-		"L1_RPC":           l1EL.UserRPC(),
-		"L1_NODE_RPC":      l1CL.beaconHTTPAddr,
-		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
-		"PRIVATE_KEY":      l1PAOKeyStr,
-		"L1_CONFIG_DIR":    l1CfgDir,
-		"L2_CONFIG_DIR":    l2CfgDir,
-		"RUST_LOG":         "info",
+		"L1_RPC":               l1EL.UserRPC(),
+		"L1_BEACON_RPC":        l1CL.beaconHTTPAddr,
+		"L2_RPC":               strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":          strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS":     l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY":          l1PAOKeyStr,
+		"SUBMISSION_INTERVAL":  "10",
+		"RANGE_PROOF_INTERVAL": "10",
+		"L1_CONFIG_DIR":        l1CfgDir,
+		"L2_CONFIG_DIR":        l2CfgDir,
+		"RUST_LOG":             "info",
 	}
 
 	envDir := p.TempDir()
@@ -221,15 +223,15 @@ func writeL1ChainConfig(
 	logger log.Logger,
 ) error {
 	path := filepath.Join(dir, l1ChainID.String()+".json")
-	logger.Info("writing L1 chain config for opsuccinct L2OO", "path", path)
+	logger.Info("writing L1 chain config", "path", path)
 
 	data, err := json.Marshal(l1ChainConfig)
 	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
+		return fmt.Errorf("marshal L1 chain config: %w", err)
 	}
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("write config: %w", err)
+		return fmt.Errorf("write L1 chain config: %w", err)
 	}
 
 	return nil

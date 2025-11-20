@@ -163,7 +163,7 @@ func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1
 	})
 }
 
-func WithSuperSuccicntValidityProposer(proposerID stack.L2ProposerID,
+func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
 	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
 		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
@@ -227,17 +227,20 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NotEmpty(vpCfg.l2ConfigDir, "validity proposer L2 config dir must be set")
 
 	envVars := map[string]string{
-		"L1_RPC":           l1EL.UserRPC(),
-		"L1_NODE_RPC":      l1CL.beaconHTTPAddr,
-		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
-		"L2OO_ADDRESS":     l2ooAddr.String(),
-		"DATABASE_URL":     embeddedPG.URL,
-		"PRIVATE_KEY":      proposerKeyStr,
-		"L1_CONFIG_DIR":    vpCfg.l1ConfigDir,
-		"L2_CONFIG_DIR":    vpCfg.l2ConfigDir,
-		"LOG_FORMAT":       "json",
+		"L1_RPC":               l1EL.UserRPC(),
+		"L1_BEACON_RPC":        l1CL.beaconHTTPAddr,
+		"L2_RPC":               strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":          strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
+		"L2OO_ADDRESS":         l2ooAddr.String(),
+		"DATABASE_URL":         embeddedPG.URL,
+		"PRIVATE_KEY":          proposerKeyStr,
+		"SUBMISSION_INTERVAL":  "10",
+		"RANGE_PROOF_INTERVAL": "10",
+		"OP_SUCCINCT_MOCK":     "true",
+		"L1_CONFIG_DIR":        vpCfg.l1ConfigDir,
+		"L2_CONFIG_DIR":        vpCfg.l2ConfigDir,
+		"LOG_FORMAT":           "json",
 	}
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
