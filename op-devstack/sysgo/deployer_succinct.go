@@ -24,32 +24,41 @@ import (
 // Deploys an SP1MockVerifier contract for the specified L2 chain, and updates
 // the orchestrator's L2 network deployments accordingly.
 func WithDeploySP1MockVerifier(
-	l1EL stack.L1ELNodeID,
+	l1ELID stack.L1ELNodeID,
 	l2ChainID eth.ChainID,
 ) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(o *Orchestrator) {
-		rootPrefix, err := findMonorepoRoot("Cargo.lock")
-		o.P().Require().NoError(err, "failed to locate monorepo root")
-
-		repoRoot, err := filepath.Abs(rootPrefix)
-		o.P().Require().NoError(err, "failed to resolve monorepo root")
-
-		addr, err := o.deploySP1MockVerifier(repoRoot, l1EL, l2ChainID)
-		o.P().Require().NoError(err, "failed to deploy SP1MockVerifier")
-
-		l2Net, ok := o.l2Nets.Get(l2ChainID)
-		o.P().Require().True(ok, "l2 network required")
-		l2Net.deployment.sp1MockVerifier = common.HexToAddress(addr)
+		WithDeploySP1MockVerifierPostDeploy(o, l1ELID, l2ChainID)
 	})
 }
 
+// Super version of WithDeploySP1MockVerifier that runs in the Finally phase
 func WithSuperDeploySP1MockVerifier(
-	l1EL stack.L1ELNodeID,
+	l1ELID stack.L1ELNodeID,
 	l2ChainID eth.ChainID,
 ) stack.Option[*Orchestrator] {
 	return stack.Finally(func(o *Orchestrator) {
-		WithDeploySP1MockVerifier(l1EL, l2ChainID)
+		WithDeploySP1MockVerifierPostDeploy(o, l1ELID, l2ChainID)
 	})
+}
+
+func WithDeploySP1MockVerifierPostDeploy(
+	o *Orchestrator,
+	l1ELID stack.L1ELNodeID,
+	l2ChainID eth.ChainID,
+) {
+	rootPrefix, err := findMonorepoRoot("Cargo.lock")
+	o.P().Require().NoError(err, "failed to locate monorepo root")
+
+	repoRoot, err := filepath.Abs(rootPrefix)
+	o.P().Require().NoError(err, "failed to resolve monorepo root")
+
+	addr, err := o.deploySP1MockVerifier(repoRoot, l1ELID, l2ChainID)
+	o.P().Require().NoError(err, "failed to deploy SP1MockVerifier")
+
+	l2Net, ok := o.l2Nets.Get(l2ChainID)
+	o.P().Require().True(ok, "l2 network required")
+	l2Net.deployment.sp1MockVerifier = common.HexToAddress(addr)
 }
 
 // deploySP1MockVerifier deploys an SP1MockVerifier contract
@@ -97,36 +106,46 @@ func (o *Orchestrator) deploySP1MockVerifier(
 // Deploys an OPSuccinctL2OutputOracle contract for each specified chain, and
 // updates the orchestrator's L2 network deployments accordingly.
 func WithDeployOpSuccinctL2OutputOracle(
-	l1CL stack.L1CLNodeID,
-	l1EL stack.L1ELNodeID,
-	l2CL stack.L2CLNodeID,
-	l2EL stack.L2ELNodeID,
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
 ) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(o *Orchestrator) {
-		rootPrefix, err := findMonorepoRoot("Cargo.lock")
-		o.P().Require().NoError(err, "failed to locate monorepo root")
-
-		repoRoot, err := filepath.Abs(rootPrefix)
-		o.P().Require().NoError(err, "failed to resolve monorepo root")
-
-		addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CL, l1EL, l2CL, l2EL)
-		o.P().Require().NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
-
-		l2Net, ok := o.l2Nets.Get(l2CL.ChainID())
-		o.P().Require().True(ok, "l2 network required")
-		l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
+		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
 }
 
+// Super version of WithDeployOpSuccinctL2OutputOracle that runs in the Finally phase
 func WithSuperDeployOpSuccinctL2OutputOracle(
-	l1CL stack.L1CLNodeID,
-	l1EL stack.L1ELNodeID,
-	l2CL stack.L2CLNodeID,
-	l2EL stack.L2ELNodeID,
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
 ) stack.Option[*Orchestrator] {
 	return stack.Finally(func(o *Orchestrator) {
-		WithDeployOpSuccinctL2OutputOracle(l1CL, l1EL, l2CL, l2EL)
+		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID)
 	})
+}
+
+func WithDeployOpSuccinctL2OutputOraclePostDeploy(o *Orchestrator,
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+) {
+	rootPrefix, err := findMonorepoRoot("Cargo.lock")
+	o.P().Require().NoError(err, "failed to locate monorepo root")
+
+	repoRoot, err := filepath.Abs(rootPrefix)
+	o.P().Require().NoError(err, "failed to resolve monorepo root")
+
+	addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID)
+	o.P().Require().NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
+
+	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
+	o.P().Require().True(ok, "l2 network required")
+	l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
 }
 
 // deployOpSuccinctL2OutputOracle deploys an OPSuccinctL2OutputOracle contract
