@@ -43,6 +43,15 @@ func WithDeploySP1MockVerifier(
 	})
 }
 
+func WithSuperDeploySP1MockVerifier(
+	l1EL stack.L1ELNodeID,
+	l2ChainID eth.ChainID,
+) stack.Option[*Orchestrator] {
+	return stack.Finally(func(o *Orchestrator) {
+		WithDeploySP1MockVerifier(l1EL, l2ChainID)
+	})
+}
+
 // deploySP1MockVerifier deploys an SP1MockVerifier contract
 func (o *Orchestrator) deploySP1MockVerifier(
 	repoRoot string,
@@ -106,6 +115,17 @@ func WithDeployOpSuccinctL2OutputOracle(
 		l2Net, ok := o.l2Nets.Get(l2CL.ChainID())
 		o.P().Require().True(ok, "l2 network required")
 		l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
+	})
+}
+
+func WithSuperDeployOpSuccinctL2OutputOracle(
+	l1CL stack.L1CLNodeID,
+	l1EL stack.L1ELNodeID,
+	l2CL stack.L2CLNodeID,
+	l2EL stack.L2ELNodeID,
+) stack.Option[*Orchestrator] {
+	return stack.Finally(func(o *Orchestrator) {
+		WithDeployOpSuccinctL2OutputOracle(l1CL, l1EL, l2CL, l2EL)
 	})
 }
 
