@@ -208,12 +208,6 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		}
 	})
 
-	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
-	logger.Info("Using SP1MockVerifier", "address", mockVerifierAddr)
-
-	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
-	logger.Info("Using OPSuccinctL2OutputOracle", "address", l2ooAddr)
-
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
@@ -226,11 +220,25 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NotEmpty(vpCfg.l1ConfigDir, "validity proposer L1 config dir must be set")
 	require.NotEmpty(vpCfg.l2ConfigDir, "validity proposer L2 config dir must be set")
 
+	l1RPC := l1EL.UserRPC()
+	l1BeaconRPC := l1CL.beaconHTTPAddr
+	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
+	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
+	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
+	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
+
+	logger.Info("L1_RPC", "url", l1RPC)
+	logger.Info("L1_BEACON_RPC", "url", l1BeaconRPC)
+	logger.Info("L2_RPC", "url", l2RPC)
+	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
+	logger.Info("OPSuccinctL2OutputOracle", "address", l2ooAddr)
+	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
+
 	envVars := map[string]string{
-		"L1_RPC":               l1EL.UserRPC(),
-		"L1_BEACON_RPC":        l1CL.beaconHTTPAddr,
-		"L2_RPC":               strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC":          strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"L1_RPC":               l1RPC,
+		"L1_BEACON_RPC":        l1BeaconRPC,
+		"L2_RPC":               l2RPC,
+		"L2_NODE_RPC":          l2NodeRPC,
 		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
 		"L2OO_ADDRESS":         l2ooAddr.String(),
 		"DATABASE_URL":         embeddedPG.URL,
