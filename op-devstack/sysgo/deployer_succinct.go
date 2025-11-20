@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"time"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,10 +17,14 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
+
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -110,9 +117,10 @@ func WithDeployOpSuccinctL2OutputOracle(
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
+	opts ...L2OOOption,
 ) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(o *Orchestrator) {
-		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
@@ -122,9 +130,10 @@ func WithSuperDeployOpSuccinctL2OutputOracle(
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
+	opts ...L2OOOption,
 ) stack.Option[*Orchestrator] {
 	return stack.Finally(func(o *Orchestrator) {
-		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithDeployOpSuccinctL2OutputOraclePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
@@ -133,14 +142,20 @@ func WithDeployOpSuccinctL2OutputOraclePostDeploy(o *Orchestrator,
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
+	opts ...L2OOOption,
 ) {
+	cfg := &L2OOConfigs{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	rootPrefix, err := findMonorepoRoot("Cargo.lock")
 	o.P().Require().NoError(err, "failed to locate monorepo root")
 
 	repoRoot, err := filepath.Abs(rootPrefix)
 	o.P().Require().NoError(err, "failed to resolve monorepo root")
 
-	addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID)
+	addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID, cfg)
 	o.P().Require().NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
@@ -155,6 +170,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
+	configs *L2OOConfigs,
 ) (string, error) {
 
 	p := o.P()
@@ -187,6 +203,9 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
+	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, *configs)
+	o.P().Require().NoError(err, "failed to resolve starting block number")
+
 	base := p.TempDir()
 
 	l1CfgDir := l1ConfigDir(base)
@@ -200,17 +219,18 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
-		"L1_RPC":               l1EL.UserRPC(),
-		"L1_BEACON_RPC":        l1CL.beaconHTTPAddr,
-		"L2_RPC":               strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC":          strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS":     l2Net.deployment.sp1MockVerifier.Hex(),
-		"PRIVATE_KEY":          l1PAOKeyStr,
-		"SUBMISSION_INTERVAL":  "10",
-		"RANGE_PROOF_INTERVAL": "10",
-		"L1_CONFIG_DIR":        l1CfgDir,
-		"L2_CONFIG_DIR":        l2CfgDir,
-		"RUST_LOG":             "info",
+		"L1_RPC":                l1EL.UserRPC(),
+		"L1_BEACON_RPC":         l1CL.beaconHTTPAddr,
+		"L2_RPC":                strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":           strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS":      l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY":           l1PAOKeyStr,
+		"SUBMISSION_INTERVAL":   "10",
+		"RANGE_PROOF_INTERVAL":  "10",
+		"L1_CONFIG_DIR":         l1CfgDir,
+		"L2_CONFIG_DIR":         l2CfgDir,
+		"STARTING_BLOCK_NUMBER": fmt.Sprintf("%d", startingBlockNumber),
+		"RUST_LOG":              "info",
 	}
 
 	envDir := p.TempDir()
@@ -335,4 +355,42 @@ func writeEnvFile(path string, kv map[string]string) error {
 		fmt.Fprintf(&b, "%s=%s\n", k, val)
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o600)
+}
+
+// resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
+func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfg L2OOConfigs) (uint64, error) {
+	if cfg.StartingBlockNumber != nil {
+		return *cfg.StartingBlockNumber, nil
+	}
+
+	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
+	if err != nil {
+		return 0, err
+	}
+
+	const defaultFinalizationPeriodSecs = 3600
+
+	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
+	target.Add(target, big.NewInt(1))
+
+	block, err := geth.WaitForBlockToBeFinalized(target, res, 30*time.Minute)
+	if err != nil {
+		o.P().Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
+		return 0, err
+	}
+
+	return block.Number().Uint64(), nil
+}
+
+// L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
+type L2OOConfigs struct {
+	StartingBlockNumber *uint64
+}
+
+type L2OOOption func(*L2OOConfigs)
+
+func WithStartingBlockNumber(n uint64) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.StartingBlockNumber = &n
+	}
 }
