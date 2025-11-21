@@ -323,6 +323,229 @@ func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint6
 	return block.Number().Uint64(), nil
 }
 
+// ===========================================================
+// OPSuccinctFaultDisputeGame Deployment
+// ===========================================================
+
+const (
+	disputeGameFinalityDelaySecsDefault = 604800 // 7 days in seconds
+	maxChallengeDurationDefault         = 604800 // 7 days in seconds
+	maxProveDurationDefault             = 86400  // 1 day in seconds
+)
+
+// Deploys an OPSuccinctFaultDisputeGame contract for each specified chain, and
+// updates the orchestrator's L2 network deployments accordingly.
+func WithDeployOPSuccinctFaultDisputeGame(
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+	opts ...FdgOption,
+) stack.Option[*Orchestrator] {
+	return stack.AfterDeploy(func(o *Orchestrator) {
+		WithDeployOPSuccinctFaultDisputeGamePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
+	})
+}
+
+// Super version of WithDeployOPSuccinctFaultDisputeGame that runs in the Finally phase
+func WithSuperDeployOPSuccinctFaultDisputeGame(
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+	opts ...FdgOption,
+) stack.Option[*Orchestrator] {
+	return stack.Finally(func(o *Orchestrator) {
+		WithDeployOPSuccinctFaultDisputeGamePostDeploy(o, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
+	})
+}
+
+func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+	opts ...FdgOption,
+) {
+	cfg := &FdgConfigs{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	require := o.P().Require()
+
+	rootPrefix, err := findMonorepoRoot("Cargo.lock")
+	require.NoError(err, "failed to locate monorepo root")
+
+	repoRoot, err := filepath.Abs(rootPrefix)
+	require.NoError(err, "failed to resolve monorepo root")
+
+	addr, err := o.deployOpSuccinctFaultDisputeGame(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID, cfg)
+	require.NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
+
+	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
+	o.P().Require().True(ok, "l2 network required")
+	l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
+}
+
+// deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
+func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
+	repoRoot string,
+	l1CLID stack.L1CLNodeID,
+	l1ELID stack.L1ELNodeID,
+	l2CLID stack.L2CLNodeID,
+	l2ELID stack.L2ELNodeID,
+	cfgs *FdgConfigs,
+) (string, error) {
+
+	p := o.P()
+	l2ChainID := l2CLID.ChainID()
+	logger := p.Logger().New("chain", l2ChainID.String())
+	require := p.Require()
+
+	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
+	require.True(ok, "l1 network required")
+
+	l1CL, ok := o.l1CLs.Get(l1CLID)
+	require.True(ok, "l1 CL node required")
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
+	require.True(ok, "l2 network required")
+
+	l2CL, ok := o.l2CLs.Get(l2CLID)
+	require.True(ok, "l2 CL node required")
+
+	l2EL, ok := o.l2ELs.Get(l2ELID)
+	require.True(ok, "l2 EL node required")
+
+	l1ChainID := l1CLID.ChainID().ToBig()
+	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
+	if err != nil {
+		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
+	}
+	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
+
+	disputeGameFinalityDelaySecs := resolveDisputeGameFinalityDelaySecs(cfgs.disputeGameFinalityDelaySecs)
+	maxChallengeDuration := resolveMaxChallengeDuration(cfgs.maxChallengeDuration)
+	maxProveDuration := resolveMaxProveDuration(cfgs.maxProveDuration)
+
+	base := p.TempDir()
+
+	l1CfgDir := l1ConfigDir(base)
+	err = os.MkdirAll(l1CfgDir, 0o755)
+	require.NoError(err, "mkdir l1 config dir")
+
+	l2CfgDir := l2ConfigDir(base)
+	os.MkdirAll(l2CfgDir, 0o755)
+	require.NoError(err, "mkdir l2 config dir")
+
+	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
+
+	envVars := map[string]string{
+		"L1_RPC":                              l1EL.UserRPC(),
+		"L1_BEACON_RPC":                       l1CL.beaconHTTPAddr,
+		"L2_RPC":                              strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":                         strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"GAME_TYPE":                           "42",
+		"DISPUTE_GAME_FINALITY_DELAY_SECONDS": fmt.Sprintf("%d", disputeGameFinalityDelaySecs),
+		"MAX_CHALLENGE_DURATION":              fmt.Sprintf("%d", maxChallengeDuration),
+		"MAX_PROVE_DURATION":                  fmt.Sprintf("%d", maxProveDuration),
+		"VERIFIER_ADDRESS":                    l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY":                         l1PAOKeyStr,
+		"L1_CONFIG_DIR":                       l1CfgDir,
+		"L2_CONFIG_DIR":                       l2CfgDir,
+		"RUST_LOG":                            "info",
+	}
+
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-fdg-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
+	if err = writeEnvFile(envFile, envVars); err != nil {
+		return "", fmt.Errorf("failed to write op-succinct-fdg env: %w", err)
+	}
+
+	l1ChainConfig := l1Net.genesis.Config
+
+	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1CfgDir, logger)
+	if err != nil {
+		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
+	}
+
+	addr, err := execDeployFdgContracts(o.P().Ctx(), repoRoot, envFile, logger)
+	if err != nil {
+		return "", err
+	}
+
+	logger.Info("Deployed OPSuccinctFaultDisputeGame", "address", addr)
+	return addr, nil
+}
+
+// execDeployFdgContracts runs `just deploy-fdg-contracts <envFile>` and parses the output
+func execDeployFdgContracts(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(ctx, "just", "deploy-fdg-contracts", envFile)
+	cmd.Dir = repoRoot
+
+	logger.Info("Executing deploy-fdg-contracts", "cmd", strings.Join(cmd.Args, " "))
+
+	return execCommand(cmd, logger)
+}
+
+type FdgConfigs struct {
+	disputeGameFinalityDelaySecs *uint64
+	maxChallengeDuration         *uint64
+	maxProveDuration             *uint64
+}
+
+type FdgOption func(*FdgConfigs)
+
+// WithFdgDisputeGameFinalityDelaySecs sets the starting block number for the FDG deployment
+func WithFdgDisputeGameFinalityDelaySecs(n uint64) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.disputeGameFinalityDelaySecs = &n
+	}
+}
+
+// WithFdgMaxChallengeDuration sets the max challenge duration for the FDG deployment
+func WithFdgMaxChallengeDuration(n uint64) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.maxChallengeDuration = &n
+	}
+}
+
+// WithFdgMaxProveDuration sets the max prove duration for the FDG deployment
+func WithFdgMaxProveDuration(n uint64) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.maxProveDuration = &n
+
+	}
+}
+
+func resolveDisputeGameFinalityDelaySecs(cfgDisputeGameFinalityDelaySecs *uint64) uint64 {
+	if cfgDisputeGameFinalityDelaySecs != nil {
+		return *cfgDisputeGameFinalityDelaySecs
+	}
+
+	return disputeGameFinalityDelaySecsDefault
+}
+
+func resolveMaxChallengeDuration(cfgMaxChallengeDuration *uint64) uint64 {
+	if cfgMaxChallengeDuration != nil {
+		return *cfgMaxChallengeDuration
+	}
+
+	return maxChallengeDurationDefault
+}
+
+func resolveMaxProveDuration(cfgMaxProveDuration *uint64) uint64 {
+	if cfgMaxProveDuration != nil {
+		return *cfgMaxProveDuration
+	}
+
+	return maxProveDurationDefault
+}
+
 // ============================================================
 // Succinct Deployment Helper Functions
 // ============================================================
