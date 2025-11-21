@@ -170,7 +170,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
-	configs *L2OOConfigs,
+	cfg *L2OOConfigs,
 ) (string, error) {
 
 	p := o.P()
@@ -203,7 +203,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
-	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, *configs)
+	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfg.StartingBlockNumber)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
@@ -358,9 +358,9 @@ func writeEnvFile(path string, kv map[string]string) error {
 }
 
 // resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
-func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfg L2OOConfigs) (uint64, error) {
-	if cfg.StartingBlockNumber != nil {
-		return *cfg.StartingBlockNumber, nil
+func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+	if cfgStartingBlockNumber != nil {
+		return *cfgStartingBlockNumber, nil
 	}
 
 	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
