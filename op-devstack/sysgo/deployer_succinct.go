@@ -6,25 +6,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"time"
-
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
-
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -58,14 +55,16 @@ func WithDeploySP1MockVerifierPostDeploy(
 	l1ELID stack.L1ELNodeID,
 	l2ChainID eth.ChainID,
 ) {
+	require := o.P().Require()
+
 	rootPrefix, err := findMonorepoRoot("Cargo.lock")
-	o.P().Require().NoError(err, "failed to locate monorepo root")
+	require.NoError(err, "failed to locate monorepo root")
 
 	repoRoot, err := filepath.Abs(rootPrefix)
-	o.P().Require().NoError(err, "failed to resolve monorepo root")
+	require.NoError(err, "failed to resolve monorepo root")
 
 	addr, err := o.deploySP1MockVerifier(repoRoot, l1ELID, l2ChainID)
-	o.P().Require().NoError(err, "failed to deploy SP1MockVerifier")
+	require.NoError(err, "failed to deploy SP1MockVerifier")
 
 	l2Net, ok := o.l2Nets.Get(l2ChainID)
 	o.P().Require().True(ok, "l2 network required")
@@ -167,14 +166,16 @@ func WithDeployOpSuccinctL2OutputOraclePostDeploy(o *Orchestrator,
 		opt(cfg)
 	}
 
+	require := o.P().Require()
+
 	rootPrefix, err := findMonorepoRoot("Cargo.lock")
-	o.P().Require().NoError(err, "failed to locate monorepo root")
+	require.NoError(err, "failed to locate monorepo root")
 
 	repoRoot, err := filepath.Abs(rootPrefix)
-	o.P().Require().NoError(err, "failed to resolve monorepo root")
+	require.NoError(err, "failed to resolve monorepo root")
 
 	addr, err := o.deployOpSuccinctL2OutputOracle(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID, cfg)
-	o.P().Require().NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
+	require.NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	o.P().Require().True(ok, "l2 network required")
