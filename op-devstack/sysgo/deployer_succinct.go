@@ -170,7 +170,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	l1ELID stack.L1ELNodeID,
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
-	cfg *L2OOConfigs,
+	cfgs *L2OOConfigs,
 ) (string, error) {
 
 	p := o.P()
@@ -203,7 +203,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
-	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfg.StartingBlockNumber)
+	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
