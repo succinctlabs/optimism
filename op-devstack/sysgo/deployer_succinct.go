@@ -28,6 +28,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+// =============================================================
+// SP1MockVerifier Deployment
+// =============================================================
+
 // Deploys an SP1MockVerifier contract for the specified L2 chain, and updates
 // the orchestrator's L2 network deployments accordingly.
 func WithDeploySP1MockVerifier(
@@ -109,6 +113,20 @@ func (o *Orchestrator) deploySP1MockVerifier(
 	logger.Info("Deployed SP1MockVerifier", "address", addr)
 	return addr, nil
 }
+
+// execDeployMockVerifier runs `just deploy-mock-verifier <envFile>` and parses the output
+func execDeployMockVerifier(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(ctx, "just", "deploy-mock-verifier", envFile)
+	cmd.Dir = repoRoot
+
+	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
+
+	return execCommand(cmd, logger)
+}
+
+// ============================================================
+// OPSuccinctL2OutputOracle Deployment
+// ============================================================
 
 // Deploys an OPSuccinctL2OutputOracle contract for each specified chain, and
 // updates the orchestrator's L2 network deployments accordingly.
@@ -255,6 +273,34 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	return addr, nil
 }
 
+// execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
+func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(ctx, "just", "deploy-oracle", envFile)
+	cmd.Dir = repoRoot
+
+	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+
+	return execCommand(cmd, logger)
+}
+
+// L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
+type L2OOConfigs struct {
+	StartingBlockNumber *uint64
+}
+
+type L2OOOption func(*L2OOConfigs)
+
+// WithL2OOStartingBlockNumber sets the starting block number for the L2OO deployment
+func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.StartingBlockNumber = &n
+	}
+}
+
+// ============================================================
+// Succinct Deployment Helper Functions
+// ============================================================
+
 func writeL1ChainConfig(
 	l1ChainConfig any,
 	l1ChainID fmt.Stringer,
@@ -282,26 +328,6 @@ func l1ConfigDir(base string) string {
 
 func l2ConfigDir(base string) string {
 	return filepath.Join(base, "Configs", "L2")
-}
-
-// execDeployMockVerifier runs `just deploy-mock-verifier <envFile>` and parses the output
-func execDeployMockVerifier(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
-	cmd := exec.CommandContext(ctx, "just", "deploy-mock-verifier", envFile)
-	cmd.Dir = repoRoot
-
-	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
-
-	return execCommand(cmd, logger)
-}
-
-// execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
-func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
-	cmd := exec.CommandContext(ctx, "just", "deploy-oracle", envFile)
-	cmd.Dir = repoRoot
-
-	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
-
-	return execCommand(cmd, logger)
 }
 
 func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
@@ -380,18 +406,4 @@ func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint6
 	}
 
 	return block.Number().Uint64(), nil
-}
-
-// L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
-type L2OOConfigs struct {
-	StartingBlockNumber *uint64
-}
-
-type L2OOOption func(*L2OOConfigs)
-
-// WithL2OOStartingBlockNumber sets the starting block number for the L2OO deployment
-func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
-	return func(cfg *L2OOConfigs) {
-		cfg.StartingBlockNumber = &n
-	}
 }
