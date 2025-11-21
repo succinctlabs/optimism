@@ -297,6 +297,31 @@ func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 	}
 }
 
+// resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
+func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+	if cfgStartingBlockNumber != nil {
+		return *cfgStartingBlockNumber, nil
+	}
+
+	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
+	if err != nil {
+		return 0, err
+	}
+
+	const defaultFinalizationPeriodSecs = 3600
+
+	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
+	target.Add(target, big.NewInt(1))
+
+	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
+	if err != nil {
+		o.P().Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
+		return 0, err
+	}
+
+	return block.Number().Uint64(), nil
+}
+
 // ============================================================
 // Succinct Deployment Helper Functions
 // ============================================================
@@ -381,29 +406,4 @@ func writeEnvFile(path string, kv map[string]string) error {
 		fmt.Fprintf(&b, "%s=%s\n", k, val)
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o600)
-}
-
-// resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
-func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
-	if cfgStartingBlockNumber != nil {
-		return *cfgStartingBlockNumber, nil
-	}
-
-	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
-	if err != nil {
-		return 0, err
-	}
-
-	const defaultFinalizationPeriodSecs = 3600
-
-	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
-	target.Add(target, big.NewInt(1))
-
-	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
-	if err != nil {
-		o.P().Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
-		return 0, err
-	}
-
-	return block.Number().Uint64(), nil
 }
