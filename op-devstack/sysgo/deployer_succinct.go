@@ -389,7 +389,8 @@ type L2OOConfigs struct {
 
 type L2OOOption func(*L2OOConfigs)
 
-func WithStartingBlockNumber(n uint64) L2OOOption {
+// WithL2OOStartingBlockNumber sets the starting block number for the L2OO deployment
+func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 	return func(cfg *L2OOConfigs) {
 		cfg.StartingBlockNumber = &n
 	}
