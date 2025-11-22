@@ -163,7 +163,7 @@ func WithSuperSuccinctFaultProofProposer(proposerID stack.L2ProposerID,
 	})
 }
 
-func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
+func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger()
@@ -185,10 +185,6 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 
 	l2CL, ok := orch.l2CLs.Get(l2CLID)
 	require.True(ok, "l2 CL node required")
-
-	cfg := DefaultL2CLConfig()
-	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
-	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
 	require.NoError(err)

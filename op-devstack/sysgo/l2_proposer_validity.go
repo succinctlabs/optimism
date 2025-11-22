@@ -170,7 +170,7 @@ func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
 	})
 }
 
-func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
+func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger()
@@ -192,10 +192,6 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 
 	l2CL, ok := orch.l2CLs.Get(l2CLID)
 	require.True(ok, "l2 CL node required")
-
-	cfg := DefaultL2CLConfig()
-	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
-	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
 
 	// --- Embedded Postgres setup ---
 	embeddedPG, err := startEmbeddedPostgres(p)
