@@ -90,8 +90,21 @@ func NewL2OPChainDeploymentFromDeployOPChainOutput(output opcm.DeployOPChainOutp
 	}
 }
 
+type L2OpSuccinctDeployment struct {
+	SP1MockVerifier          common.Address `json:"SP1MockVerifier"`
+	OPSuccinctL2OutputOracle common.Address `json:"OPSuccinctL2OutputOracle"`
+}
+
+func NewL2OPSuccinctDeploymentFromDeployOPSuccinctOutput(output opcm.DeployOPSuccinctOutput) L2OpSuccinctDeployment {
+	return L2OpSuccinctDeployment{
+		SP1MockVerifier:          output.SP1MockVerifier,
+		OPSuccinctL2OutputOracle: output.OPSuccinctL2OutputOracle,
+	}
+}
+
 type L2Deployment struct {
 	L2OpchainDeployment
+	L2OpSuccinctDeployment
 
 	// In the future this may contain optional extras,
 	// e.g. a Safe that will own the L2 chain contracts

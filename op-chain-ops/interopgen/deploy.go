@@ -232,7 +232,7 @@ func DeployL2ToL1(l1Host *script.Host, superCfg *SuperchainConfig, superDeployme
 		return nil, fmt.Errorf("failed to load DeployOPChain script: %w", err)
 	}
 
-	output, err := deployOPChainScript.Run(opcm.DeployOPChainInput{
+	opChainOutput, err := deployOPChainScript.Run(opcm.DeployOPChainInput{
 		OpChainProxyAdminOwner:       superCfg.ProxyAdminOwner,
 		SystemConfigOwner:            cfg.SystemConfigOwner,
 		Batcher:                      cfg.BatchSenderAddress,
@@ -259,9 +259,12 @@ func DeployL2ToL1(l1Host *script.Host, superCfg *SuperchainConfig, superDeployme
 		return nil, fmt.Errorf("failed to deploy L2 OP chain: %w", err)
 	}
 
+	opSuccinctOutput := opcm.NewDeployOPSuccinctScripts(l1Host)
+
 	// Collect deployment addresses
 	return &L2Deployment{
-		L2OpchainDeployment: NewL2OPChainDeploymentFromDeployOPChainOutput(output),
+		L2OpchainDeployment:    NewL2OPChainDeploymentFromDeployOPChainOutput(opChainOutput),
+		L2OpSuccinctDeployment: NewL2OPSuccinctDeploymentFromDeployOPSuccinctOutput(opSuccinctOutput),
 	}, nil
 }
 

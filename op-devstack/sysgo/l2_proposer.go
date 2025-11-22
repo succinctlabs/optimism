@@ -20,6 +20,13 @@ import (
 	oprpc "github.com/ethereum-optimism/optimism/op-service/rpc"
 )
 
+type L2Prop interface {
+	hydrate(system stack.ExtensibleSystem)
+	UserRPC() string
+}
+
+var _ L2Prop = (*L2Proposer)(nil)
+
 type L2Proposer struct {
 	id      stack.L2ProposerID
 	service *ps.ProposerService
@@ -41,11 +48,25 @@ func (p *L2Proposer) hydrate(system stack.ExtensibleSystem) {
 	l2Net.(stack.ExtensibleL2Network).AddL2Proposer(bFrontend)
 }
 
-type ProposerOption func(id stack.L2ProposerID, cfg *ps.CLIConfig)
+func (p *L2Proposer) UserRPC() string {
+	return p.userRPC
+}
 
-func WithProposerOption(opt ProposerOption) stack.Option[*Orchestrator] {
+type anyProposerOption func(id stack.L2ProposerID, cfg any)
+
+type ProposerOption[C any] func(id stack.L2ProposerID, cfg *C)
+
+func WrapProposerOption[C any](opt ProposerOption[C]) anyProposerOption {
+	return func(id stack.L2ProposerID, cfg any) {
+		if typed, ok := cfg.(*C); ok {
+			opt(id, typed)
+		}
+	}
+}
+
+func WithProposerOption[C any](opt ProposerOption[C]) stack.Option[*Orchestrator] {
 	return stack.BeforeDeploy(func(o *Orchestrator) {
-		o.proposerOptions = append(o.proposerOptions, opt)
+		o.proposerOptions = append(o.proposerOptions, WrapProposerOption(opt))
 	})
 }
 

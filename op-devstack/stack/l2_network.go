@@ -64,6 +64,8 @@ type L2Deployment interface {
 	SystemConfigProxyAddr() common.Address
 	DisputeGameFactoryProxyAddr() common.Address
 	L1StandardBridgeProxyAddr() common.Address
+	SP1MockVerifierAddr() common.Address
+	OPSuccinctL2OutputOracleAddr() common.Address
 	// Other addresses will be added here later
 }
 

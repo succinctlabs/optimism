@@ -11,6 +11,7 @@ type L1Contracts struct {
 	SuperchainContracts
 	ImplementationsContracts
 	OpChainContracts
+	OpSuccinctContracts
 }
 
 // SuperchainContracts struct contains all the superchain-level contracts
@@ -74,6 +75,7 @@ type OpChainCoreContracts struct {
 	L1StandardBridgeProxy             common.Address
 	L1CrossDomainMessengerProxy       common.Address
 	EthLockboxProxy                   common.Address
+	SP1MockVerifier                   common.Address
 }
 
 type OpChainFaultProofsContracts struct {
@@ -92,5 +94,11 @@ type OpChainAltDAContracts struct {
 }
 
 type OpChainLegacyContracts struct {
-	L2OutputOracleProxy common.Address
+	L2OutputOracleProxy      common.Address
+	OPSuccinctL2OutputOracle common.Address
+}
+
+type OpSuccinctContracts struct {
+	SP1MockVerifier          common.Address
+	OPSuccinctL2OutputOracle common.Address
 }

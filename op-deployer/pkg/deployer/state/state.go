@@ -95,6 +95,8 @@ type ChainState struct {
 
 	addresses.OpChainContracts
 
+	addresses.OpSuccinctContracts
+
 	AdditionalDisputeGames []AdditionalDisputeGameState `json:"additionalDisputeGames"`
 
 	Allocs *GzipData[foundry.ForgeAllocs] `json:"allocs"`

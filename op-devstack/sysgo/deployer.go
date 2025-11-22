@@ -174,6 +174,8 @@ type L2Deployment struct {
 	l1StandardBridgeProxy          common.Address
 	proxyAdmin                     common.Address
 	permissionlessDelayedWETHProxy common.Address
+	sp1MockVerifier                common.Address
+	opSuccinctL2OutputOracle       common.Address
 }
 
 var _ stack.L2Deployment = &L2Deployment{}
@@ -196,6 +198,14 @@ func (d *L2Deployment) ProxyAdminAddr() common.Address {
 
 func (d *L2Deployment) PermissionlessDelayedWETHProxyAddr() common.Address {
 	return d.permissionlessDelayedWETHProxy
+}
+
+func (d *L2Deployment) SP1MockVerifierAddr() common.Address {
+	return d.sp1MockVerifier
+}
+
+func (d *L2Deployment) OPSuccinctL2OutputOracleAddr() common.Address {
+	return d.opSuccinctL2OutputOracle
 }
 
 type InteropMigration struct {
@@ -442,6 +452,8 @@ func (wb *worldBuilder) buildL2DeploymentOutputs() {
 			l1StandardBridgeProxy:          ch.L1StandardBridgeProxy,
 			proxyAdmin:                     ch.OpChainProxyAdminImpl,
 			permissionlessDelayedWETHProxy: ch.DelayedWethPermissionlessGameProxy,
+			sp1MockVerifier:                ch.SP1MockVerifier,
+			opSuccinctL2OutputOracle:       ch.OPSuccinctL2OutputOracle,
 		}
 	}
 	wb.outSuperchainDeployment = &SuperchainDeployment{
