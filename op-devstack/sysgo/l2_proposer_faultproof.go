@@ -186,6 +186,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
+	rustLog := resolveFdgRustLog(cfg.rustLog)
+
 	envVars := map[string]string{
 		"L1_RPC":               l1RPC,
 		"L1_BEACON_RPC":        l1BeaconRPC,
@@ -198,7 +200,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"MOCK_MODE":            "true",
 		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
-		"RUST_LOG":             *cfg.rustLog,
+		"RUST_LOG":             rustLog,
 		"LOG_FORMAT":           "json",
 	}
 
@@ -263,4 +265,11 @@ func WithFdgRustLog(level string) FaultProofProposerOption {
 		cfg.rustLog = &level
 	},
 	)
+}
+
+func resolveFdgRustLog(cfgLevel *string) string {
+	if cfgLevel == nil {
+		return "info"
+	}
+	return *cfgLevel
 }
