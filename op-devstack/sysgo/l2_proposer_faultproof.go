@@ -55,33 +55,6 @@ func (k *L2SuccinctFaultProofProposer) UserRPC() string {
 	return k.userRPC
 }
 
-type FaultProofProposerConfig struct {
-	l1ConfigDir string
-	l2ConfigDir string
-}
-
-type FaultProofProposerOption func(id stack.L2ProposerID, cfg *FaultProofProposerConfig)
-
-func WithFaultProofProposerOption(o *Orchestrator, opt FaultProofProposerOption) {
-	o.proposerOptions = append(o.proposerOptions, func(id stack.L2ProposerID, cfg any) {
-		c, ok := cfg.(*FaultProofProposerConfig)
-		if !ok {
-			return
-		}
-		opt(id, c)
-	})
-}
-
-func WithFdgConfigDirsOption(
-	o *Orchestrator,
-	l1Dir, l2Dir string,
-) {
-	WithFaultProofProposerOption(o, func(id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
-		cfg.l1ConfigDir = l1Dir
-		cfg.l2ConfigDir = l2Dir
-	})
-}
-
 func (k *L2SuccinctFaultProofProposer) Start() {
 	k.mu.Lock()
 	if k.sub != nil {
@@ -150,20 +123,20 @@ func (k *L2SuccinctFaultProofProposer) Stop() {
 	k.sub = nil
 }
 
-func WithSuccinctFaultProofProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+func WithSuccinctFaultProofProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithSuccinctFaultProofProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctFaultProofProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
 func WithSuperSuccinctFaultProofProposer(proposerID stack.L2ProposerID,
-	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithSuccinctFaultProofProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctFaultProofProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
-func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
+func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger()
@@ -190,25 +163,28 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
-	vpCfg := &FaultProofProposerConfig{}
-	for _, opt := range orch.proposerOptions {
-		opt(proposerID, vpCfg)
+	cfg := &FaultProofProposerConfigs{}
+	orch.proposerOptions.Apply(p, proposerID, cfg)
+	for _, opt := range opts {
+		opt(p, proposerID, cfg)
 	}
 
-	require.NotEmpty(vpCfg.l1ConfigDir, "fault-proof proposer L1 config dir must be set")
-	require.NotEmpty(vpCfg.l2ConfigDir, "fault-proof proposer L2 config dir must be set")
+	require.NotEmpty(cfg.l1ConfigDir, "fault-proof proposer L1 config dir must be set")
+	require.NotEmpty(cfg.l2ConfigDir, "fault-proof proposer L2 config dir must be set")
 
 	l1RPC := l1EL.UserRPC()
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
 	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
+	disputeGameFactoryProxy := l2Net.deployment.disputeGameFactoryProxy
 
 	logger.Info("L1_RPC", "url", l1RPC)
 	logger.Info("L1_BEACON_RPC", "url", l1BeaconRPC)
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
+	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
 	envVars := map[string]string{
 		"L1_RPC":               l1RPC,
@@ -216,11 +192,13 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"L2_RPC":               l2RPC,
 		"L2_NODE_RPC":          l2NodeRPC,
 		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
+		"FACTORY_ADDRESS":      disputeGameFactoryProxy.String(),
 		"PRIVATE_KEY":          proposerKeyStr,
 		"RANGE_PROOF_INTERVAL": "10",
-		"OP_SUCCINCT_MOCK":     "true",
-		"L1_CONFIG_DIR":        vpCfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        vpCfg.l2ConfigDir,
+		"MOCK_MODE":            "true",
+		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
+		"RUST_LOG":             *cfg.rustLog,
 		"LOG_FORMAT":           "json",
 	}
 
@@ -259,4 +237,30 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	})
 	p.Logger().Info("fault-proof proposer is running", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
+}
+
+type FaultProofProposerConfigs struct {
+	l1ConfigDir string
+	l2ConfigDir string
+	rustLog     *string
+}
+
+type FaultProofProposerOption = ProposerOption[FaultProofProposerConfigs]
+
+func WithFdgConfigDirsOption(
+	o *Orchestrator,
+	l1Dir, l2Dir string,
+) {
+	WithProposerOption(FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfigs) {
+		cfg.l1ConfigDir = l1Dir
+		cfg.l2ConfigDir = l2Dir
+	},
+	))
+}
+
+func WithFdgRustLog(level string) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfigs) {
+		cfg.rustLog = &level
+	},
+	)
 }

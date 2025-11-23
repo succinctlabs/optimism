@@ -63,26 +63,18 @@ type ValidityProposerConfig struct {
 	l2ConfigDir string
 }
 
-type ValidityProposerOption func(id stack.L2ProposerID, cfg *ValidityProposerConfig)
-
-func WithValidityProposerOption(o *Orchestrator, opt ValidityProposerOption) {
-	o.proposerOptions = append(o.proposerOptions, func(id stack.L2ProposerID, cfg any) {
-		c, ok := cfg.(*ValidityProposerConfig)
-		if !ok {
-			return
-		}
-		opt(id, c)
-	})
-}
+type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
 
 func WithValidityConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
-	WithValidityProposerOption(o, func(id stack.L2ProposerID, cfg *ValidityProposerConfig) {
-		cfg.l1ConfigDir = l1Dir
-		cfg.l2ConfigDir = l2Dir
-	})
+	WithProposerOption(ValidityProposerOption(
+		func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+			cfg.l1ConfigDir = l1Dir
+			cfg.l2ConfigDir = l2Dir
+		},
+	))
 }
 
 func (k *L2SuccinctValidityProposer) Start() {
@@ -208,13 +200,11 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
-	vpCfg := &ValidityProposerConfig{}
-	for _, opt := range orch.proposerOptions {
-		opt(proposerID, vpCfg)
-	}
+	cfg := &ValidityProposerConfig{}
+	orch.proposerOptions.Apply(p, proposerID, cfg)
 
-	require.NotEmpty(vpCfg.l1ConfigDir, "validity proposer L1 config dir must be set")
-	require.NotEmpty(vpCfg.l2ConfigDir, "validity proposer L2 config dir must be set")
+	require.NotEmpty(cfg.l1ConfigDir, "validity proposer L1 config dir must be set")
+	require.NotEmpty(cfg.l2ConfigDir, "validity proposer L2 config dir must be set")
 
 	l1RPC := l1EL.UserRPC()
 	l1BeaconRPC := l1CL.beaconHTTPAddr
@@ -242,8 +232,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"SUBMISSION_INTERVAL":  "10",
 		"RANGE_PROOF_INTERVAL": "10",
 		"OP_SUCCINCT_MOCK":     "true",
-		"L1_CONFIG_DIR":        vpCfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        vpCfg.l2ConfigDir,
+		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
 		"LOG_FORMAT":           "json",
 	}
 
