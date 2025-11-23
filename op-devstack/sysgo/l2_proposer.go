@@ -57,20 +57,12 @@ type ApplyProposerOption interface {
 	Apply(p devtest.P, id stack.L2ProposerID, cfg any)
 }
 
-type AnyProposerOption func(p devtest.P, id stack.L2ProposerID, cfg any)
-
 type ProposerOption[C any] func(p devtest.P, id stack.L2ProposerID, cfg *C)
 
 func (g ProposerOption[C]) Apply(p devtest.P, id stack.L2ProposerID, cfg any) {
 	if typed, ok := cfg.(*C); ok {
 		g(p, id, typed)
 	}
-}
-
-var _ ApplyProposerOption = AnyProposerOption(nil)
-
-func (fn AnyProposerOption) Apply(p devtest.P, id stack.L2ProposerID, cfg any) {
-	fn(p, id, cfg)
 }
 
 type L2ProposerOptionBundle []ApplyProposerOption
@@ -84,17 +76,13 @@ func (l L2ProposerOptionBundle) Apply(p devtest.P, id stack.L2ProposerID, cfg an
 	}
 }
 
-func WrapProposerOption[C any](opt ProposerOption[C]) AnyProposerOption {
-	return func(p devtest.P, id stack.L2ProposerID, cfg any) {
-		if typed, ok := cfg.(*C); ok {
-			opt(p, id, typed)
-		}
-	}
+func AppendProposerOption[C any](o *Orchestrator, opt ProposerOption[C]) {
+	o.proposerOptions = append(o.proposerOptions, opt)
 }
 
 func WithProposerOption[C any](opt ProposerOption[C]) stack.Option[*Orchestrator] {
 	return stack.BeforeDeploy(func(o *Orchestrator) {
-		o.proposerOptions = append(o.proposerOptions, WrapProposerOption(opt))
+		o.proposerOptions = append(o.proposerOptions, opt)
 	})
 }
 

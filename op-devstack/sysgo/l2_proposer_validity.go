@@ -69,7 +69,7 @@ func WithValidityConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
-	WithProposerOption(ValidityProposerOption(
+	AppendProposerOption(o, ValidityProposerOption(
 		func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 			cfg.l1ConfigDir = l1Dir
 			cfg.l2ConfigDir = l2Dir

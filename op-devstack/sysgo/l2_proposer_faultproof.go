@@ -163,7 +163,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
-	cfg := &FaultProofProposerConfigs{}
+	cfg := &FaultProofProposerConfig{}
 	orch.proposerOptions.Apply(p, proposerID, cfg)
 	for _, opt := range opts {
 		opt(p, proposerID, cfg)
@@ -239,19 +239,19 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
-type FaultProofProposerConfigs struct {
+type FaultProofProposerConfig struct {
 	l1ConfigDir string
 	l2ConfigDir string
 	rustLog     *string
 }
 
-type FaultProofProposerOption = ProposerOption[FaultProofProposerConfigs]
+type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
 
 func WithFdgConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
-	WithProposerOption(FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfigs) {
+	AppendProposerOption(o, FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.l1ConfigDir = l1Dir
 		cfg.l2ConfigDir = l2Dir
 	},
@@ -259,7 +259,7 @@ func WithFdgConfigDirsOption(
 }
 
 func WithFdgRustLog(level string) FaultProofProposerOption {
-	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfigs) {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
 	},
 	)
