@@ -2,7 +2,6 @@ package sysgo
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
+	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -104,7 +104,7 @@ func (o *Orchestrator) deploySP1MockVerifier(
 		return "", fmt.Errorf("failed to write sp1-mock-verifier env: %w", err)
 	}
 
-	addr, err := execDeployMockVerifier(o.P().Ctx(), repoRoot, envFile, logger)
+	addr, err := execDeployMockVerifier(o.P(), repoRoot, envFile)
 	if err != nil {
 		return "", err
 	}
@@ -114,13 +114,18 @@ func (o *Orchestrator) deploySP1MockVerifier(
 }
 
 // execDeployMockVerifier runs `just deploy-mock-verifier <envFile>` and parses the output
-func execDeployMockVerifier(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
-	cmd := exec.CommandContext(ctx, "just", "deploy-mock-verifier", envFile)
+func execDeployMockVerifier(p devtest.P, repoRoot, envFile string) (string, error) {
+	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-mock-verifier", envFile)
 	cmd.Dir = repoRoot
 
-	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
+	logger := p.Logger()
 
-	return execCommand(cmd, logger)
+	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
+	stdoutStr, runErr := execCommand(cmd, logger)
+	p.Require().NoError(runErr, "failed to execute deploy-mock-verifier command")
+
+	addrMap, err := parseNamedAddresses(stdoutStr, "0")
+	return addrMap["0"], err
 }
 
 // ============================================================
@@ -232,7 +237,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	require.NoError(err, "mkdir l1 config dir")
 
 	l2CfgDir := l2ConfigDir(base)
-	os.MkdirAll(l2CfgDir, 0o755)
+	err = os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
 	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
@@ -265,7 +270,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
 
-	addr, err := execDeployOracle(o.P().Ctx(), repoRoot, envFile, logger)
+	addr, err := execDeployOracle(o.P(), repoRoot, envFile)
 	if err != nil {
 		return "", err
 	}
@@ -275,13 +280,18 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 }
 
 // execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
-func execDeployOracle(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
-	cmd := exec.CommandContext(ctx, "just", "deploy-oracle", envFile)
+func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
+	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-oracle", envFile)
 	cmd.Dir = repoRoot
 
-	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+	logger := p.Logger()
 
-	return execCommand(cmd, logger)
+	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
+	stdoutStr, runErr := execCommand(cmd, logger)
+	p.Require().NoError(runErr, "failed to execute deploy-mock-verifier command")
+
+	addrMap, err := parseNamedAddresses(stdoutStr, "0")
+	return addrMap["0"], err
 }
 
 // L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
@@ -308,6 +318,7 @@ func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint6
 	if err != nil {
 		return 0, err
 	}
+	defer res.Close()
 
 	const defaultFinalizationPeriodSecs = 3600
 
@@ -380,12 +391,13 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	repoRoot, err := filepath.Abs(rootPrefix)
 	require.NoError(err, "failed to resolve monorepo root")
 
-	addr, err := o.deployOpSuccinctFaultDisputeGame(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID, cfg)
-	require.NoError(err, "failed to deploy OPSuccinctL2OutputOracle")
+	addrs, err := o.deployOpSuccinctFaultDisputeGame(repoRoot, l1CLID, l1ELID, l2CLID, l2ELID, cfg)
+	require.NoError(err, "failed to deploy OPSuccinctFaultDisputeGame")
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	o.P().Require().True(ok, "l2 network required")
-	l2Net.deployment.opSuccinctL2OutputOracle = common.HexToAddress(addr)
+	l2Net.deployment.sp1MockVerifier = addrs.Sp1Verifier
+	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
@@ -396,7 +408,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	l2CLID stack.L2CLNodeID,
 	l2ELID stack.L2ELNodeID,
 	cfgs *FdgConfigs,
-) (string, error) {
+) (FdgAddresses, error) {
 
 	p := o.P()
 	l2ChainID := l2CLID.ChainID()
@@ -424,7 +436,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	l1ChainID := l1CLID.ChainID().ToBig()
 	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
 	if err != nil {
-		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
+		return FdgAddresses{}, fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
@@ -439,7 +451,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	require.NoError(err, "mkdir l1 config dir")
 
 	l2CfgDir := l2ConfigDir(base)
-	os.MkdirAll(l2CfgDir, 0o755)
+	err = os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
 	WithFdgConfigDirsOption(o, l1CfgDir, l2CfgDir)
@@ -463,33 +475,60 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-fdg-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
 	if err = writeEnvFile(envFile, envVars); err != nil {
-		return "", fmt.Errorf("failed to write op-succinct-fdg env: %w", err)
+		return FdgAddresses{}, fmt.Errorf("failed to write op-succinct-fdg env: %w", err)
 	}
 
 	l1ChainConfig := l1Net.genesis.Config
 
 	err = writeL1ChainConfig(l1ChainConfig, l1CLID.ChainID(), l1CfgDir, logger)
 	if err != nil {
-		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
+		return FdgAddresses{}, fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
 
-	addr, err := execDeployFdgContracts(o.P().Ctx(), repoRoot, envFile, logger)
+	addrs, err := execDeployFdgContracts(o.P(), repoRoot, envFile)
 	if err != nil {
-		return "", err
+		return FdgAddresses{}, err
 	}
 
-	logger.Info("Deployed OPSuccinctFaultDisputeGame", "address", addr)
-	return addr, nil
+	logger.Info("Deployed OPSuccinctFaultDisputeGame", "address", addrs)
+	return addrs, nil
 }
 
 // execDeployFdgContracts runs `just deploy-fdg-contracts <envFile>` and parses the output
-func execDeployFdgContracts(ctx context.Context, repoRoot, envFile string, logger log.Logger) (string, error) {
-	cmd := exec.CommandContext(ctx, "just", "deploy-fdg-contracts", envFile)
+func execDeployFdgContracts(p devtest.P, repoRoot, envFile string) (FdgAddresses, error) {
+	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-fdg-contracts", envFile)
 	cmd.Dir = repoRoot
 
-	logger.Info("Executing deploy-fdg-contracts", "cmd", strings.Join(cmd.Args, " "))
+	logger := p.Logger()
 
-	return execCommand(cmd, logger)
+	logger.Info("Executing deploy-fdg-contracts", "cmd", strings.Join(cmd.Args, " "))
+	stdoutStr, err := execCommand(cmd, logger)
+	p.Require().NoError(err, "failed to execute deploy-fdg-contracts command")
+
+	return parseDeploymentAddresses(stdoutStr)
+}
+
+type FdgAddresses struct {
+	FactoryProxy    common.Address
+	Sp1Verifier     common.Address
+	OptimismPortal2 common.Address
+}
+
+func parseDeploymentAddresses(stdoutStr string) (FdgAddresses, error) {
+	m, err := parseNamedAddresses(stdoutStr,
+		"factoryProxy",
+		"sp1Verifier",
+		"optimismPortal2",
+	)
+	if err != nil {
+		return FdgAddresses{}, err
+	}
+
+	return FdgAddresses{
+		FactoryProxy:    common.HexToAddress(m["factoryProxy"]),
+		Sp1Verifier:     common.HexToAddress(m["sp1Verifier"]),
+		OptimismPortal2: common.HexToAddress(m["optimismPortal2"]),
+	}, nil
 }
 
 type FdgConfigs struct {
@@ -579,39 +618,69 @@ func l2ConfigDir(base string) string {
 	return filepath.Join(base, "Configs", "L2")
 }
 
-func execCommand(cmd *exec.Cmd, logger log.Logger) (string, error) {
+func execCommand(cmd *exec.Cmd, logger log.Logger) (stdoutStr string, err error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 
-	stdoutStr := strings.TrimSpace(stdout.String())
+	stdoutStr = strings.TrimSpace(stdout.String())
 	stderrStr := strings.TrimSpace(stderr.String())
 
-	re := regexp.MustCompile(`(?m)^0:\s+address\s+(0x[0-9a-fA-F]{40})\b`)
-	match := re.FindStringSubmatch(stdoutStr)
-	addr := ""
-	if len(match) == 2 {
-		addr = match[1]
+	if err == nil {
+		return stdoutStr, nil
 	}
 
-	if err == nil && addr != "" {
-		return addr, nil
+	// Foundry errored *but* it's the known transient indexing error AND we have result
+	if strings.Contains(stderrStr, "transaction indexing is in progress") && stdoutStr != "" {
+		logger.Warn("ignoring indexing error and using parsed addresses", "err", err)
+		return stdoutStr, nil
 	}
 
-	// Foundry errored *but* it's the known transient indexing error AND we have an address
-	if err != nil && addr != "" && strings.Contains(stderrStr, "transaction indexing is in progress") {
-		logger.Warn("ignoring indexing error and using parsed address", "err", err, "address", addr)
-		return addr, nil
+	return stdoutStr, fmt.Errorf(
+		"failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
+		err, stdoutStr, stderrStr,
+	)
+}
+
+// name: address 0x....
+var namedAddrRE = regexp.MustCompile(`(?m)^([A-Za-z0-9_]+):\s+address\s+(0x[0-9a-fA-F]{40})\b`)
+
+// parseNamedAddresses scans stdoutStr for lines of the form:
+//
+//	<name>: address 0x...
+//
+// and returns a map[name]address only for the requested names.
+// It errors if any requested name is missing.
+func parseNamedAddresses(stdoutStr string, names ...string) (map[string]string, error) {
+	needed := make(map[string]bool, len(names))
+	for _, n := range names {
+		needed[n] = true
 	}
 
-	if err != nil {
-		return "", fmt.Errorf("failed to execute command: %w\nstdout:\n%s\nstderr:\n%s",
-			err, stdoutStr, stderrStr)
+	result := make(map[string]string, len(names))
+
+	matches := namedAddrRE.FindAllStringSubmatch(stdoutStr, -1)
+	for _, m := range matches {
+		if len(m) != 3 {
+			continue
+		}
+		name := m[1]
+		addr := m[2]
+
+		if needed[name] {
+			result[name] = addr
+		}
 	}
 
-	return "", fmt.Errorf("command succeeded but could not find the address.\nstdout:\n%s", stdoutStr)
+	for _, n := range names {
+		if _, ok := result[n]; !ok {
+			return nil, fmt.Errorf("missing expected address: %s", n)
+		}
+	}
+
+	return result, nil
 }
 
 func writeEnvFile(path string, kv map[string]string) error {
