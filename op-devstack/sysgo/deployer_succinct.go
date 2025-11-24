@@ -473,6 +473,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"STARTING_L2_BLOCK_NUMBER":            fmt.Sprintf("%d", startingL2BlockNumber),
 		"L1_CONFIG_DIR":                       l1CfgDir,
 		"L2_CONFIG_DIR":                       l2CfgDir,
+		"OP_SUCCINCT_MOCK":                    "true",
 		"RUST_LOG":                            "info",
 	}
 
