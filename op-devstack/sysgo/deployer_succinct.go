@@ -444,6 +444,9 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	maxChallengeDuration := resolveMaxChallengeDuration(cfgs.maxChallengeDuration)
 	maxProveDuration := resolveMaxProveDuration(cfgs.maxProveDuration)
 
+	startingL2BlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber)
+	o.P().Require().NoError(err, "failed to resolve starting block number")
+
 	base := p.TempDir()
 
 	l1CfgDir := l1ConfigDir(base)
@@ -467,6 +470,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"MAX_PROVE_DURATION":                  fmt.Sprintf("%d", maxProveDuration),
 		"VERIFIER_ADDRESS":                    l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":                         l1PAOKeyStr,
+		"STARTING_L2_BLOCK_NUMBER":            fmt.Sprintf("%d", startingL2BlockNumber),
 		"L1_CONFIG_DIR":                       l1CfgDir,
 		"L2_CONFIG_DIR":                       l2CfgDir,
 		"RUST_LOG":                            "info",
@@ -532,12 +536,20 @@ func parseDeploymentAddresses(stdoutStr string) (FdgAddresses, error) {
 }
 
 type FdgConfigs struct {
+	startingL2BlockNumber        *uint64
 	disputeGameFinalityDelaySecs *uint64
 	maxChallengeDuration         *uint64
 	maxProveDuration             *uint64
 }
 
 type FdgOption func(*FdgConfigs)
+
+// WithFdgL2StaringBlockNumber sets the starting block number for the FDG deployment
+func WithFdgL2StaringBlockNumber(n uint64) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.startingL2BlockNumber = &n
+	}
+}
 
 // WithFdgDisputeGameFinalityDelaySecs sets the starting block number for the FDG deployment
 func WithFdgDisputeGameFinalityDelaySecs(n uint64) FdgOption {
