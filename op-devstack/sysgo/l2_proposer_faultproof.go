@@ -185,10 +185,10 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
-	proposalIntervalInBlocks := resolveFdgProposalIntervalInBlocks(cfg.proposalIntervalInBlocks)
-	fetchInterval := resolveFdgFetchIntervalInBlocks(cfg.fetchInterval)
-	fastFinalityMode := resolveFdgFastFinalityMode(cfg.fastFinalityMode)
-	rustLog := resolveFdgRustLog(cfg.rustLog)
+	proposalIntervalInBlocks := cfg.resolveFdgProposalIntervalInBlocks()
+	fetchInterval := cfg.resolveFdgFetchIntervalInBlocks()
+	fastFinalityMode := cfg.resolveFdgFastFinalityMode()
+	rustLog := cfg.resolveFdgRustLog()
 
 	envVars := map[string]string{
 		"L1_RPC":                      l1RPC,
@@ -262,6 +262,34 @@ type FaultProofProposerConfig struct {
 	rustLog                  *string
 }
 
+func (c *FaultProofProposerConfig) resolveFdgProposalIntervalInBlocks() uint64 {
+	if c.proposalIntervalInBlocks == nil {
+		return defaultProposalIntervalInBlocks
+	}
+	return *c.proposalIntervalInBlocks
+}
+
+func (c *FaultProofProposerConfig) resolveFdgFetchIntervalInBlocks() uint64 {
+	if c.fetchInterval == nil {
+		return defaultFetchIntervalInBlocks
+	}
+	return *c.fetchInterval
+}
+
+func (c *FaultProofProposerConfig) resolveFdgFastFinalityMode() bool {
+	if c.fastFinalityMode == nil {
+		return defaultFastFinalityMode
+	}
+	return *c.fastFinalityMode
+}
+
+func (c *FaultProofProposerConfig) resolveFdgRustLog() string {
+	if c.rustLog == nil {
+		return defaultRustLog
+	}
+	return *c.rustLog
+}
+
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
 
 func WithFdgConfigDirsOption(
@@ -282,7 +310,7 @@ func WithFdgProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
 	)
 }
 
-func WithFdgFetchIntervalInBlocks(n uint64) FaultProofProposerOption {
+func WithFdgFetchInterval(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.fetchInterval = &n
 	},
@@ -301,32 +329,4 @@ func WithFdgRustLog(level string) FaultProofProposerOption {
 		cfg.rustLog = &level
 	},
 	)
-}
-
-func resolveFdgProposalIntervalInBlocks(cfgInterval *uint64) uint64 {
-	if cfgInterval == nil {
-		return defaultProposalIntervalInBlocks
-	}
-	return *cfgInterval
-}
-
-func resolveFdgFetchIntervalInBlocks(cfgInterval *uint64) uint64 {
-	if cfgInterval == nil {
-		return defaultFetchIntervalInBlocks
-	}
-	return *cfgInterval
-}
-
-func resolveFdgFastFinalityMode(cfgMode *bool) bool {
-	if cfgMode == nil {
-		return defaultFastFinalityMode
-	}
-	return *cfgMode
-}
-
-func resolveFdgRustLog(cfgLevel *string) string {
-	if cfgLevel == nil {
-		return defaultRustLog
-	}
-	return *cfgLevel
 }
