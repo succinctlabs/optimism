@@ -194,6 +194,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"L2_NODE_RPC":          l2NodeRPC,
 		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
 		"FACTORY_ADDRESS":      disputeGameFactoryProxy.String(),
+		"GAME_TYPE":            "42",
 		"PRIVATE_KEY":          proposerKeyStr,
 		"RANGE_PROOF_INTERVAL": "10",
 		"MOCK_MODE":            "true",
