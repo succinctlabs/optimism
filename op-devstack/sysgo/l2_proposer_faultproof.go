@@ -81,7 +81,6 @@ func (k *L2SuccinctFaultProofProposer) Start() {
 
 	k.sub.OnExit(func(err error) {
 		if errors.Is(err, syscall.ECHILD) {
-			k.p.Logger().Info("fault-proof proposer already reaped on shutdown", "err", err)
 			return
 		}
 
