@@ -185,23 +185,28 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
+	proposalIntervalInBlocks := resolveFdgProposalIntervalInBlocks(cfg.proposalIntervalInBlocks)
+	fetchInterval := resolveFdgFetchIntervalInBlocks(cfg.fetchInterval)
+	fastFinalityMode := resolveFdgFastFinalityMode(cfg.fastFinalityMode)
 	rustLog := resolveFdgRustLog(cfg.rustLog)
 
 	envVars := map[string]string{
-		"L1_RPC":               l1RPC,
-		"L1_BEACON_RPC":        l1BeaconRPC,
-		"L2_RPC":               l2RPC,
-		"L2_NODE_RPC":          l2NodeRPC,
-		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
-		"FACTORY_ADDRESS":      disputeGameFactoryProxy.String(),
-		"GAME_TYPE":            "42",
-		"PRIVATE_KEY":          proposerKeyStr,
-		"RANGE_PROOF_INTERVAL": "10",
-		"MOCK_MODE":            "true",
-		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
-		"RUST_LOG":             rustLog,
-		"LOG_FORMAT":           "json",
+		"L1_RPC":                      l1RPC,
+		"L1_BEACON_RPC":               l1BeaconRPC,
+		"L2_RPC":                      l2RPC,
+		"L2_NODE_RPC":                 l2NodeRPC,
+		"VERIFIER_ADDRESS":            mockVerifierAddr.String(),
+		"FACTORY_ADDRESS":             disputeGameFactoryProxy.String(),
+		"GAME_TYPE":                   "42",
+		"PRIVATE_KEY":                 proposerKeyStr,
+		"PROPOSAL_INTERVAL_IN_BLOCKS": fmt.Sprintf("%d", proposalIntervalInBlocks),
+		"FETCH_INTERVAL":              fmt.Sprintf("%d", fetchInterval),
+		"FAST_FINALITY_MODE":          fmt.Sprintf("%t", fastFinalityMode),
+		"MOCK_MODE":                   "true",
+		"L1_CONFIG_DIR":               cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":               cfg.l2ConfigDir,
+		"RUST_LOG":                    rustLog,
+		"LOG_FORMAT":                  "json",
 	}
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
@@ -241,10 +246,20 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
+const (
+	defaultProposalIntervalInBlocks uint64 = 1800
+	defaultFetchIntervalInBlocks    uint64 = 30
+	defaultFastFinalityMode         bool   = false
+	defaultRustLog                  string = "info"
+)
+
 type FaultProofProposerConfig struct {
-	l1ConfigDir string
-	l2ConfigDir string
-	rustLog     *string
+	l1ConfigDir              string
+	l2ConfigDir              string
+	proposalIntervalInBlocks *uint64
+	fastFinalityMode         *bool
+	fetchInterval            *uint64
+	rustLog                  *string
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
@@ -260,6 +275,27 @@ func WithFdgConfigDirsOption(
 	))
 }
 
+func WithFdgProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.proposalIntervalInBlocks = &n
+	},
+	)
+}
+
+func WithFdgFetchIntervalInBlocks(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.fetchInterval = &n
+	},
+	)
+}
+
+func WithFdgFastFinalityMode(enabled bool) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.fastFinalityMode = &enabled
+	},
+	)
+}
+
 func WithFdgRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
@@ -267,9 +303,30 @@ func WithFdgRustLog(level string) FaultProofProposerOption {
 	)
 }
 
+func resolveFdgProposalIntervalInBlocks(cfgInterval *uint64) uint64 {
+	if cfgInterval == nil {
+		return defaultProposalIntervalInBlocks
+	}
+	return *cfgInterval
+}
+
+func resolveFdgFetchIntervalInBlocks(cfgInterval *uint64) uint64 {
+	if cfgInterval == nil {
+		return defaultFetchIntervalInBlocks
+	}
+	return *cfgInterval
+}
+
+func resolveFdgFastFinalityMode(cfgMode *bool) bool {
+	if cfgMode == nil {
+		return defaultFastFinalityMode
+	}
+	return *cfgMode
+}
+
 func resolveFdgRustLog(cfgLevel *string) string {
 	if cfgLevel == nil {
-		return "info"
+		return defaultRustLog
 	}
 	return *cfgLevel
 }
