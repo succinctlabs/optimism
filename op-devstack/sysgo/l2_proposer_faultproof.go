@@ -17,7 +17,6 @@ import (
 	ps "github.com/ethereum-optimism/optimism/op-proposer/proposer"
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
-	"github.com/ethereum-optimism/optimism/op-service/tasks"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -99,13 +98,6 @@ func (k *L2SuccinctFaultProofProposer) Start() {
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
-
-	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
-	if areMetricsEnabled() {
-		var metricsTarget PrometheusMetricsTarget
-		k.p.Require().NoError(tasks.Await(k.p.Ctx(), metricsTargetChan, &metricsTarget), "need metrics endpoint")
-		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
-	}
 }
 
 // Stops the fault-proof proposer.
