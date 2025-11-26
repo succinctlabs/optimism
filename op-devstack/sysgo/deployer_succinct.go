@@ -227,7 +227,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	}
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
-	startingBlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber)
+	startingBlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
@@ -308,30 +308,32 @@ func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 	}
 }
 
-// resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
-func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+// resolveStartingBlockNumber determines the starting block number for L2OO and FDG deployments
+func resolveStartingBlockNumber(p devtest.P, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+	var v uint64
 	if cfgStartingBlockNumber != nil {
-		return *cfgStartingBlockNumber, nil
+		v = *cfgStartingBlockNumber
+	} else {
+		const defaultFinalizationPeriodSecs = 3600
+		v = defaultFinalizationPeriodSecs/l2BlockTime + 1
 	}
+	target := new(big.Int).SetUint64(v)
 
-	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
+	res, err := ethclient.DialContext(p.Ctx(), l2Rpc)
 	if err != nil {
 		return 0, err
 	}
 	defer res.Close()
 
-	const defaultFinalizationPeriodSecs = 3600
-
-	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
-	target.Add(target, big.NewInt(1))
-
 	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
 	if err != nil {
-		o.P().Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
+		p.Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
 		return 0, err
 	}
+	blockNumber := block.Number().Uint64()
+	p.Logger().Info("Finalized L2 block reached; proceeding with deployment", "block", blockNumber)
 
-	return block.Number().Uint64(), nil
+	return blockNumber, nil
 }
 
 // ===========================================================
@@ -444,7 +446,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	maxChallengeDuration := resolveMaxChallengeDuration(cfgs.maxChallengeDuration)
 	maxProveDuration := resolveMaxProveDuration(cfgs.maxProveDuration)
 
-	startingL2BlockNumber, err := resolveStartingBlockNumber(o, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber)
+	startingL2BlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
