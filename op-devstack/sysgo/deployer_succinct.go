@@ -308,22 +308,22 @@ func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 	}
 }
 
-// resolveStartingBlockNumber determines the starting block number for the L2OO deployment.
+// resolveStartingBlockNumber determines the starting block number for L2OO and FDG deployments
 func resolveStartingBlockNumber(o *Orchestrator, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+	var v uint64
 	if cfgStartingBlockNumber != nil {
-		return *cfgStartingBlockNumber, nil
+		v = *cfgStartingBlockNumber
+	} else {
+		const defaultFinalizationPeriodSecs = 3600
+		v = defaultFinalizationPeriodSecs/l2BlockTime + 1
 	}
+	target := new(big.Int).SetUint64(v)
 
 	res, err := ethclient.DialContext(o.P().Ctx(), l2Rpc)
 	if err != nil {
 		return 0, err
 	}
 	defer res.Close()
-
-	const defaultFinalizationPeriodSecs = 3600
-
-	target := big.NewInt(int64(defaultFinalizationPeriodSecs / l2BlockTime))
-	target.Add(target, big.NewInt(1))
 
 	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
 	if err != nil {
