@@ -18,7 +18,6 @@ import (
 	ps "github.com/ethereum-optimism/optimism/op-proposer/proposer"
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
-	"github.com/ethereum-optimism/optimism/op-service/tasks"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	embeddedpg "github.com/fergusstrange/embedded-postgres"
@@ -63,26 +62,18 @@ type ValidityProposerConfig struct {
 	l2ConfigDir string
 }
 
-type ValidityProposerOption func(id stack.L2ProposerID, cfg *ValidityProposerConfig)
-
-func WithValidityProposerOption(o *Orchestrator, opt ValidityProposerOption) {
-	o.proposerOptions = append(o.proposerOptions, func(id stack.L2ProposerID, cfg any) {
-		c, ok := cfg.(*ValidityProposerConfig)
-		if !ok {
-			return
-		}
-		opt(id, c)
-	})
-}
+type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
 
 func WithValidityConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
-	WithValidityProposerOption(o, func(id stack.L2ProposerID, cfg *ValidityProposerConfig) {
-		cfg.l1ConfigDir = l1Dir
-		cfg.l2ConfigDir = l2Dir
-	})
+	AppendProposerOption(o, ValidityProposerOption(
+		func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+			cfg.l1ConfigDir = l1Dir
+			cfg.l2ConfigDir = l2Dir
+		},
+	))
 }
 
 func (k *L2SuccinctValidityProposer) Start() {
@@ -134,13 +125,6 @@ func (k *L2SuccinctValidityProposer) Start() {
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
-
-	metricsTargetChan := make(chan PrometheusMetricsTarget, 1)
-	if areMetricsEnabled() {
-		var metricsTarget PrometheusMetricsTarget
-		k.p.Require().NoError(tasks.Await(k.p.Ctx(), metricsTargetChan, &metricsTarget), "need metrics endpoint")
-		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
-	}
 }
 
 // Stops the validity proposer.
@@ -170,7 +154,7 @@ func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
 	})
 }
 
-func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...L2CLOption) {
+func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger()
@@ -193,10 +177,6 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	l2CL, ok := orch.l2CLs.Get(l2CLID)
 	require.True(ok, "l2 CL node required")
 
-	cfg := DefaultL2CLConfig()
-	orch.l2CLOptions.Apply(orch.P(), l2CLID, cfg)       // apply global options
-	L2CLOptionBundle(opts).Apply(orch.P(), l2CLID, cfg) // apply specific options
-
 	// --- Embedded Postgres setup ---
 	embeddedPG, err := startEmbeddedPostgres(p)
 	require.NoError(err, "must start embedded postgres (or read DATABASE_URL)")
@@ -212,13 +192,11 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	require.NoError(err)
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
-	vpCfg := &ValidityProposerConfig{}
-	for _, opt := range orch.proposerOptions {
-		opt(proposerID, vpCfg)
-	}
+	cfg := &ValidityProposerConfig{}
+	orch.proposerOptions.Apply(p, proposerID, cfg)
 
-	require.NotEmpty(vpCfg.l1ConfigDir, "validity proposer L1 config dir must be set")
-	require.NotEmpty(vpCfg.l2ConfigDir, "validity proposer L2 config dir must be set")
+	require.NotEmpty(cfg.l1ConfigDir, "validity proposer L1 config dir must be set")
+	require.NotEmpty(cfg.l2ConfigDir, "validity proposer L2 config dir must be set")
 
 	l1RPC := l1EL.UserRPC()
 	l1BeaconRPC := l1CL.beaconHTTPAddr
@@ -246,8 +224,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"SUBMISSION_INTERVAL":  "10",
 		"RANGE_PROOF_INTERVAL": "10",
 		"OP_SUCCINCT_MOCK":     "true",
-		"L1_CONFIG_DIR":        vpCfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        vpCfg.l2ConfigDir,
+		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
 		"LOG_FORMAT":           "json",
 	}
 

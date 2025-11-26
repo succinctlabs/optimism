@@ -30,7 +30,7 @@ type Orchestrator struct {
 
 	// options
 	batcherOptions          []BatcherOption
-	proposerOptions         []anyProposerOption
+	proposerOptions         L2ProposerOptionBundle
 	l2CLOptions             L2CLOptionBundle
 	l2ELOptions             L2ELOptionBundle
 	l2ChallengerOpts        l2ChallengerOpts

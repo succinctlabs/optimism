@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
+	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/setuputils"
@@ -52,21 +53,36 @@ func (p *L2Proposer) UserRPC() string {
 	return p.userRPC
 }
 
-type anyProposerOption func(id stack.L2ProposerID, cfg any)
+type ApplyProposerOption interface {
+	Apply(p devtest.P, id stack.L2ProposerID, cfg any)
+}
 
-type ProposerOption[C any] func(id stack.L2ProposerID, cfg *C)
+type ProposerOption[C any] func(p devtest.P, id stack.L2ProposerID, cfg *C)
 
-func WrapProposerOption[C any](opt ProposerOption[C]) anyProposerOption {
-	return func(id stack.L2ProposerID, cfg any) {
-		if typed, ok := cfg.(*C); ok {
-			opt(id, typed)
-		}
+func (g ProposerOption[C]) Apply(p devtest.P, id stack.L2ProposerID, cfg any) {
+	if typed, ok := cfg.(*C); ok {
+		g(p, id, typed)
 	}
+}
+
+type L2ProposerOptionBundle []ApplyProposerOption
+
+var _ ApplyProposerOption = L2ProposerOptionBundle(nil)
+
+func (l L2ProposerOptionBundle) Apply(p devtest.P, id stack.L2ProposerID, cfg any) {
+	for _, opt := range l {
+		p.Require().NotNil(opt, "nil proposer option in bundle")
+		opt.Apply(p, id, cfg)
+	}
+}
+
+func AppendProposerOption[C any](o *Orchestrator, opt ProposerOption[C]) {
+	o.proposerOptions = append(o.proposerOptions, opt)
 }
 
 func WithProposerOption[C any](opt ProposerOption[C]) stack.Option[*Orchestrator] {
 	return stack.BeforeDeploy(func(o *Orchestrator) {
-		o.proposerOptions = append(o.proposerOptions, WrapProposerOption(opt))
+		o.proposerOptions = append(o.proposerOptions, opt)
 	})
 }
 
@@ -132,9 +148,8 @@ func WithProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l
 		ActiveSequencerCheckDuration: time.Second * 5,
 		WaitNodeSync:                 false,
 	}
-	for _, opt := range orch.proposerOptions {
-		opt(proposerID, proposerCLIConfig)
-	}
+
+	orch.proposerOptions.Apply(p, proposerID, proposerCLIConfig)
 
 	// If interop is scheduled, or if we cannot do the pre-interop connection, then set up with supervisor
 	if l2Net.genesis.Config.InteropTime != nil || l2CLID == nil {
