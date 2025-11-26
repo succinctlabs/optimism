@@ -288,7 +288,7 @@ func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
 
 	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
 	stdoutStr, runErr := execCommand(cmd, logger)
-	p.Require().NoError(runErr, "failed to execute deploy-mock-verifier command")
+	p.Require().NoError(runErr, "failed to execute deploy-oracle command")
 
 	addrMap, err := parseNamedAddresses(stdoutStr, "0")
 	return addrMap["0"], err
@@ -546,8 +546,8 @@ type FdgConfigs struct {
 
 type FdgOption func(*FdgConfigs)
 
-// WithFdgL2StaringBlockNumber sets the starting block number for the FDG deployment
-func WithFdgL2StaringBlockNumber(n uint64) FdgOption {
+// WithFdgL2StartingBlockNumber sets the starting block number for the FDG deployment
+func WithFdgL2StartingBlockNumber(n uint64) FdgOption {
 	return func(cfg *FdgConfigs) {
 		cfg.startingL2BlockNumber = &n
 	}
