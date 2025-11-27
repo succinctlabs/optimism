@@ -338,6 +338,20 @@ func WithFPFastFinalityMode(enabled bool) FaultProofProposerOption {
 	)
 }
 
+func WithFPFastFinalityProvingLimit(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.fastFinalityProvingLimit = &n
+	},
+	)
+}
+
+func WithFPRangeSplitCount(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.rangeSplitCount = &n
+	},
+	)
+}
+
 func WithFPRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
