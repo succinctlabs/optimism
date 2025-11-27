@@ -177,10 +177,10 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
-	proposalIntervalInBlocks := cfg.resolveFdgProposalIntervalInBlocks()
-	fetchInterval := cfg.resolveFdgFetchIntervalInBlocks()
-	fastFinalityMode := cfg.resolveFdgFastFinalityMode()
-	rustLog := cfg.resolveFdgRustLog()
+	proposalIntervalInBlocks := cfg.resolveFPProposalIntervalInBlocks()
+	fetchInterval := cfg.resolveFPFetchIntervalInBlocks()
+	fastFinalityMode := cfg.resolveFPFastFinalityMode()
+	rustLog := cfg.resolveFPRustLog()
 
 	envVars := map[string]string{
 		"L1_RPC":                      l1RPC,
@@ -254,28 +254,28 @@ type FaultProofProposerConfig struct {
 	rustLog                  *string
 }
 
-func (c *FaultProofProposerConfig) resolveFdgProposalIntervalInBlocks() uint64 {
+func (c *FaultProofProposerConfig) resolveFPProposalIntervalInBlocks() uint64 {
 	if c.proposalIntervalInBlocks == nil {
 		return defaultProposalIntervalInBlocks
 	}
 	return *c.proposalIntervalInBlocks
 }
 
-func (c *FaultProofProposerConfig) resolveFdgFetchIntervalInBlocks() uint64 {
+func (c *FaultProofProposerConfig) resolveFPFetchIntervalInBlocks() uint64 {
 	if c.fetchInterval == nil {
 		return defaultFetchIntervalInBlocks
 	}
 	return *c.fetchInterval
 }
 
-func (c *FaultProofProposerConfig) resolveFdgFastFinalityMode() bool {
+func (c *FaultProofProposerConfig) resolveFPFastFinalityMode() bool {
 	if c.fastFinalityMode == nil {
 		return defaultFastFinalityMode
 	}
 	return *c.fastFinalityMode
 }
 
-func (c *FaultProofProposerConfig) resolveFdgRustLog() string {
+func (c *FaultProofProposerConfig) resolveFPRustLog() string {
 	if c.rustLog == nil {
 		return defaultRustLog
 	}
@@ -284,7 +284,7 @@ func (c *FaultProofProposerConfig) resolveFdgRustLog() string {
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
 
-func WithFdgConfigDirsOption(
+func WithFPConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
@@ -295,28 +295,28 @@ func WithFdgConfigDirsOption(
 	))
 }
 
-func WithFdgProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
+func WithFPProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.proposalIntervalInBlocks = &n
 	},
 	)
 }
 
-func WithFdgFetchInterval(n uint64) FaultProofProposerOption {
+func WithFPFetchInterval(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.fetchInterval = &n
 	},
 	)
 }
 
-func WithFdgFastFinalityMode(enabled bool) FaultProofProposerOption {
+func WithFPFastFinalityMode(enabled bool) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.fastFinalityMode = &enabled
 	},
 	)
 }
 
-func WithFdgRustLog(level string) FaultProofProposerOption {
+func WithFPRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
 	},
