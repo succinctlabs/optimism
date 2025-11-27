@@ -459,7 +459,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	err = os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
-	WithFdgConfigDirsOption(o, l1CfgDir, l2CfgDir)
+	WithFPConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
 		"L1_RPC":                              l1EL.UserRPC(),
