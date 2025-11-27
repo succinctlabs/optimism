@@ -180,6 +180,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	proposalIntervalInBlocks := cfg.resolveFPProposalIntervalInBlocks()
 	fetchInterval := cfg.resolveFPFetchIntervalInBlocks()
 	fastFinalityMode := cfg.resolveFPFastFinalityMode()
+	fastFinalityProvingLimit := cfg.resolveFPFastFinalityProvingLimit()
+	rangeSplitCount := cfg.resolveFPRangeSplitCount()
 	rustLog := cfg.resolveFPRustLog()
 
 	envVars := map[string]string{
@@ -194,6 +196,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"PROPOSAL_INTERVAL_IN_BLOCKS": fmt.Sprintf("%d", proposalIntervalInBlocks),
 		"FETCH_INTERVAL":              fmt.Sprintf("%d", fetchInterval),
 		"FAST_FINALITY_MODE":          fmt.Sprintf("%t", fastFinalityMode),
+		"FAST_FINALITY_PROVING_LIMIT": fmt.Sprintf("%d", fastFinalityProvingLimit),
+		"RANGE_SPLIT_COUNT":           fmt.Sprintf("%d", rangeSplitCount),
 		"MOCK_MODE":                   "true",
 		"L1_CONFIG_DIR":               cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":               cfg.l2ConfigDir,
@@ -242,6 +246,8 @@ const (
 	defaultProposalIntervalInBlocks uint64 = 1800
 	defaultFetchIntervalInBlocks    uint64 = 30
 	defaultFastFinalityMode         bool   = false
+	defaultFastFinalityProvingLimit uint64 = 1
+	defaultRangeSplitCount          uint64 = 1
 	defaultRustLog                  string = "info"
 )
 
@@ -250,6 +256,8 @@ type FaultProofProposerConfig struct {
 	l2ConfigDir              string
 	proposalIntervalInBlocks *uint64
 	fastFinalityMode         *bool
+	fastFinalityProvingLimit *uint64
+	rangeSplitCount          *uint64
 	fetchInterval            *uint64
 	rustLog                  *string
 }
@@ -259,6 +267,20 @@ func (c *FaultProofProposerConfig) resolveFPProposalIntervalInBlocks() uint64 {
 		return defaultProposalIntervalInBlocks
 	}
 	return *c.proposalIntervalInBlocks
+}
+
+func (c *FaultProofProposerConfig) resolveFPFastFinalityProvingLimit() uint64 {
+	if c.fastFinalityProvingLimit == nil {
+		return defaultFastFinalityProvingLimit
+	}
+	return *c.fastFinalityProvingLimit
+}
+
+func (c *FaultProofProposerConfig) resolveFPRangeSplitCount() uint64 {
+	if c.rangeSplitCount == nil {
+		return defaultRangeSplitCount
+	}
+	return *c.rangeSplitCount
 }
 
 func (c *FaultProofProposerConfig) resolveFPFetchIntervalInBlocks() uint64 {
