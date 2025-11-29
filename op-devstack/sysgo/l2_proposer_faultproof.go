@@ -182,6 +182,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	fastFinalityMode := cfg.resolveFPFastFinalityMode()
 	fastFinalityProvingLimit := cfg.resolveFPFastFinalityProvingLimit()
 	rangeSplitCount := cfg.resolveFPRangeSplitCount()
+	maxConcurrentRangeProofs := cfg.resolveFPMaxConcurrentRangeProofs()
 	rustLog := cfg.resolveFPRustLog()
 
 	envVars := map[string]string{
@@ -198,6 +199,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"FAST_FINALITY_MODE":          fmt.Sprintf("%t", fastFinalityMode),
 		"FAST_FINALITY_PROVING_LIMIT": fmt.Sprintf("%d", fastFinalityProvingLimit),
 		"RANGE_SPLIT_COUNT":           fmt.Sprintf("%d", rangeSplitCount),
+		"MAX_CONCURRENT_RANGE_PROOFS": fmt.Sprintf("%d", maxConcurrentRangeProofs),
 		"MOCK_MODE":                   "true",
 		"L1_CONFIG_DIR":               cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":               cfg.l2ConfigDir,
@@ -248,6 +250,7 @@ const (
 	defaultFastFinalityMode         bool   = false
 	defaultFastFinalityProvingLimit uint64 = 1
 	defaultRangeSplitCount          uint64 = 1
+	defaultMaxConcurrentRangeProofs uint64 = 1
 	defaultRustLog                  string = "info"
 )
 
@@ -258,6 +261,7 @@ type FaultProofProposerConfig struct {
 	fastFinalityMode         *bool
 	fastFinalityProvingLimit *uint64
 	rangeSplitCount          *uint64
+	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
 	rustLog                  *string
 }
@@ -281,6 +285,13 @@ func (c *FaultProofProposerConfig) resolveFPRangeSplitCount() uint64 {
 		return defaultRangeSplitCount
 	}
 	return *c.rangeSplitCount
+}
+
+func (c *FaultProofProposerConfig) resolveFPMaxConcurrentRangeProofs() uint64 {
+	if c.maxConcurrentRangeProofs == nil {
+		return defaultMaxConcurrentRangeProofs
+	}
+	return *c.maxConcurrentRangeProofs
 }
 
 func (c *FaultProofProposerConfig) resolveFPFetchIntervalInBlocks() uint64 {
@@ -348,6 +359,13 @@ func WithFPFastFinalityProvingLimit(n uint64) FaultProofProposerOption {
 func WithFPRangeSplitCount(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rangeSplitCount = &n
+	},
+	)
+}
+
+func WithFPMaxConcurrentRangeProofs(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.maxConcurrentRangeProofs = &n
 	},
 	)
 }
