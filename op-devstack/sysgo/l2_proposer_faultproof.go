@@ -177,34 +177,49 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
-	proposalIntervalInBlocks := cfg.resolveFPProposalIntervalInBlocks()
-	fetchInterval := cfg.resolveFPFetchIntervalInBlocks()
-	fastFinalityMode := cfg.resolveFPFastFinalityMode()
-	fastFinalityProvingLimit := cfg.resolveFPFastFinalityProvingLimit()
-	rangeSplitCount := cfg.resolveFPRangeSplitCount()
-	maxConcurrentRangeProofs := cfg.resolveFPMaxConcurrentRangeProofs()
-	rustLog := cfg.resolveFPRustLog()
-
 	envVars := map[string]string{
-		"L1_RPC":                      l1RPC,
-		"L1_BEACON_RPC":               l1BeaconRPC,
-		"L2_RPC":                      l2RPC,
-		"L2_NODE_RPC":                 l2NodeRPC,
-		"VERIFIER_ADDRESS":            mockVerifierAddr.String(),
-		"FACTORY_ADDRESS":             disputeGameFactoryProxy.String(),
-		"GAME_TYPE":                   "42",
-		"PRIVATE_KEY":                 proposerKeyStr,
-		"PROPOSAL_INTERVAL_IN_BLOCKS": fmt.Sprintf("%d", proposalIntervalInBlocks),
-		"FETCH_INTERVAL":              fmt.Sprintf("%d", fetchInterval),
-		"FAST_FINALITY_MODE":          fmt.Sprintf("%t", fastFinalityMode),
-		"FAST_FINALITY_PROVING_LIMIT": fmt.Sprintf("%d", fastFinalityProvingLimit),
-		"RANGE_SPLIT_COUNT":           fmt.Sprintf("%d", rangeSplitCount),
-		"MAX_CONCURRENT_RANGE_PROOFS": fmt.Sprintf("%d", maxConcurrentRangeProofs),
-		"MOCK_MODE":                   "true",
-		"L1_CONFIG_DIR":               cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":               cfg.l2ConfigDir,
-		"RUST_LOG":                    rustLog,
-		"LOG_FORMAT":                  "json",
+		"L1_RPC":           l1RPC,
+		"L1_BEACON_RPC":    l1BeaconRPC,
+		"L2_RPC":           l2RPC,
+		"L2_NODE_RPC":      l2NodeRPC,
+		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
+		"GAME_TYPE":        "42",
+		"PRIVATE_KEY":      proposerKeyStr,
+		"MOCK_MODE":        "true",
+		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
+		"LOG_FORMAT":       "json",
+	}
+
+	proposalIntervalInBlocks := cfg.proposalIntervalInBlocks
+	fetchInterval := cfg.fetchInterval
+	fastFinalityMode := cfg.fastFinalityMode
+	fastFinalityProvingLimit := cfg.fastFinalityProvingLimit
+	rangeSplitCount := cfg.rangeSplitCount
+	maxConcurrentRangeProofs := cfg.maxConcurrentRangeProofs
+	rustLog := cfg.rustLog
+
+	if proposalIntervalInBlocks != nil {
+		envVars["PROPOSAL_INTERVAL_IN_BLOCKS"] = fmt.Sprintf("%d", *proposalIntervalInBlocks)
+	}
+	if fetchInterval != nil {
+		envVars["FETCH_INTERVAL"] = fmt.Sprintf("%d", *fetchInterval)
+	}
+	if fastFinalityMode != nil {
+		envVars["FAST_FINALITY_MODE"] = fmt.Sprintf("%t", *fastFinalityMode)
+	}
+	if fastFinalityProvingLimit != nil {
+		envVars["FAST_FINALITY_PROVING_LIMIT"] = fmt.Sprintf("%d", *fastFinalityProvingLimit)
+	}
+	if rangeSplitCount != nil {
+		envVars["RANGE_SPLIT_COUNT"] = fmt.Sprintf("%d", *rangeSplitCount)
+	}
+	if maxConcurrentRangeProofs != nil {
+		envVars["MAX_CONCURRENT_RANGE_PROOFS"] = fmt.Sprintf("%d", *maxConcurrentRangeProofs)
+	}
+	if rustLog != nil {
+		envVars["RUST_LOG"] = *rustLog
 	}
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
@@ -244,16 +259,6 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
-const (
-	defaultProposalIntervalInBlocks uint64 = 1800
-	defaultFetchIntervalInBlocks    uint64 = 30
-	defaultFastFinalityMode         bool   = false
-	defaultFastFinalityProvingLimit uint64 = 1
-	defaultRangeSplitCount          uint64 = 1
-	defaultMaxConcurrentRangeProofs uint64 = 1
-	defaultRustLog                  string = "info"
-)
-
 type FaultProofProposerConfig struct {
 	l1ConfigDir              string
 	l2ConfigDir              string
@@ -264,55 +269,6 @@ type FaultProofProposerConfig struct {
 	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
 	rustLog                  *string
-}
-
-func (c *FaultProofProposerConfig) resolveFPProposalIntervalInBlocks() uint64 {
-	if c.proposalIntervalInBlocks == nil {
-		return defaultProposalIntervalInBlocks
-	}
-	return *c.proposalIntervalInBlocks
-}
-
-func (c *FaultProofProposerConfig) resolveFPFastFinalityProvingLimit() uint64 {
-	if c.fastFinalityProvingLimit == nil {
-		return defaultFastFinalityProvingLimit
-	}
-	return *c.fastFinalityProvingLimit
-}
-
-func (c *FaultProofProposerConfig) resolveFPRangeSplitCount() uint64 {
-	if c.rangeSplitCount == nil {
-		return defaultRangeSplitCount
-	}
-	return *c.rangeSplitCount
-}
-
-func (c *FaultProofProposerConfig) resolveFPMaxConcurrentRangeProofs() uint64 {
-	if c.maxConcurrentRangeProofs == nil {
-		return defaultMaxConcurrentRangeProofs
-	}
-	return *c.maxConcurrentRangeProofs
-}
-
-func (c *FaultProofProposerConfig) resolveFPFetchIntervalInBlocks() uint64 {
-	if c.fetchInterval == nil {
-		return defaultFetchIntervalInBlocks
-	}
-	return *c.fetchInterval
-}
-
-func (c *FaultProofProposerConfig) resolveFPFastFinalityMode() bool {
-	if c.fastFinalityMode == nil {
-		return defaultFastFinalityMode
-	}
-	return *c.fastFinalityMode
-}
-
-func (c *FaultProofProposerConfig) resolveFPRustLog() string {
-	if c.rustLog == nil {
-		return defaultRustLog
-	}
-	return *c.rustLog
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
