@@ -79,7 +79,7 @@ func (o *Orchestrator) deploySP1MockVerifier(
 ) (string, error) {
 
 	p := o.P()
-	logger := p.Logger().New("chain", l2ChainID.String())
+	logger := p.Logger().New("component", "succinct-deployer")
 	require := p.Require()
 
 	l1ChainID := l1ELID.ChainID()
@@ -118,7 +118,7 @@ func execDeployMockVerifier(p devtest.P, repoRoot, envFile string) (string, erro
 	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-mock-verifier", envFile)
 	cmd.Dir = repoRoot
 
-	logger := p.Logger()
+	logger := p.Logger().New("component", "succinct-deployer")
 
 	logger.Info("Executing deploy-mock-verifier", "cmd", strings.Join(cmd.Args, " "))
 	stdoutStr, runErr := execCommand(cmd, logger)
@@ -199,7 +199,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	p := o.P()
 	l2ChainID := l2CLID.ChainID()
-	logger := p.Logger().New("chain", l2ChainID.String())
+	logger := p.Logger().New("component", "succinct-deployer", "chain", l2ChainID.String())
 	require := p.Require()
 
 	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
@@ -284,7 +284,7 @@ func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
 	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-oracle", envFile)
 	cmd.Dir = repoRoot
 
-	logger := p.Logger()
+	logger := p.Logger().New("component", "succinct-deployer")
 
 	logger.Info("Executing deploy-oracle", "cmd", strings.Join(cmd.Args, " "))
 	stdoutStr, runErr := execCommand(cmd, logger)
@@ -310,6 +310,8 @@ func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 
 // resolveStartingBlockNumber determines the starting block number for L2OO and FDG deployments
 func resolveStartingBlockNumber(p devtest.P, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+	logger := p.Logger().New("component", "succinct-deployer")
+
 	var v uint64
 	if cfgStartingBlockNumber != nil {
 		v = *cfgStartingBlockNumber
@@ -327,11 +329,11 @@ func resolveStartingBlockNumber(p devtest.P, l2Rpc string, l2BlockTime uint64, c
 
 	block, err := geth.WaitForBlockToBeFinalized(target, res, 90*time.Minute)
 	if err != nil {
-		p.Logger().Warn("L2 chain did not reach finalized block within timeout", "err", err)
+		logger.Warn("L2 chain did not reach finalized block within timeout", "err", err)
 		return 0, err
 	}
 	blockNumber := block.Number().Uint64()
-	p.Logger().Info("Finalized L2 block reached; proceeding with deployment", "block", blockNumber)
+	logger.Info("Finalized L2 block reached; proceeding with deployment", "block", blockNumber)
 
 	return blockNumber, nil
 }
@@ -414,7 +416,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 
 	p := o.P()
 	l2ChainID := l2CLID.ChainID()
-	logger := p.Logger().New("chain", l2ChainID.String())
+	logger := p.Logger().New("component", "succinct-deployer", "chain", l2ChainID.String())
 	require := p.Require()
 
 	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
@@ -507,7 +509,7 @@ func execDeployFdgContracts(p devtest.P, repoRoot, envFile string) (FdgAddresses
 	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-fdg-contracts", envFile)
 	cmd.Dir = repoRoot
 
-	logger := p.Logger()
+	logger := p.Logger().New("component", "succinct-deployer")
 
 	logger.Info("Executing deploy-fdg-contracts", "cmd", strings.Join(cmd.Args, " "))
 	stdoutStr, err := execCommand(cmd, logger)

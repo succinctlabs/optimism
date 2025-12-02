@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	embeddedpg "github.com/fergusstrange/embedded-postgres"
 )
 
@@ -31,6 +32,7 @@ type L2SuccinctValidityProposer struct {
 	execPath           string
 	args               []string
 	p                  devtest.P
+	logger             log.Logger
 	sub                *SubProcess
 	embeddedPG         *EmbeddedPG
 	l2MetricsRegistrar L2MetricsRegistrar
@@ -79,15 +81,15 @@ func WithValidityConfigDirsOption(
 func (k *L2SuccinctValidityProposer) Start() {
 	k.mu.Lock()
 	if k.sub != nil {
-		k.p.Logger().Warn("Validity Proposer already started")
+		k.logger.Warn("Validity Proposer already started")
 		k.mu.Unlock()
 		return
 	}
 
 	// We pipe sub-process logs to the test-logger.
 	// And inspect them along the way, to get the RPC server address.
-	logOut := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stdout"))
-	logErr := logpipe.ToLogger(k.p.Logger().New("component", "validity", "src", "stderr"))
+	logOut := logpipe.ToLogger(k.logger.New("src", "stdout"))
+	logErr := logpipe.ToLogger(k.logger.New("src", "stderr"))
 
 	stdOutLogs := logpipe.LogProcessor(func(line []byte) {
 		e := logpipe.ParseRustStructuredLogs(line)
@@ -106,7 +108,7 @@ func (k *L2SuccinctValidityProposer) Start() {
 		}
 
 		if errors.Is(err, syscall.ECHILD) {
-			k.p.Logger().Info("validity proposer already reaped on shutdown", "err", err)
+			k.logger.Info("validity proposer already reaped on shutdown", "err", err)
 			return
 		}
 
@@ -132,7 +134,7 @@ func (k *L2SuccinctValidityProposer) Stop() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.sub == nil {
-		k.p.Logger().Warn("validity proposer already stopped")
+		k.logger.Warn("validity proposer already stopped")
 		return
 	}
 
@@ -157,7 +159,7 @@ func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
 func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
-	logger := p.Logger()
+	logger := p.Logger().New("component", "succinct-validity")
 
 	require := p.Require()
 	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
@@ -254,16 +256,17 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		execPath:           execPath,
 		args:               []string{"--env-file", envFile},
 		p:                  p,
+		logger:             logger,
 		embeddedPG:         embeddedPG,
 		l2MetricsRegistrar: orch,
 	}
-	p.Logger().Info("Starting validity proposer")
+	logger.Info("Starting validity proposer")
 	k.Start()
 	p.Cleanup(func() {
 		logger.Info("Stopping validity proposer")
 		k.Stop()
 	})
-	p.Logger().Info("validity proposer is running", "rpc", k.UserRPC())
+	logger.Info("validity proposer is running", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
 
