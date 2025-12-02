@@ -185,6 +185,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
 		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
 		"GAME_TYPE":        "42",
+		"MOCK_MODE":        "true",
 		"PRIVATE_KEY":      proposerKeyStr,
 		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
@@ -193,7 +194,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
-	// Optional parameters
+	// Optional parameters (override defaults if set)
 	setEnvIfNotNil(envVars, "PROPOSAL_INTERVAL_IN_BLOCKS", cfg.proposalIntervalInBlocks)
 	setEnvIfNotNil(envVars, "FETCH_INTERVAL", cfg.fetchInterval)
 	setEnvIfNotNil(envVars, "FAST_FINALITY_MODE", cfg.fastFinalityMode)
