@@ -69,10 +69,11 @@ func NewMinimal(t devtest.T) *Minimal {
 	orch := Orchestrator()
 	orch.Hydrate(system)
 
-	return minimalFromSystem(t, system, orch)
+	return MinimalFromSystem(t, system, orch)
 }
 
-func minimalFromSystem(t devtest.T, system stack.ExtensibleSystem, orch stack.Orchestrator) *Minimal {
+// MinimalFromSystem creates a Minimal from an already-hydrated system and orchestrator.
+func MinimalFromSystem(t devtest.T, system stack.ExtensibleSystem, orch stack.Orchestrator) *Minimal {
 	l1Net := system.L1Network(match.FirstL1Network)
 	l2 := system.L2Network(match.Assume(t, match.L2ChainA))
 	sequencerCL := l2.L2CLNode(match.Assume(t, match.WithSequencerActive(t.Ctx())))

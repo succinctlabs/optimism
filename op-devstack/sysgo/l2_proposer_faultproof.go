@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type L2SuccinctFaultProofProposer struct {
@@ -29,6 +30,7 @@ type L2SuccinctFaultProofProposer struct {
 	execPath           string
 	args               []string
 	p                  devtest.P
+	logger             log.Logger
 	sub                *SubProcess
 	l2MetricsRegistrar L2MetricsRegistrar
 }
@@ -57,15 +59,15 @@ func (k *L2SuccinctFaultProofProposer) UserRPC() string {
 func (k *L2SuccinctFaultProofProposer) Start() {
 	k.mu.Lock()
 	if k.sub != nil {
-		k.p.Logger().Warn("Fault Proof Proposer already started")
+		k.logger.Warn("Fault Proof Proposer already started")
 		k.mu.Unlock()
 		return
 	}
 
 	// We pipe sub-process logs to the test-logger.
 	// And inspect them along the way, to get the RPC server address.
-	logOut := logpipe.ToLogger(k.p.Logger().New("component", "fault-proof", "src", "stdout"))
-	logErr := logpipe.ToLogger(k.p.Logger().New("component", "fault-proof", "src", "stderr"))
+	logOut := logpipe.ToLogger(k.logger.New("src", "stdout"))
+	logErr := logpipe.ToLogger(k.logger.New("src", "stderr"))
 
 	stdOutLogs := logpipe.LogProcessor(func(line []byte) {
 		e := logpipe.ParseRustStructuredLogs(line)
@@ -105,7 +107,7 @@ func (k *L2SuccinctFaultProofProposer) Stop() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if k.sub == nil {
-		k.p.Logger().Warn("fault-proof proposer already stopped")
+		k.logger.Warn("fault-proof proposer already stopped")
 		return
 	}
 
@@ -130,7 +132,7 @@ func WithSuperSuccinctFaultProofProposer(proposerID stack.L2ProposerID,
 func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
-	logger := p.Logger()
+	logger := p.Logger().New("component", "succinct-faultproof")
 
 	require := p.Require()
 	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
@@ -177,31 +179,32 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
 
-	proposalIntervalInBlocks := cfg.resolveFdgProposalIntervalInBlocks()
-	fetchInterval := cfg.resolveFdgFetchIntervalInBlocks()
-	fastFinalityMode := cfg.resolveFdgFastFinalityMode()
-	rustLog := cfg.resolveFdgRustLog()
-
 	envVars := map[string]string{
-		"L1_RPC":                      l1RPC,
-		"L1_BEACON_RPC":               l1BeaconRPC,
-		"L2_RPC":                      l2RPC,
-		"L2_NODE_RPC":                 l2NodeRPC,
-		"VERIFIER_ADDRESS":            mockVerifierAddr.String(),
-		"FACTORY_ADDRESS":             disputeGameFactoryProxy.String(),
-		"GAME_TYPE":                   "42",
-		"PRIVATE_KEY":                 proposerKeyStr,
-		"PROPOSAL_INTERVAL_IN_BLOCKS": fmt.Sprintf("%d", proposalIntervalInBlocks),
-		"FETCH_INTERVAL":              fmt.Sprintf("%d", fetchInterval),
-		"FAST_FINALITY_MODE":          fmt.Sprintf("%t", fastFinalityMode),
-		"MOCK_MODE":                   "true",
-		"L1_CONFIG_DIR":               cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":               cfg.l2ConfigDir,
-		"RUST_LOG":                    rustLog,
-		"LOG_FORMAT":                  "json",
+		"L1_RPC":           l1RPC,
+		"L1_BEACON_RPC":    l1BeaconRPC,
+		"L2_RPC":           l2RPC,
+		"L2_NODE_RPC":      l2NodeRPC,
+		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
+		"GAME_TYPE":        "42",
+		"MOCK_MODE":        "true",
+		"PRIVATE_KEY":      proposerKeyStr,
+		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
+		"LOG_FORMAT":       "json",
 	}
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
+
+	// Optional parameters (override defaults if set)
+	setEnvIfNotNil(envVars, "PROPOSAL_INTERVAL_IN_BLOCKS", cfg.proposalIntervalInBlocks)
+	setEnvIfNotNil(envVars, "FETCH_INTERVAL", cfg.fetchInterval)
+	setEnvIfNotNil(envVars, "FAST_FINALITY_MODE", cfg.fastFinalityMode)
+	setEnvIfNotNil(envVars, "FAST_FINALITY_PROVING_LIMIT", cfg.fastFinalityProvingLimit)
+	setEnvIfNotNil(envVars, "RANGE_SPLIT_COUNT", cfg.rangeSplitCount)
+	setEnvIfNotNil(envVars, "MAX_CONCURRENT_RANGE_PROOFS", cfg.maxConcurrentRangeProofs)
+	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
+	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
@@ -226,65 +229,35 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		execPath:           execPath,
 		args:               []string{"--env-file", envFile},
 		p:                  p,
+		logger:             logger,
 		l2MetricsRegistrar: orch,
 	}
-	p.Logger().Info("Starting fault-proof proposer")
+	logger.Info("Starting fault-proof proposer")
 	k.Start()
 	p.Cleanup(func() {
 		logger.Info("Stopping fault-proof proposer")
 		k.Stop()
 	})
-	p.Logger().Info("fault-proof proposer is running", "rpc", k.UserRPC())
+	logger.Info("fault-proof proposer is running", "rpc", k.UserRPC())
 	require.True(orch.proposers.SetIfMissing(proposerID, k), "must not already exist")
 }
-
-const (
-	defaultProposalIntervalInBlocks uint64 = 1800
-	defaultFetchIntervalInBlocks    uint64 = 30
-	defaultFastFinalityMode         bool   = false
-	defaultRustLog                  string = "info"
-)
 
 type FaultProofProposerConfig struct {
 	l1ConfigDir              string
 	l2ConfigDir              string
 	proposalIntervalInBlocks *uint64
 	fastFinalityMode         *bool
+	fastFinalityProvingLimit *uint64
+	rangeSplitCount          *uint64
+	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
+	mockMode                 *bool
 	rustLog                  *string
-}
-
-func (c *FaultProofProposerConfig) resolveFdgProposalIntervalInBlocks() uint64 {
-	if c.proposalIntervalInBlocks == nil {
-		return defaultProposalIntervalInBlocks
-	}
-	return *c.proposalIntervalInBlocks
-}
-
-func (c *FaultProofProposerConfig) resolveFdgFetchIntervalInBlocks() uint64 {
-	if c.fetchInterval == nil {
-		return defaultFetchIntervalInBlocks
-	}
-	return *c.fetchInterval
-}
-
-func (c *FaultProofProposerConfig) resolveFdgFastFinalityMode() bool {
-	if c.fastFinalityMode == nil {
-		return defaultFastFinalityMode
-	}
-	return *c.fastFinalityMode
-}
-
-func (c *FaultProofProposerConfig) resolveFdgRustLog() string {
-	if c.rustLog == nil {
-		return defaultRustLog
-	}
-	return *c.rustLog
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
 
-func WithFdgConfigDirsOption(
+func WithFPConfigDirsOption(
 	o *Orchestrator,
 	l1Dir, l2Dir string,
 ) {
@@ -295,28 +268,56 @@ func WithFdgConfigDirsOption(
 	))
 }
 
-func WithFdgProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
+func WithFPProposalIntervalInBlocks(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.proposalIntervalInBlocks = &n
 	},
 	)
 }
 
-func WithFdgFetchInterval(n uint64) FaultProofProposerOption {
+func WithFPFetchInterval(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.fetchInterval = &n
 	},
 	)
 }
 
-func WithFdgFastFinalityMode(enabled bool) FaultProofProposerOption {
+func WithFPFastFinalityMode(enabled bool) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.fastFinalityMode = &enabled
 	},
 	)
 }
 
-func WithFdgRustLog(level string) FaultProofProposerOption {
+func WithFPFastFinalityProvingLimit(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.fastFinalityProvingLimit = &n
+	},
+	)
+}
+
+func WithFPRangeSplitCount(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.rangeSplitCount = &n
+	},
+	)
+}
+
+func WithFPMaxConcurrentRangeProofs(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.maxConcurrentRangeProofs = &n
+	},
+	)
+}
+
+func WithFPMockMode(enabled bool) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.mockMode = &enabled
+	},
+	)
+}
+
+func WithFPRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
 	},

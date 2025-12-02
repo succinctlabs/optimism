@@ -28,6 +28,32 @@ func propagateEnvVarOrDefault(envVarName string, defaultValue string) string {
 	}
 }
 
+// setEnvFromEnvOrDefault sets the provided key in the provided env map to the value of the
+// corresponding environment variable, or to the provided default value if that environment variable is unset.
+func setEnvFromEnvOrDefault(env map[string]string, key, def string) {
+	if v := os.Getenv(key); v != "" {
+		env[key] = v
+	} else if def != "" {
+		env[key] = def
+	}
+}
+
+// setEnvIfNotNil sets the provided key in the provided envVars map to the string representation
+// of the provided val if val is not nil.
+func setEnvIfNotNil[T any](envVars map[string]string, key string, val *T) {
+	if val == nil {
+		return
+	}
+	switch v := any(*val).(type) {
+	case string:
+		envVars[key] = v
+	case bool:
+		envVars[key] = fmt.Sprintf("%t", v)
+	default:
+		envVars[key] = fmt.Sprintf("%d", v)
+	}
+}
+
 // NB: arbitrary start port with a low probability of conflict
 var availableLocalPortStart = 20_000
 var availableLocalPortMutex sync.Mutex
