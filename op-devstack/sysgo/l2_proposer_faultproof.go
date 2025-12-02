@@ -186,7 +186,6 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
 		"GAME_TYPE":        "42",
 		"PRIVATE_KEY":      proposerKeyStr,
-		"MOCK_MODE":        "true",
 		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
 		"LOG_FORMAT":       "json",
@@ -217,6 +216,9 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	}
 	if maxConcurrentRangeProofs != nil {
 		envVars["MAX_CONCURRENT_RANGE_PROOFS"] = fmt.Sprintf("%d", *maxConcurrentRangeProofs)
+	}
+	if cfg.mockMode != nil {
+		envVars["MOCK_MODE"] = fmt.Sprintf("%t", *cfg.mockMode)
 	}
 	if rustLog != nil {
 		envVars["RUST_LOG"] = *rustLog
@@ -268,6 +270,7 @@ type FaultProofProposerConfig struct {
 	rangeSplitCount          *uint64
 	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
+	mockMode                 *bool
 	rustLog                  *string
 }
 
@@ -322,6 +325,13 @@ func WithFPRangeSplitCount(n uint64) FaultProofProposerOption {
 func WithFPMaxConcurrentRangeProofs(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.maxConcurrentRangeProofs = &n
+	},
+	)
+}
+
+func WithFPMockMode(enabled bool) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.mockMode = &enabled
 	},
 	)
 }
