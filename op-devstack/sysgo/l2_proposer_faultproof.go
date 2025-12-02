@@ -191,6 +191,9 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"LOG_FORMAT":       "json",
 	}
 
+	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
+
+	// Optional parameters
 	setEnvIfNotNil(envVars, "PROPOSAL_INTERVAL_IN_BLOCKS", cfg.proposalIntervalInBlocks)
 	setEnvIfNotNil(envVars, "FETCH_INTERVAL", cfg.fetchInterval)
 	setEnvIfNotNil(envVars, "FAST_FINALITY_MODE", cfg.fastFinalityMode)
@@ -199,8 +202,6 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_RANGE_PROOFS", cfg.maxConcurrentRangeProofs)
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
-
-	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
@@ -317,18 +318,4 @@ func WithFPRustLog(level string) FaultProofProposerOption {
 		cfg.rustLog = &level
 	},
 	)
-}
-
-func setEnvIfNotNil[T any](envVars map[string]string, key string, val *T) {
-	if val == nil {
-		return
-	}
-	switch v := any(*val).(type) {
-	case string:
-		envVars[key] = v
-	case bool:
-		envVars[key] = fmt.Sprintf("%t", v)
-	default:
-		envVars[key] = fmt.Sprintf("%d", v)
-	}
 }

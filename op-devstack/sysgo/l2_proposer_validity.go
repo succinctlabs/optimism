@@ -333,11 +333,3 @@ func (e *EmbeddedPG) stop() {
 	}
 	_ = e.pg.Stop()
 }
-
-func setEnvFromEnvOrDefault(env map[string]string, key, def string) {
-	if v := os.Getenv(key); v != "" {
-		env[key] = v
-	} else if def != "" {
-		env[key] = def
-	}
-}
