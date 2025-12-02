@@ -26,7 +26,7 @@ func NewSimpleWithSyncTester(t devtest.T) *SimpleWithSyncTester {
 	system := shim.NewSystem(t)
 	orch := Orchestrator()
 	orch.Hydrate(system)
-	minimal := minimalFromSystem(t, system, orch)
+	minimal := MinimalFromSystem(t, system, orch)
 	l2 := system.L2Network(match.L2ChainA)
 	syncTester := l2.SyncTester(match.FirstSyncTester)
 

@@ -17,7 +17,7 @@ func NewMinimalWithProposer(t devtest.T) *MinimalWithProposer {
 	system := shim.NewSystem(t)
 	orch := Orchestrator()
 	orch.Hydrate(system)
-	minimal := minimalFromSystem(t, system, orch)
+	minimal := MinimalFromSystem(t, system, orch)
 	l2 := system.L2Network(match.Assume(t, match.L2ChainA))
 	proposer := l2.L2Proposer(match.Assume(t, match.FirstL2Proposer))
 	return &MinimalWithProposer{

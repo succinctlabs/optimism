@@ -35,7 +35,7 @@ func NewSingleChainMultiNodeWithoutCheck(t devtest.T) *SingleChainMultiNode {
 	system := shim.NewSystem(t)
 	orch := Orchestrator()
 	orch.Hydrate(system)
-	minimal := minimalFromSystem(t, system, orch)
+	minimal := MinimalFromSystem(t, system, orch)
 	l2 := system.L2Network(match.Assume(t, match.L2ChainA))
 	verifierCL := l2.L2CLNode(match.Assume(t,
 		match.And(
@@ -68,7 +68,7 @@ func NewSingleChainMultiNodeWithTestSeq(t devtest.T) *SingleChainMultiNodeWithTe
 	system := shim.NewSystem(t)
 	orch := Orchestrator()
 	orch.Hydrate(system)
-	minimal := minimalFromSystem(t, system, orch)
+	minimal := MinimalFromSystem(t, system, orch)
 	l2 := system.L2Network(match.Assume(t, match.L2ChainA))
 	verifierCL := l2.L2CLNode(match.Assume(t,
 		match.And(

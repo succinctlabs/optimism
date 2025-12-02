@@ -24,7 +24,7 @@ func NewMinimalWithSyncTester(t devtest.T) *MinimalWithSyncTester {
 	system := shim.NewSystem(t)
 	orch := Orchestrator()
 	orch.Hydrate(system)
-	minimal := minimalFromSystem(t, system, orch)
+	minimal := MinimalFromSystem(t, system, orch)
 	l2 := system.L2Network(match.Assume(t, match.L2ChainA))
 	syncTester := l2.SyncTester(match.Assume(t, match.FirstSyncTester))
 	return &MinimalWithSyncTester{
