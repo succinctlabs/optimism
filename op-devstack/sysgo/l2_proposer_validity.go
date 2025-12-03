@@ -60,8 +60,12 @@ func (k *L2SuccinctValidityProposer) UserRPC() string {
 }
 
 type ValidityProposerConfig struct {
-	l1ConfigDir string
-	l2ConfigDir string
+	l1ConfigDir        string
+	l2ConfigDir        string
+	submissionInterval *uint64
+	rangeProofInterval *uint64
+	mockMode           *bool
+	rustLog            *string
 }
 
 type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
@@ -76,6 +80,30 @@ func WithValidityConfigDirsOption(
 			cfg.l2ConfigDir = l2Dir
 		},
 	))
+}
+
+func WithVPSubmissionInterval(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.submissionInterval = &n
+	})
+}
+
+func WithVPRangeProofInterval(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rangeProofInterval = &n
+	})
+}
+
+func WithVPMockMode(enabled bool) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.mockMode = &enabled
+	})
+}
+
+func WithVPRustLog(level string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rustLog = &level
+	})
 }
 
 func (k *L2SuccinctValidityProposer) Start() {
@@ -143,20 +171,20 @@ func (k *L2SuccinctValidityProposer) Stop() {
 	k.sub = nil
 }
 
-func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
 func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
-	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
-func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
+func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger().New("component", "succinct-validity")
@@ -196,6 +224,9 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 
 	cfg := &ValidityProposerConfig{}
 	orch.proposerOptions.Apply(p, proposerID, cfg)
+	for _, opt := range opts {
+		opt(p, proposerID, cfg)
+	}
 
 	require.NotEmpty(cfg.l1ConfigDir, "validity proposer L1 config dir must be set")
 	require.NotEmpty(cfg.l2ConfigDir, "validity proposer L2 config dir must be set")
@@ -215,21 +246,24 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 
 	envVars := map[string]string{
-		"L1_RPC":               l1RPC,
-		"L1_BEACON_RPC":        l1BeaconRPC,
-		"L2_RPC":               l2RPC,
-		"L2_NODE_RPC":          l2NodeRPC,
-		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
-		"L2OO_ADDRESS":         l2ooAddr.String(),
-		"DATABASE_URL":         embeddedPG.URL,
-		"PRIVATE_KEY":          proposerKeyStr,
-		"SUBMISSION_INTERVAL":  "10",
-		"RANGE_PROOF_INTERVAL": "10",
-		"OP_SUCCINCT_MOCK":     "true",
-		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
-		"LOG_FORMAT":           "json",
+		"L1_RPC":           l1RPC,
+		"L1_BEACON_RPC":    l1BeaconRPC,
+		"L2_RPC":           l2RPC,
+		"L2_NODE_RPC":      l2NodeRPC,
+		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"L2OO_ADDRESS":     l2ooAddr.String(),
+		"DATABASE_URL":     embeddedPG.URL,
+		"PRIVATE_KEY":      proposerKeyStr,
+		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
+		"LOG_FORMAT":       "json",
 	}
+
+	// Optional parameters (override defaults if set)
+	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfg.submissionInterval)
+	setEnvIfNotNil(envVars, "RANGE_PROOF_INTERVAL", cfg.rangeProofInterval)
+	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
+	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
