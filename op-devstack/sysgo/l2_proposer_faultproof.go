@@ -153,7 +153,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	require.True(ok, "l2 CL node required")
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
-	require.NoError(err)
+	require.NoError(err, "failed to get proposer key")
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
 	cfg := &FaultProofProposerConfig{}

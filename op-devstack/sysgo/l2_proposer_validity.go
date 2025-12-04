@@ -60,12 +60,16 @@ func (k *L2SuccinctValidityProposer) UserRPC() string {
 }
 
 type ValidityProposerConfig struct {
-	l1ConfigDir        string
-	l2ConfigDir        string
-	submissionInterval *uint64
-	rangeProofInterval *uint64
-	mockMode           *bool
-	rustLog            *string
+	l1ConfigDir                string
+	l2ConfigDir                string
+	submissionInterval         *uint64
+	rangeProofInterval         *uint64
+	rangeProofEvmGasLimit      *uint64
+	maxConcurrentProofRequests *uint64
+	maxConcurrentWitnessGen    *uint64
+	opSuccinctConfigName       *string
+	mockMode                   *bool
+	rustLog                    *string
 }
 
 type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
@@ -91,6 +95,30 @@ func WithVPSubmissionInterval(n uint64) ValidityProposerOption {
 func WithVPRangeProofInterval(n uint64) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.rangeProofInterval = &n
+	})
+}
+
+func WithVPRangeProofEvmGasLimit(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rangeProofEvmGasLimit = &n
+	})
+}
+
+func WithVPMaxConcurrentProofRequests(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.maxConcurrentProofRequests = &n
+	})
+}
+
+func WithVPMaxConcurrentWitnessGen(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.maxConcurrentWitnessGen = &n
+	})
+}
+
+func WithVPOpSuccinctConfigName(name string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.opSuccinctConfigName = &name
 	})
 }
 
@@ -219,7 +247,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	})
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
-	require.NoError(err)
+	require.NoError(err, "failed to get proposer key")
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
 	cfg := &ValidityProposerConfig{}
@@ -262,6 +290,10 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	// Optional parameters (override defaults if set)
 	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfg.submissionInterval)
 	setEnvIfNotNil(envVars, "RANGE_PROOF_INTERVAL", cfg.rangeProofInterval)
+	setEnvIfNotNil(envVars, "RANGE_PROOF_EVM_GAS_LIMIT", cfg.rangeProofEvmGasLimit)
+	setEnvIfNotNil(envVars, "MAX_CONCURRENT_PROOF_REQUESTS", cfg.maxConcurrentProofRequests)
+	setEnvIfNotNil(envVars, "MAX_CONCURRENT_WITNESS_GEN", cfg.maxConcurrentWitnessGen)
+	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
