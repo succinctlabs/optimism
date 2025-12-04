@@ -222,10 +222,12 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	l1ChainID := l1CLID.ChainID().ToBig()
 	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
-	if err != nil {
-		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
-	}
+	require.NoError(err, "failed to get L1ProxyAdminOwnerRole key")
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
+
+	proposerKey, err := o.keys.Secret(devkeys.ProposerRole.Key(l2ChainID.ToBig()))
+	require.NoError(err, "failed to get ProposerRole key")
+	proposerAddr := crypto.PubkeyToAddress(proposerKey.PublicKey)
 
 	startingBlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
@@ -249,6 +251,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"L2_NODE_RPC":           strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
 		"VERIFIER_ADDRESS":      l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":           l1PAOKeyStr,
+		"PROPOSER":              proposerAddr.Hex(),
 		"SUBMISSION_INTERVAL":   "10",
 		"RANGE_PROOF_INTERVAL":  "10",
 		"L1_CONFIG_DIR":         l1CfgDir,
