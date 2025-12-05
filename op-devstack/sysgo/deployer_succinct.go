@@ -242,20 +242,25 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	err = os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
+	// Enables test-specific config file path for parallel test isolation
+	l2ooConfigPath := filepath.Join(base, "opsuccinctl2ooconfig.json")
+
 	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
-		"L1_RPC":                l1EL.UserRPC(),
-		"L1_BEACON_RPC":         l1CL.beaconHTTPAddr,
-		"L2_RPC":                strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
-		"L2_NODE_RPC":           strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS":      l2Net.deployment.sp1MockVerifier.Hex(),
-		"PRIVATE_KEY":           l1PAOKeyStr,
-		"PROPOSER":              proposerAddr.Hex(),
-		"L1_CONFIG_DIR":         l1CfgDir,
-		"L2_CONFIG_DIR":         l2CfgDir,
-		"STARTING_BLOCK_NUMBER": fmt.Sprintf("%d", startingBlockNumber),
-		"RUST_LOG":              "info",
+		"L1_RPC":           l1EL.UserRPC(),
+		"L1_BEACON_RPC":    l1CL.beaconHTTPAddr,
+		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
+		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
+		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
+		"PRIVATE_KEY":      l1PAOKeyStr,
+		"PROPOSER":         proposerAddr.Hex(),
+		"L1_CONFIG_DIR":    l1CfgDir,
+		"L2_CONFIG_DIR":    l2CfgDir,
+		"OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH": l2ooConfigPath,
+		"L2OO_CONFIG_PATH":                         l2ooConfigPath,
+		"STARTING_BLOCK_NUMBER":                    fmt.Sprintf("%d", startingBlockNumber),
+		"RUST_LOG":                                 "info",
 	}
 
 	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfgs.SubmissionInterval)
@@ -481,6 +486,9 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	err = os.MkdirAll(l2CfgDir, 0o755)
 	require.NoError(err, "mkdir l2 config dir")
 
+	// Enables test-specific config file path for parallel test isolation
+	fdgConfigPath := filepath.Join(base, "opsuccinctfdgconfig.json")
+
 	WithFPConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
 	envVars := map[string]string{
@@ -497,9 +505,11 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"STARTING_L2_BLOCK_NUMBER":            fmt.Sprintf("%d", startingL2BlockNumber),
 		"L1_CONFIG_DIR":                       l1CfgDir,
 		"L2_CONFIG_DIR":                       l2CfgDir,
-		"PERMISSIONLESS_MODE":                 "true",
-		"OP_SUCCINCT_MOCK":                    "true",
-		"RUST_LOG":                            "info",
+		"OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH": fdgConfigPath,
+		"FDG_CONFIG_PATH":     fdgConfigPath,
+		"PERMISSIONLESS_MODE": "true",
+		"OP_SUCCINCT_MOCK":    "true",
+		"RUST_LOG":            "info",
 	}
 
 	envDir := p.TempDir()
