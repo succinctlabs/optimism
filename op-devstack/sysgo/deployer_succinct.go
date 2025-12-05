@@ -252,13 +252,14 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"VERIFIER_ADDRESS":      l2Net.deployment.sp1MockVerifier.Hex(),
 		"PRIVATE_KEY":           l1PAOKeyStr,
 		"PROPOSER":              proposerAddr.Hex(),
-		"SUBMISSION_INTERVAL":   "10",
-		"RANGE_PROOF_INTERVAL":  "10",
 		"L1_CONFIG_DIR":         l1CfgDir,
 		"L2_CONFIG_DIR":         l2CfgDir,
 		"STARTING_BLOCK_NUMBER": fmt.Sprintf("%d", startingBlockNumber),
 		"RUST_LOG":              "info",
 	}
+
+	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfgs.SubmissionInterval)
+	setEnvIfNotNil(envVars, "RANGE_PROOF_INTERVAL", cfgs.RangeProofInterval)
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-l2oo-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
@@ -300,6 +301,8 @@ func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
 // L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
 type L2OOConfigs struct {
 	StartingBlockNumber *uint64
+	SubmissionInterval  *uint64
+	RangeProofInterval  *uint64
 }
 
 type L2OOOption func(*L2OOConfigs)
@@ -308,6 +311,20 @@ type L2OOOption func(*L2OOConfigs)
 func WithL2OOStartingBlockNumber(n uint64) L2OOOption {
 	return func(cfg *L2OOConfigs) {
 		cfg.StartingBlockNumber = &n
+	}
+}
+
+// WithL2OOSubmissionInterval sets the submission interval for the L2OO contract
+func WithL2OOSubmissionInterval(n uint64) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.SubmissionInterval = &n
+	}
+}
+
+// WithL2OORangeProofInterval sets the range proof interval for the L2OO contract
+func WithL2OORangeProofInterval(n uint64) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.RangeProofInterval = &n
 	}
 }
 
