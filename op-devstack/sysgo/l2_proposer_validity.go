@@ -363,7 +363,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 	const (
 		pgUser        = "op-succinct"
 		pgDB          = "op-succinct"
-		pgPass        = "posgres"
+		pgPass        = "postgres"
 		pgRuntimePath = "runtime"
 		pgDataPath    = "data"
 	)
