@@ -40,6 +40,14 @@ type L2SuccinctValidityProposer struct {
 
 var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
 
+// ValidityProposer extends L2Prop with validity-specific methods.
+type ValidityProposer interface {
+	L2Prop
+	DatabaseURL() string
+}
+
+var _ ValidityProposer = (*L2SuccinctValidityProposer)(nil)
+
 func (p *L2SuccinctValidityProposer) hydrate(system stack.ExtensibleSystem) {
 	require := system.T().Require()
 	rpcCl, err := client.NewRPC(system.T().Ctx(), system.Logger(), p.userRPC, client.WithLazyDial())
@@ -57,6 +65,13 @@ func (p *L2SuccinctValidityProposer) hydrate(system stack.ExtensibleSystem) {
 
 func (k *L2SuccinctValidityProposer) UserRPC() string {
 	return k.userRPC
+}
+
+func (k *L2SuccinctValidityProposer) DatabaseURL() string {
+	if k.embeddedPG != nil {
+		return k.embeddedPG.URL
+	}
+	return ""
 }
 
 type ValidityProposerConfig struct {
@@ -390,7 +405,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 		return nil, fmt.Errorf("start embedded postgres: %w", err)
 	}
 
-	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s", pgUser, pgPass, port, pgDB)
+	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s?sslmode=disable", pgUser, pgPass, port, pgDB)
 	epg := &EmbeddedPG{pg: pg, URL: url}
 	return epg, nil
 }
