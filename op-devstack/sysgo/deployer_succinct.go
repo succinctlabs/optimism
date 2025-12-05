@@ -258,7 +258,6 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		"L1_CONFIG_DIR":    l1CfgDir,
 		"L2_CONFIG_DIR":    l2CfgDir,
 		"OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH": l2ooConfigPath,
-		"L2OO_CONFIG_PATH":                         l2ooConfigPath,
 		"STARTING_BLOCK_NUMBER":                    fmt.Sprintf("%d", startingBlockNumber),
 		"RUST_LOG":                                 "info",
 	}
@@ -506,10 +505,9 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"L1_CONFIG_DIR":                       l1CfgDir,
 		"L2_CONFIG_DIR":                       l2CfgDir,
 		"OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH": fdgConfigPath,
-		"FDG_CONFIG_PATH":     fdgConfigPath,
-		"PERMISSIONLESS_MODE": "true",
-		"OP_SUCCINCT_MOCK":    "true",
-		"RUST_LOG":            "info",
+		"PERMISSIONLESS_MODE":                        "true",
+		"OP_SUCCINCT_MOCK":                           "true",
+		"RUST_LOG":                                   "info",
 	}
 
 	envDir := p.TempDir()
