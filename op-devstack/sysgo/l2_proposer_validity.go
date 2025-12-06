@@ -40,6 +40,14 @@ type L2SuccinctValidityProposer struct {
 
 var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
 
+// ValidityProposer extends L2Prop with validity-specific methods.
+type ValidityProposer interface {
+	L2Prop
+	DatabaseURL() string
+}
+
+var _ ValidityProposer = (*L2SuccinctValidityProposer)(nil)
+
 func (p *L2SuccinctValidityProposer) hydrate(system stack.ExtensibleSystem) {
 	require := system.T().Require()
 	rpcCl, err := client.NewRPC(system.T().Ctx(), system.Logger(), p.userRPC, client.WithLazyDial())
@@ -59,9 +67,24 @@ func (k *L2SuccinctValidityProposer) UserRPC() string {
 	return k.userRPC
 }
 
+func (k *L2SuccinctValidityProposer) DatabaseURL() string {
+	if k.embeddedPG != nil {
+		return k.embeddedPG.URL
+	}
+	return ""
+}
+
 type ValidityProposerConfig struct {
-	l1ConfigDir string
-	l2ConfigDir string
+	l1ConfigDir                string
+	l2ConfigDir                string
+	submissionInterval         *uint64
+	rangeProofInterval         *uint64
+	rangeProofEvmGasLimit      *uint64
+	maxConcurrentProofRequests *uint64
+	maxConcurrentWitnessGen    *uint64
+	opSuccinctConfigName       *string
+	mockMode                   *bool
+	rustLog                    *string
 }
 
 type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
@@ -76,6 +99,54 @@ func WithValidityConfigDirsOption(
 			cfg.l2ConfigDir = l2Dir
 		},
 	))
+}
+
+func WithVPSubmissionInterval(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.submissionInterval = &n
+	})
+}
+
+func WithVPRangeProofInterval(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rangeProofInterval = &n
+	})
+}
+
+func WithVPRangeProofEvmGasLimit(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rangeProofEvmGasLimit = &n
+	})
+}
+
+func WithVPMaxConcurrentProofRequests(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.maxConcurrentProofRequests = &n
+	})
+}
+
+func WithVPMaxConcurrentWitnessGen(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.maxConcurrentWitnessGen = &n
+	})
+}
+
+func WithVPOpSuccinctConfigName(name string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.opSuccinctConfigName = &name
+	})
+}
+
+func WithVPMockMode(enabled bool) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.mockMode = &enabled
+	})
+}
+
+func WithVPRustLog(level string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.rustLog = &level
+	})
 }
 
 func (k *L2SuccinctValidityProposer) Start() {
@@ -143,20 +214,20 @@ func (k *L2SuccinctValidityProposer) Stop() {
 	k.sub = nil
 }
 
-func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+func WithSuccinctValidityProposer(proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
 func WithSuperSuccinctValidityProposer(proposerID stack.L2ProposerID,
-	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) stack.Option[*Orchestrator] {
+	l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID)
+		WithSuccinctValidityProposerPostDeploy(orch, proposerID, l1CLID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
-func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID) {
+func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...ValidityProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger().New("component", "succinct-validity")
@@ -191,11 +262,14 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	})
 
 	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
-	require.NoError(err)
+	require.NoError(err, "failed to get proposer key")
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
 	cfg := &ValidityProposerConfig{}
 	orch.proposerOptions.Apply(p, proposerID, cfg)
+	for _, opt := range opts {
+		opt(p, proposerID, cfg)
+	}
 
 	require.NotEmpty(cfg.l1ConfigDir, "validity proposer L1 config dir must be set")
 	require.NotEmpty(cfg.l2ConfigDir, "validity proposer L2 config dir must be set")
@@ -215,21 +289,28 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
 
 	envVars := map[string]string{
-		"L1_RPC":               l1RPC,
-		"L1_BEACON_RPC":        l1BeaconRPC,
-		"L2_RPC":               l2RPC,
-		"L2_NODE_RPC":          l2NodeRPC,
-		"VERIFIER_ADDRESS":     mockVerifierAddr.String(),
-		"L2OO_ADDRESS":         l2ooAddr.String(),
-		"DATABASE_URL":         embeddedPG.URL,
-		"PRIVATE_KEY":          proposerKeyStr,
-		"SUBMISSION_INTERVAL":  "10",
-		"RANGE_PROOF_INTERVAL": "10",
-		"OP_SUCCINCT_MOCK":     "true",
-		"L1_CONFIG_DIR":        cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":        cfg.l2ConfigDir,
-		"LOG_FORMAT":           "json",
+		"L1_RPC":           l1RPC,
+		"L1_BEACON_RPC":    l1BeaconRPC,
+		"L2_RPC":           l2RPC,
+		"L2_NODE_RPC":      l2NodeRPC,
+		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"L2OO_ADDRESS":     l2ooAddr.String(),
+		"DATABASE_URL":     embeddedPG.URL,
+		"PRIVATE_KEY":      proposerKeyStr,
+		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
+		"LOG_FORMAT":       "json",
 	}
+
+	// Optional parameters (override defaults if set)
+	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfg.submissionInterval)
+	setEnvIfNotNil(envVars, "RANGE_PROOF_INTERVAL", cfg.rangeProofInterval)
+	setEnvIfNotNil(envVars, "RANGE_PROOF_EVM_GAS_LIMIT", cfg.rangeProofEvmGasLimit)
+	setEnvIfNotNil(envVars, "MAX_CONCURRENT_PROOF_REQUESTS", cfg.maxConcurrentProofRequests)
+	setEnvIfNotNil(envVars, "MAX_CONCURRENT_WITNESS_GEN", cfg.maxConcurrentWitnessGen)
+	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
+	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
+	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
@@ -282,7 +363,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 	const (
 		pgUser        = "op-succinct"
 		pgDB          = "op-succinct"
-		pgPass        = "posgres"
+		pgPass        = "postgres"
 		pgRuntimePath = "runtime"
 		pgDataPath    = "data"
 	)
@@ -324,7 +405,7 @@ func startEmbeddedPostgres(p devtest.P) (*EmbeddedPG, error) {
 		return nil, fmt.Errorf("start embedded postgres: %w", err)
 	}
 
-	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s", pgUser, pgPass, port, pgDB)
+	url := fmt.Sprintf("postgres://%s:%s@localhost:%d/%s?sslmode=disable", pgUser, pgPass, port, pgDB)
 	epg := &EmbeddedPG{pg: pg, URL: url}
 	return epg, nil
 }

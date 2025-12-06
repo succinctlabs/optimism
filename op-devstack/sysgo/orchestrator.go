@@ -85,6 +85,11 @@ func (o *Orchestrator) ControlPlane() stack.ControlPlane {
 	return o.controlPlane
 }
 
+// GetProposer returns the L2Prop for the given proposer ID.
+func (o *Orchestrator) GetProposer(id stack.L2ProposerID) (L2Prop, bool) {
+	return o.proposers.Get(id)
+}
+
 func (o *Orchestrator) EnableTimeTravel() {
 	if o.timeTravelClock == nil {
 		o.timeTravelClock = clock.NewAdvancingClock(100 * time.Millisecond)
