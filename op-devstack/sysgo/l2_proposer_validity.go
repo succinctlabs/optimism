@@ -85,6 +85,7 @@ type ValidityProposerConfig struct {
 	opSuccinctConfigName       *string
 	mockMode                   *bool
 	rustLog                    *string
+	envFilePath                *string
 }
 
 type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
@@ -152,6 +153,14 @@ func WithVPMockMode(enabled bool) ValidityProposerOption {
 func WithVPRustLog(level string) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.rustLog = &level
+	})
+}
+
+// WithVPWriteEnvFile enables writing environment variables to a file.
+// When set, the proposer will write all env vars to the specified path at startup.
+func WithVPWriteEnvFile(path string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.envFilePath = &path
 	})
 }
 
@@ -329,6 +338,12 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	envFile := filepath.Join(envDir, fmt.Sprintf("validity-proposer-%s.env", proposerID.String()))
 	err = writeEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write validity proposer env file")
+
+	if cfg.envFilePath != nil {
+		err = writeEnvFile(*cfg.envFilePath, envVars)
+		p.Require().NoError(err, "must write env file")
+		logger.Info("env file written", "path", *cfg.envFilePath)
+	}
 
 	execPath := os.Getenv("VALIDITY_PROPOSER_EXEC_PATH")
 	p.Require().NotEmpty(execPath, "VALIDITY_PROPOSER_EXEC_PATH environment variable must be set")

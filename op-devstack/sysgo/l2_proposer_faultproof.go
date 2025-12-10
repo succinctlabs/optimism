@@ -227,6 +227,12 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	err = writeEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof proposer env file")
 
+	if cfg.envFilePath != nil {
+		err = writeEnvFile(*cfg.envFilePath, envVars)
+		p.Require().NoError(err, "must write env file")
+		logger.Info("env file written", "path", *cfg.envFilePath)
+	}
+
 	execPath := os.Getenv("FAULT_PROOF_PROPOSER_EXEC_PATH")
 	p.Require().NotEmpty(execPath, "FAULT_PROOF_PROPOSER_EXEC_PATH environment variable must be set")
 	_, err = os.Stat(execPath)
@@ -262,6 +268,7 @@ type FaultProofProposerConfig struct {
 	fetchInterval            *uint64
 	mockMode                 *bool
 	rustLog                  *string
+	envFilePath              *string
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
@@ -329,6 +336,15 @@ func WithFPMockMode(enabled bool) FaultProofProposerOption {
 func WithFPRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
+	},
+	)
+}
+
+// WithFPWriteEnvFile enables writing environment variables to a file.
+// When set, the proposer will write all env vars to the specified path at startup.
+func WithFPWriteEnvFile(path string) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.envFilePath = &path
 	},
 	)
 }
