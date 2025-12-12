@@ -217,9 +217,11 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
-		p.Require().NoError(err, "must get available port for metrics")
-		setEnvFromEnvOrDefault(envVars, "FAULT_PROOF_PROPOSER_METRICS_PORT", metricsPort)
-		envVars["FAULT_PROOF_PROPOSER_METRICS_ENABLED"] = "true"
+		require.NoError(err, "failed to get available port for metrics")
+		envVars["PROPOSER_METRICS_PORT"] = metricsPort
+		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
+		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
+		logger.Info("Registered fault-proof proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()

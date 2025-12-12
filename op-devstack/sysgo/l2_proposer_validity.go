@@ -329,9 +329,11 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
-		p.Require().NoError(err, "must get available port for metrics")
-		setEnvFromEnvOrDefault(envVars, "VALIDITY_PROPOSER_METRICS_PORT", metricsPort)
-		envVars["VALIDITY_PROPOSER_METRICS_ENABLED"] = "true"
+		require.NoError(err, "failed to get available port for metrics")
+		envVars["METRICS_PORT"] = metricsPort
+		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
+		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
+		logger.Info("Registered validity proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
