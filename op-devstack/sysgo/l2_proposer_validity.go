@@ -314,6 +314,15 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		"LOG_FORMAT":       "json",
 	}
 
+	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
+
+	// Mock mode: default true, false if NETWORK_PRIVATE_KEY is set (real proving)
+	if envVars["NETWORK_PRIVATE_KEY"] != "" {
+		envVars["OP_SUCCINCT_MOCK"] = "false"
+	} else {
+		envVars["OP_SUCCINCT_MOCK"] = "true"
+	}
+
 	// Optional parameters (override defaults if set)
 	setEnvIfNotNil(envVars, "SUBMISSION_INTERVAL", cfg.submissionInterval)
 	setEnvIfNotNil(envVars, "RANGE_PROOF_INTERVAL", cfg.rangeProofInterval)
@@ -324,8 +333,6 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
-
-	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
