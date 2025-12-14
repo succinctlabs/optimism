@@ -260,18 +260,15 @@ func getPrometheusConfigFilePath(p devtest.P, metricsEndpoints *locks.RWMap[stri
 
 // getGrafanaProvisioningDirPath returns the path to the grafana provisioning dir for metrics.
 // If the provisioning dir env var is set, this function will use that path. If not, a temp dir
-// will be created and removed when this process terminates.
-// Note: from the returned directory, the generated prometheus.yml will be at:
-//
-//	returned_dir_path/provisioning/datasources/prometheus.yml
+// will be created. The returned path is mounted to /etc/grafana/provisioning in Grafana.
 func getGrafanaProvisioningDirPath(p devtest.P) string {
 	// If the caller provides a Grafana provisioning directory, use that, otherwise use a temp dir
 	baseDir := os.Getenv(grafanaProvisioningDirEnvVar)
 	if baseDir == "" {
-		baseDir = filepath.Join(p.TempDir(), "grafana")
+		baseDir = filepath.Join(p.TempDir(), "grafana-provisioning")
 	}
 
-	dirPath := filepath.Join(baseDir, "provisioning/datasources")
+	dirPath := filepath.Join(baseDir, "datasources")
 	err := os.MkdirAll(dirPath, 0777)
 	p.Require().NoError(err, "getGrafanaProvisioningDirPath: error writing dir path", "dirPath", dirPath)
 
