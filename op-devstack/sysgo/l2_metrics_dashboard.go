@@ -90,16 +90,14 @@ func (g *L2MetricsDashboard) Stop() {
 func (g *L2MetricsDashboard) startPrometheus() {
 	// Create the sub-process.
 	// We pipe sub-process logs to the test-logger.
-	logOut := logpipe.ToLogger(g.p.Logger().New("component", "prometheus", "src", "stdout"))
-	logErr := logpipe.ToLogger(g.p.Logger().New("component", "prometheus", "src", "stderr"))
+	logOut := g.p.Logger().New("component", "prometheus", "src", "stdout")
+	logErr := g.p.Logger().New("component", "prometheus", "src", "stderr")
 
 	stdOutLogs := logpipe.LogProcessor(func(line []byte) {
-		e := logpipe.ParseRustStructuredLogs(line)
-		logOut(e)
+		logOut.Info(string(line))
 	})
 	stdErrLogs := logpipe.LogProcessor(func(line []byte) {
-		e := logpipe.ParseRustStructuredLogs(line)
-		logErr(e)
+		logErr.Warn(string(line))
 	})
 
 	g.prometheusSubprocess = NewSubProcess(g.p, stdOutLogs, stdErrLogs)
@@ -113,16 +111,14 @@ func (g *L2MetricsDashboard) startPrometheus() {
 func (g *L2MetricsDashboard) startGrafana() {
 	// Create the sub-process.
 	// We pipe sub-process logs to the test-logger.
-	logOut := logpipe.ToLogger(g.p.Logger().New("component", "grafana", "src", "stdout"))
-	logErr := logpipe.ToLogger(g.p.Logger().New("component", "grafana", "src", "stderr"))
+	logOut := g.p.Logger().New("component", "grafana", "src", "stdout")
+	logErr := g.p.Logger().New("component", "grafana", "src", "stderr")
 
 	stdOutLogs := logpipe.LogProcessor(func(line []byte) {
-		e := logpipe.ParseRustStructuredLogs(line)
-		logOut(e)
+		logOut.Info(string(line))
 	})
 	stdErrLogs := logpipe.LogProcessor(func(line []byte) {
-		e := logpipe.ParseRustStructuredLogs(line)
-		logErr(e)
+		logErr.Warn(string(line))
 	})
 
 	g.grafanaSubprocess = NewSubProcess(g.p, stdOutLogs, stdErrLogs)
@@ -268,11 +264,15 @@ func getGrafanaProvisioningDirPath(p devtest.P) string {
 		baseDir = filepath.Join(p.TempDir(), "grafana-provisioning")
 	}
 
-	dirPath := filepath.Join(baseDir, "datasources")
-	err := os.MkdirAll(dirPath, 0777)
-	p.Require().NoError(err, "getGrafanaProvisioningDirPath: error writing dir path", "dirPath", dirPath)
+	// Create all provisioning subdirectories that Grafana expects
+	for _, subdir := range []string{"datasources", "plugins", "alerting"} {
+		dirPath := filepath.Join(baseDir, subdir)
+		err := os.MkdirAll(dirPath, 0777)
+		p.Require().NoError(err, "getGrafanaProvisioningDirPath: error creating dir", "dirPath", dirPath)
+	}
 
-	p.Logger().Info("Created grafana/provisioning/datasources dir", "dirPath", dirPath)
+	dirPath := filepath.Join(baseDir, "datasources")
+	p.Logger().Info("Created grafana provisioning directories", "baseDir", baseDir)
 
 	filePath := filepath.Join(dirPath, "prometheus.yml")
 	file, err := os.Create(filePath)
