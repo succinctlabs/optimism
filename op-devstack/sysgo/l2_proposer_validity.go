@@ -34,7 +34,7 @@ type L2SuccinctValidityProposer struct {
 	p                  devtest.P
 	logger             log.Logger
 	sub                *SubProcess
-	embeddedPG         *EmbeddedPG
+	databaseURL        string
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
@@ -43,6 +43,8 @@ var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
 // ValidityProposer extends L2Prop with validity-specific methods.
 type ValidityProposer interface {
 	L2Prop
+	Start()
+	Stop()
 	DatabaseURL() string
 }
 
@@ -68,10 +70,7 @@ func (k *L2SuccinctValidityProposer) UserRPC() string {
 }
 
 func (k *L2SuccinctValidityProposer) DatabaseURL() string {
-	if k.embeddedPG != nil {
-		return k.embeddedPG.URL
-	}
-	return ""
+	return k.databaseURL
 }
 
 type ValidityProposerConfig struct {
@@ -82,6 +81,7 @@ type ValidityProposerConfig struct {
 	rangeProofEvmGasLimit      *uint64
 	maxConcurrentProofRequests *uint64
 	maxConcurrentWitnessGen    *uint64
+	loopInterval               *uint64
 	opSuccinctConfigName       *string
 	mockMode                   *bool
 	rustLog                    *string
@@ -131,6 +131,12 @@ func WithVPMaxConcurrentWitnessGen(n uint64) ValidityProposerOption {
 	})
 }
 
+func WithVPLoopInterval(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.loopInterval = &n
+	})
+}
+
 func WithVPOpSuccinctConfigName(name string) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.opSuccinctConfigName = &name
@@ -174,10 +180,6 @@ func (k *L2SuccinctValidityProposer) Start() {
 	k.mu.Unlock()
 
 	k.sub.OnExit(func(err error) {
-		if k.embeddedPG != nil {
-			k.embeddedPG.stop()
-		}
-
 		if errors.Is(err, syscall.ECHILD) {
 			k.logger.Info("validity proposer already reaped on shutdown", "err", err)
 			return
@@ -188,6 +190,7 @@ func (k *L2SuccinctValidityProposer) Start() {
 			if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 				sig := ws.Signal()
 				if sig == syscall.SIGINT || sig == syscall.SIGTERM {
+					// Keeping postgres running for restart tests
 					return
 				}
 			}
@@ -308,6 +311,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	setEnvIfNotNil(envVars, "RANGE_PROOF_EVM_GAS_LIMIT", cfg.rangeProofEvmGasLimit)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_PROOF_REQUESTS", cfg.maxConcurrentProofRequests)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_WITNESS_GEN", cfg.maxConcurrentWitnessGen)
+	setEnvIfNotNil(envVars, "LOOP_INTERVAL", cfg.loopInterval)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
@@ -338,7 +342,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		args:               []string{"--env-file", envFile},
 		p:                  p,
 		logger:             logger,
-		embeddedPG:         embeddedPG,
+		databaseURL:        embeddedPG.URL,
 		l2MetricsRegistrar: orch,
 	}
 	logger.Info("Starting validity proposer")

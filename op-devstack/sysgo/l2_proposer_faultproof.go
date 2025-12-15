@@ -37,6 +37,15 @@ type L2SuccinctFaultProofProposer struct {
 
 var _ L2Prop = (*L2SuccinctFaultProofProposer)(nil)
 
+// FaultProofProposer extends L2Prop with faultproof-specific methods.
+type FaultProofProposer interface {
+	L2Prop
+	Start()
+	Stop()
+}
+
+var _ FaultProofProposer = (*L2SuccinctFaultProofProposer)(nil)
+
 func (p *L2SuccinctFaultProofProposer) hydrate(system stack.ExtensibleSystem) {
 	require := system.T().Require()
 	rpcCl, err := client.NewRPC(system.T().Ctx(), system.Logger(), p.userRPC, client.WithLazyDial())
