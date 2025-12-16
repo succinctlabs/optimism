@@ -217,6 +217,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "FAST_FINALITY_PROVING_LIMIT", cfg.fastFinalityProvingLimit)
 	setEnvIfNotNil(envVars, "RANGE_SPLIT_COUNT", cfg.rangeSplitCount)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_RANGE_PROOFS", cfg.maxConcurrentRangeProofs)
+	setEnvIfNotNil(envVars, "TIMEOUT", cfg.timeout)
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
@@ -273,6 +274,7 @@ type FaultProofProposerConfig struct {
 	rangeSplitCount          *uint64
 	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
+	timeout                  *uint64
 	mockMode                 *bool
 	rustLog                  *string
 	envFilePath              *string
@@ -329,6 +331,13 @@ func WithFPRangeSplitCount(n uint64) FaultProofProposerOption {
 func WithFPMaxConcurrentRangeProofs(n uint64) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.maxConcurrentRangeProofs = &n
+	},
+	)
+}
+
+func WithFPTimeout(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.timeout = &n
 	},
 	)
 }

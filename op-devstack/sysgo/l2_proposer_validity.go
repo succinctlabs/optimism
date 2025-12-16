@@ -82,6 +82,7 @@ type ValidityProposerConfig struct {
 	maxConcurrentProofRequests *uint64
 	maxConcurrentWitnessGen    *uint64
 	loopInterval               *uint64
+	provingTimeout             *uint64
 	opSuccinctConfigName       *string
 	mockMode                   *bool
 	rustLog                    *string
@@ -135,6 +136,12 @@ func WithVPMaxConcurrentWitnessGen(n uint64) ValidityProposerOption {
 func WithVPLoopInterval(n uint64) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.loopInterval = &n
+	})
+}
+
+func WithVPProvingTimeout(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.provingTimeout = &n
 	})
 }
 
@@ -330,6 +337,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_PROOF_REQUESTS", cfg.maxConcurrentProofRequests)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_WITNESS_GEN", cfg.maxConcurrentWitnessGen)
 	setEnvIfNotNil(envVars, "LOOP_INTERVAL", cfg.loopInterval)
+	setEnvIfNotNil(envVars, "PROVING_TIMEOUT", cfg.provingTimeout)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
