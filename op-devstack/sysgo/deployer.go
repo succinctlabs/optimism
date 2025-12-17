@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/artifacts"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/inspect"
+	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/opcm"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/state"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
@@ -53,6 +54,14 @@ func WithForkAtL1Genesis(fork forks.Fork) DeployerOption {
 func WithForkAtL1Offset(fork forks.Fork, offset uint64) DeployerOption {
 	return func(_ devtest.P, _ devkeys.Keys, builder intentbuilder.Builder) {
 		builder.L1().WithL1ForkAtOffset(fork, &offset)
+	}
+}
+
+// WithSP1ProofMode configures the SP1 verifier backend used for OP Succinct deployment.
+// Supported values: "plonk" (default) and "groth16".
+func WithSP1ProofMode(mode string) DeployerOption {
+	return func(_ devtest.P, _ devkeys.Keys, builder intentbuilder.Builder) {
+		builder.WithGlobalOverride(opcm.SP1ProofModeOverrideKey, string(opcm.ParseSP1ProofMode(mode)))
 	}
 }
 

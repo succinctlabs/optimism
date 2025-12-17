@@ -1,29 +1,33 @@
 package opcm
 
 import (
-	"os"
 	"strings"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/script"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// SP1ProverMode represents the SP1 prover backend type.
-type SP1ProverMode string
+// SP1ProofMode represents the SP1 prover backend type.
+type SP1ProofMode string
 
 const (
-	SP1ProverModePlonk   SP1ProverMode = "plonk"
-	SP1ProverModeGroth16 SP1ProverMode = "groth16"
+	SP1ProofModePlonk   SP1ProofMode = "plonk"
+	SP1ProofModeGroth16 SP1ProofMode = "groth16"
 )
 
-// GetSP1ProverMode returns the configured SP1 prover mode from environment.
-// Defaults to Plonk if not set or invalid.
-func GetSP1ProverMode() SP1ProverMode {
-	mode := strings.ToLower(os.Getenv("SP1_PROVER_MODE"))
-	if mode == "groth16" {
-		return SP1ProverModeGroth16
+// SP1ProofModeOverrideKey is the global deploy override key used to select the SP1 proof mode.
+// This is consumed by the op-deployer OP Succinct pipeline stage.
+const SP1ProofModeOverrideKey = "sp1ProofMode"
+
+// ParseSP1ProofMode parses a user-provided proof mode string.
+// Defaults to Plonk if unset or unrecognized.
+func ParseSP1ProofMode(mode string) SP1ProofMode {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case string(SP1ProofModeGroth16):
+		return SP1ProofModeGroth16
+	default:
+		return SP1ProofModePlonk
 	}
-	return SP1ProverModePlonk
 }
 
 type DeployOPSuccinctOutput struct {
@@ -49,18 +53,18 @@ func NewDeploySP1VerifierGroth16Script(host *script.Host) (DeploySP1VerifierScri
 	return script.NewDeployScriptWithoutInputFromFile[common.Address](host, "DeployVerifier.s.sol", "DeployVerifierGroth16")
 }
 
-// NewDeploySP1VerifierScript loads the appropriate SP1Verifier deployment script based on SP1_PROVER_MODE.
+// NewDeploySP1VerifierScript loads the appropriate SP1Verifier deployment script based on mode.
 // Use this for network proving; use NewDeploySP1MockVerifierScript for local testing.
-func NewDeploySP1VerifierScript(host *script.Host) (DeploySP1VerifierScript, error) {
-	if GetSP1ProverMode() == SP1ProverModeGroth16 {
+func NewDeploySP1VerifierScript(host *script.Host, mode SP1ProofMode) (DeploySP1VerifierScript, error) {
+	if mode == SP1ProofModeGroth16 {
 		return NewDeploySP1VerifierGroth16Script(host)
 	}
 	return NewDeploySP1VerifierPlonkScript(host)
 }
 
 // NewDeployOPSuccinctScripts deploys OP Succinct contracts at genesis.
-func NewDeployOPSuccinctScripts(host *script.Host) DeployOPSuccinctOutput {
-	deploySP1Verifier, err := NewDeploySP1VerifierScript(host)
+func NewDeployOPSuccinctScripts(host *script.Host, mode SP1ProofMode) DeployOPSuccinctOutput {
+	deploySP1Verifier, err := NewDeploySP1VerifierScript(host, mode)
 	if err != nil {
 		panic("failed to load DeploySP1Verifier script: " + err.Error())
 	}
