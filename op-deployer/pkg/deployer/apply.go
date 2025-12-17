@@ -346,6 +346,11 @@ func ApplyPipeline(
 				return pipeline.DeployAdditionalDisputeGames(pEnv, intent, st, chainID)
 			},
 		}, pipelineStage{
+			fmt.Sprintf("deploy-op-succinct-%s", chainID.Hex()),
+			func() error {
+				return pipeline.DeployOPSuccinct(pEnv, intent, st, chainID)
+			},
+		}, pipelineStage{
 			fmt.Sprintf("generate-l2-genesis-%s", chainID.Hex()),
 			func() error {
 				return pipeline.GenerateL2Genesis(pEnv, intent, bundle, st, chainID)

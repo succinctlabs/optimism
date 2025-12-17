@@ -297,22 +297,24 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
-	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
 	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
+
+	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
+	require.NoError(err, "failed to get verifier address")
 
 	logger.Info("L1_RPC", "url", l1RPC)
 	logger.Info("L1_BEACON_RPC", "url", l1BeaconRPC)
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
-	logger.Info("OPSuccinctL2OutputOracle", "address", l2ooAddr)
-	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
+	logger.Info("VERIFIER_ADDRESS", "address", verifierAddr)
+	logger.Info("L2OO_ADDRESS", "address", l2ooAddr)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1RPC,
 		"L1_BEACON_RPC":    l1BeaconRPC,
 		"L2_RPC":           l2RPC,
 		"L2_NODE_RPC":      l2NodeRPC,
-		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"VERIFIER_ADDRESS": verifierAddr.String(),
 		"L2OO_ADDRESS":     l2ooAddr.String(),
 		"DATABASE_URL":     embeddedPG.URL,
 		"PRIVATE_KEY":      proposerKeyStr,

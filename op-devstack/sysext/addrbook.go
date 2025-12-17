@@ -16,7 +16,8 @@ const (
 	DisputeGameFactoryName    = "disputeGameFactoryProxy"
 	L1StandardBridgeProxyName = "l1StandardBridgeProxy"
 
-	SP1MockVerifier          = "sp1MockVerifier"
+	SP1Verifier              = "sp1Verifier"
+	sp1MockVerifier          = "sp1MockVerifier"
 	OPSuccinctL2OutputOracle = "opSuccinctL2OutputOracle"
 )
 
@@ -44,6 +45,7 @@ type l2AddressBook struct {
 	systemConfig             common.Address
 	disputeGameFactory       common.Address
 	l1StandardBridge         common.Address
+	sp1Verifier              common.Address
 	sp1MockVerifier          common.Address
 	opSuccinctL2OutputOracle common.Address
 }
@@ -53,7 +55,8 @@ func newL2AddressBook(l1Addresses descriptors.AddressMap) *l2AddressBook {
 		systemConfig:             l1Addresses[SystemConfigAddressName],
 		disputeGameFactory:       l1Addresses[DisputeGameFactoryName],
 		l1StandardBridge:         l1Addresses[L1StandardBridgeProxyName],
-		sp1MockVerifier:          l1Addresses[SP1MockVerifier],
+		sp1Verifier:              l1Addresses[SP1Verifier],
+		sp1MockVerifier:          l1Addresses[sp1MockVerifier],
 		opSuccinctL2OutputOracle: l1Addresses[OPSuccinctL2OutputOracle],
 	}
 }
@@ -68,6 +71,10 @@ func (a *l2AddressBook) DisputeGameFactoryProxyAddr() common.Address {
 
 func (a *l2AddressBook) L1StandardBridgeProxyAddr() common.Address {
 	return a.l1StandardBridge
+}
+
+func (a *l2AddressBook) SP1VerifierAddr() common.Address {
+	return a.sp1Verifier
 }
 
 func (a *l2AddressBook) SP1MockVerifierAddr() common.Address {

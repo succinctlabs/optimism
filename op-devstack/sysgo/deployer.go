@@ -1,6 +1,7 @@
 package sysgo
 
 import (
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -174,6 +175,7 @@ type L2Deployment struct {
 	l1StandardBridgeProxy          common.Address
 	proxyAdmin                     common.Address
 	permissionlessDelayedWETHProxy common.Address
+	sp1Verifier                    common.Address
 	sp1MockVerifier                common.Address
 	opSuccinctL2OutputOracle       common.Address
 }
@@ -200,12 +202,32 @@ func (d *L2Deployment) PermissionlessDelayedWETHProxyAddr() common.Address {
 	return d.permissionlessDelayedWETHProxy
 }
 
+func (d *L2Deployment) SP1VerifierAddr() common.Address {
+	return d.sp1Verifier
+}
+
 func (d *L2Deployment) SP1MockVerifierAddr() common.Address {
 	return d.sp1MockVerifier
 }
 
 func (d *L2Deployment) OPSuccinctL2OutputOracleAddr() common.Address {
 	return d.opSuccinctL2OutputOracle
+}
+
+// resolveSP1VerifierAddr returns the appropriate SP1 verifier address based on proving mode.
+// Uses the real verifier for network proving (when NETWORK_PRIVATE_KEY is set),
+// otherwise uses the mock verifier for local testing.
+func (d *L2Deployment) resolveSP1VerifierAddr() (common.Address, error) {
+	var addr common.Address
+	if os.Getenv("NETWORK_PRIVATE_KEY") != "" {
+		addr = d.sp1Verifier
+	} else {
+		addr = d.sp1MockVerifier
+	}
+	if addr == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("verifier address is zero; ensure SP1 verifier is deployed")
+	}
+	return addr, nil
 }
 
 type InteropMigration struct {
@@ -452,6 +474,7 @@ func (wb *worldBuilder) buildL2DeploymentOutputs() {
 			l1StandardBridgeProxy:          ch.L1StandardBridgeProxy,
 			proxyAdmin:                     ch.OpChainProxyAdminImpl,
 			permissionlessDelayedWETHProxy: ch.DelayedWethPermissionlessGameProxy,
+			sp1Verifier:                    ch.SP1Verifier,
 			sp1MockVerifier:                ch.SP1MockVerifier,
 			opSuccinctL2OutputOracle:       ch.OPSuccinctL2OutputOracle,
 		}

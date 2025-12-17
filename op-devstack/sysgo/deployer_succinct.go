@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -247,12 +248,15 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	WithValidityConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
+	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
+	require.NoError(err, "failed to get verifier address")
+
 	envVars := map[string]string{
 		"L1_RPC":           l1EL.UserRPC(),
 		"L1_BEACON_RPC":    l1CL.beaconHTTPAddr,
 		"L2_RPC":           strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://"),
 		"L2_NODE_RPC":      strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://"),
-		"VERIFIER_ADDRESS": l2Net.deployment.sp1MockVerifier.Hex(),
+		"VERIFIER_ADDRESS": verifierAddr.Hex(),
 		"PRIVATE_KEY":      l1PAOKeyStr,
 		"PROPOSER":         proposerAddr.Hex(),
 		"L1_CONFIG_DIR":    l1CfgDir,
@@ -424,7 +428,7 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	o.P().Require().True(ok, "l2 network required")
-	l2Net.deployment.sp1MockVerifier = addrs.Sp1Verifier
+	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 }
 
@@ -490,6 +494,9 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 
 	WithFPConfigDirsOption(o, l1CfgDir, l2CfgDir)
 
+	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
+	require.NoError(err, "failed to get verifier address")
+
 	envVars := map[string]string{
 		"L1_RPC":                              l1EL.UserRPC(),
 		"L1_BEACON_RPC":                       l1CL.beaconHTTPAddr,
@@ -499,14 +506,14 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"DISPUTE_GAME_FINALITY_DELAY_SECONDS": fmt.Sprintf("%d", disputeGameFinalityDelaySecs),
 		"MAX_CHALLENGE_DURATION":              fmt.Sprintf("%d", maxChallengeDuration),
 		"MAX_PROVE_DURATION":                  fmt.Sprintf("%d", maxProveDuration),
-		"VERIFIER_ADDRESS":                    l2Net.deployment.sp1MockVerifier.Hex(),
+		"VERIFIER_ADDRESS":                    verifierAddr.Hex(),
 		"PRIVATE_KEY":                         l1PAOKeyStr,
 		"STARTING_L2_BLOCK_NUMBER":            fmt.Sprintf("%d", startingL2BlockNumber),
 		"L1_CONFIG_DIR":                       l1CfgDir,
 		"L2_CONFIG_DIR":                       l2CfgDir,
 		"OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH": fdgConfigPath,
 		"PERMISSIONLESS_MODE":                        "true",
-		"OP_SUCCINCT_MOCK":                           "true",
+		"OP_SUCCINCT_MOCK":                           strconv.FormatBool(os.Getenv("NETWORK_PRIVATE_KEY") == ""),
 		"RUST_LOG":                                   "info",
 	}
 
@@ -603,7 +610,6 @@ func WithFdgMaxChallengeDuration(n uint64) FdgOption {
 func WithFdgMaxProveDuration(n uint64) FdgOption {
 	return func(cfg *FdgConfigs) {
 		cfg.maxProveDuration = &n
-
 	}
 }
 

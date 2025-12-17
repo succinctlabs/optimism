@@ -1225,6 +1225,7 @@ type L1Deployments struct {
 	ProtocolVersionsProxy             common.Address `json:"ProtocolVersionsProxy"`
 	DataAvailabilityChallenge         common.Address `json:"DataAvailabilityChallenge"`
 	DataAvailabilityChallengeProxy    common.Address `json:"DataAvailabilityChallengeProxy"`
+	SP1Verifier                       common.Address `json:"SP1Verifier"`
 	SP1MockVerifier                   common.Address `json:"SP1MockVerifier"`
 	OPSuccinctL2OutputOracle          common.Address `json:"OPSuccinctL2OutputOracle"`
 }
@@ -1255,6 +1256,7 @@ func CreateL1DeploymentsFromContracts(contracts *addresses.L1Contracts) *L1Deplo
 		ProtocolVersionsProxy:             contracts.ProtocolVersionsProxy,
 		DataAvailabilityChallenge:         contracts.AltDAChallengeImpl,
 		DataAvailabilityChallengeProxy:    contracts.AltDAChallengeProxy,
+		SP1Verifier:                       contracts.SP1Verifier,
 		SP1MockVerifier:                   contracts.SP1MockVerifier,
 		OPSuccinctL2OutputOracle:          contracts.OPSuccinctL2OutputOracle,
 	}
