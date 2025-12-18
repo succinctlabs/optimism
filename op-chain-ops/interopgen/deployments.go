@@ -91,14 +91,14 @@ func NewL2OPChainDeploymentFromDeployOPChainOutput(output opcm.DeployOPChainOutp
 }
 
 type L2OpSuccinctDeployment struct {
-	SP1MockVerifier          common.Address `json:"SP1MockVerifier"`
-	OPSuccinctL2OutputOracle common.Address `json:"OPSuccinctL2OutputOracle"`
+	SP1Verifier     common.Address `json:"SP1Verifier"`
+	SP1MockVerifier common.Address `json:"SP1MockVerifier"`
 }
 
 func NewL2OPSuccinctDeploymentFromDeployOPSuccinctOutput(output opcm.DeployOPSuccinctOutput) L2OpSuccinctDeployment {
 	return L2OpSuccinctDeployment{
-		SP1MockVerifier:          output.SP1MockVerifier,
-		OPSuccinctL2OutputOracle: output.OPSuccinctL2OutputOracle,
+		SP1Verifier:     output.SP1Verifier,
+		SP1MockVerifier: output.SP1MockVerifier,
 	}
 }
 

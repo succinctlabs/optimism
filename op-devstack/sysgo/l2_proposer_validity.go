@@ -82,9 +82,11 @@ type ValidityProposerConfig struct {
 	maxConcurrentProofRequests *uint64
 	maxConcurrentWitnessGen    *uint64
 	loopInterval               *uint64
+	provingTimeout             *uint64
 	opSuccinctConfigName       *string
 	mockMode                   *bool
 	rustLog                    *string
+	envFilePath                *string
 }
 
 type ValidityProposerOption = ProposerOption[ValidityProposerConfig]
@@ -137,6 +139,12 @@ func WithVPLoopInterval(n uint64) ValidityProposerOption {
 	})
 }
 
+func WithVPProvingTimeout(n uint64) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.provingTimeout = &n
+	})
+}
+
 func WithVPOpSuccinctConfigName(name string) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.opSuccinctConfigName = &name
@@ -152,6 +160,14 @@ func WithVPMockMode(enabled bool) ValidityProposerOption {
 func WithVPRustLog(level string) ValidityProposerOption {
 	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
 		cfg.rustLog = &level
+	})
+}
+
+// WithVPWriteEnvFile enables writing environment variables to a file.
+// When set, the proposer will write all env vars to the specified path at startup.
+func WithVPWriteEnvFile(path string) ValidityProposerOption {
+	return ValidityProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *ValidityProposerConfig) {
+		cfg.envFilePath = &path
 	})
 }
 
@@ -281,28 +297,39 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
-	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
 	l2ooAddr := l2Net.deployment.opSuccinctL2OutputOracle
+
+	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
+	require.NoError(err, "failed to get verifier address")
 
 	logger.Info("L1_RPC", "url", l1RPC)
 	logger.Info("L1_BEACON_RPC", "url", l1BeaconRPC)
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
-	logger.Info("OPSuccinctL2OutputOracle", "address", l2ooAddr)
-	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
+	logger.Info("VERIFIER_ADDRESS", "address", verifierAddr)
+	logger.Info("L2OO_ADDRESS", "address", l2ooAddr)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1RPC,
 		"L1_BEACON_RPC":    l1BeaconRPC,
 		"L2_RPC":           l2RPC,
 		"L2_NODE_RPC":      l2NodeRPC,
-		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"VERIFIER_ADDRESS": verifierAddr.String(),
 		"L2OO_ADDRESS":     l2ooAddr.String(),
 		"DATABASE_URL":     embeddedPG.URL,
 		"PRIVATE_KEY":      proposerKeyStr,
 		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
 		"LOG_FORMAT":       "json",
+	}
+
+	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
+
+	// Mock mode: default true, false if NETWORK_PRIVATE_KEY is set (real proving)
+	if envVars["NETWORK_PRIVATE_KEY"] != "" {
+		envVars["OP_SUCCINCT_MOCK"] = "false"
+	} else {
+		envVars["OP_SUCCINCT_MOCK"] = "true"
 	}
 
 	// Optional parameters (override defaults if set)
@@ -312,23 +339,30 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_PROOF_REQUESTS", cfg.maxConcurrentProofRequests)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_WITNESS_GEN", cfg.maxConcurrentWitnessGen)
 	setEnvIfNotNil(envVars, "LOOP_INTERVAL", cfg.loopInterval)
+	setEnvIfNotNil(envVars, "PROVING_TIMEOUT", cfg.provingTimeout)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_CONFIG_NAME", cfg.opSuccinctConfigName)
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
-	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
-
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
-		p.Require().NoError(err, "must get available port for metrics")
-		setEnvFromEnvOrDefault(envVars, "VALIDITY_PROPOSER_METRICS_PORT", metricsPort)
-		envVars["VALIDITY_PROPOSER_METRICS_ENABLED"] = "true"
+		require.NoError(err, "failed to get available port for metrics")
+		envVars["METRICS_PORT"] = metricsPort
+		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
+		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
+		logger.Info("Registered validity proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("validity-proposer-%s.env", proposerID.String()))
 	err = writeEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write validity proposer env file")
+
+	if cfg.envFilePath != nil {
+		err = writeEnvFile(*cfg.envFilePath, envVars)
+		p.Require().NoError(err, "must write env file")
+		logger.Info("env file written", "path", *cfg.envFilePath)
+	}
 
 	execPath := os.Getenv("VALIDITY_PROPOSER_EXEC_PATH")
 	p.Require().NotEmpty(execPath, "VALIDITY_PROPOSER_EXEC_PATH environment variable must be set")

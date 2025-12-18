@@ -178,25 +178,26 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
-	mockVerifierAddr := l2Net.deployment.sp1MockVerifier
 	disputeGameFactoryProxy := l2Net.deployment.disputeGameFactoryProxy
+
+	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
+	require.NoError(err, "failed to get verifier address")
 
 	logger.Info("L1_RPC", "url", l1RPC)
 	logger.Info("L1_BEACON_RPC", "url", l1BeaconRPC)
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
-	logger.Info("SP1MockVerifier", "address", mockVerifierAddr)
-	logger.Info("DisputeGameFactory", "address", disputeGameFactoryProxy)
+	logger.Info("VERIFIER_ADDRESS", "address", verifierAddr)
+	logger.Info("FACTORY_ADDRESS", "address", disputeGameFactoryProxy)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1RPC,
 		"L1_BEACON_RPC":    l1BeaconRPC,
 		"L2_RPC":           l2RPC,
 		"L2_NODE_RPC":      l2NodeRPC,
-		"VERIFIER_ADDRESS": mockVerifierAddr.String(),
+		"VERIFIER_ADDRESS": verifierAddr.String(),
 		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
 		"GAME_TYPE":        "42",
-		"MOCK_MODE":        "true",
 		"PRIVATE_KEY":      proposerKeyStr,
 		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
 		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
@@ -205,6 +206,12 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
+	if envVars["NETWORK_PRIVATE_KEY"] != "" {
+		envVars["MOCK_MODE"] = "false"
+	} else {
+		envVars["MOCK_MODE"] = "true"
+	}
+
 	// Optional parameters (override defaults if set)
 	setEnvIfNotNil(envVars, "PROPOSAL_INTERVAL_IN_BLOCKS", cfg.proposalIntervalInBlocks)
 	setEnvIfNotNil(envVars, "FETCH_INTERVAL", cfg.fetchInterval)
@@ -212,20 +219,29 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "FAST_FINALITY_PROVING_LIMIT", cfg.fastFinalityProvingLimit)
 	setEnvIfNotNil(envVars, "RANGE_SPLIT_COUNT", cfg.rangeSplitCount)
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_RANGE_PROOFS", cfg.maxConcurrentRangeProofs)
+	setEnvIfNotNil(envVars, "TIMEOUT", cfg.timeout)
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
-		p.Require().NoError(err, "must get available port for metrics")
-		setEnvFromEnvOrDefault(envVars, "FAULT_PROOF_PROPOSER_METRICS_PORT", metricsPort)
-		envVars["FAULT_PROOF_PROPOSER_METRICS_ENABLED"] = "true"
+		require.NoError(err, "failed to get available port for metrics")
+		envVars["PROPOSER_METRICS_PORT"] = metricsPort
+		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
+		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
+		logger.Info("Registered fault-proof proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("fault-proof-proposer-%s.env", proposerID.String()))
 	err = writeEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof proposer env file")
+
+	if cfg.envFilePath != nil {
+		err = writeEnvFile(*cfg.envFilePath, envVars)
+		p.Require().NoError(err, "must write env file")
+		logger.Info("env file written", "path", *cfg.envFilePath)
+	}
 
 	execPath := os.Getenv("FAULT_PROOF_PROPOSER_EXEC_PATH")
 	p.Require().NotEmpty(execPath, "FAULT_PROOF_PROPOSER_EXEC_PATH environment variable must be set")
@@ -260,8 +276,10 @@ type FaultProofProposerConfig struct {
 	rangeSplitCount          *uint64
 	maxConcurrentRangeProofs *uint64
 	fetchInterval            *uint64
+	timeout                  *uint64
 	mockMode                 *bool
 	rustLog                  *string
+	envFilePath              *string
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
@@ -319,6 +337,13 @@ func WithFPMaxConcurrentRangeProofs(n uint64) FaultProofProposerOption {
 	)
 }
 
+func WithFPTimeout(n uint64) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.timeout = &n
+	},
+	)
+}
+
 func WithFPMockMode(enabled bool) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.mockMode = &enabled
@@ -329,6 +354,15 @@ func WithFPMockMode(enabled bool) FaultProofProposerOption {
 func WithFPRustLog(level string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.rustLog = &level
+	},
+	)
+}
+
+// WithFPWriteEnvFile enables writing environment variables to a file.
+// When set, the proposer will write all env vars to the specified path at startup.
+func WithFPWriteEnvFile(path string) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.envFilePath = &path
 	},
 	)
 }

@@ -99,6 +99,7 @@ type OpChainLegacyContracts struct {
 }
 
 type OpSuccinctContracts struct {
+	SP1Verifier              common.Address
 	SP1MockVerifier          common.Address
 	OPSuccinctL2OutputOracle common.Address
 }
