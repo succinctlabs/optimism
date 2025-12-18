@@ -62,6 +62,11 @@ type L1CLNode struct {
 	fakepos        *FakePoS
 }
 
+// BeaconRPC returns the beacon HTTP address.
+func (n *L1CLNode) BeaconRPC() string {
+	return n.beaconHTTPAddr
+}
+
 func (n *L1CLNode) hydrate(system stack.ExtensibleSystem) {
 	beaconCl := client.NewBasicHTTPClient(n.beaconHTTPAddr, system.Logger())
 	frontend := shim.NewL1CLNode(shim.L1CLNodeConfig{
@@ -122,6 +127,7 @@ func WithL1NodesInProcess(l1ELID stack.L1ELNodeID, l1CLID stack.L1CLNodeID) stac
 			filepath.Join(blobPath, "l1_el"),
 			bcn,
 			geth.WithAuth(orch.jwtPath),
+			geth.WithVirtualHosts([]string{"*"}),
 		)
 		require.NoError(err)
 		require.NoError(l1Geth.Node.Start())

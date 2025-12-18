@@ -149,19 +149,19 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	l2Net, ok := orch.l2Nets.Get(proposerID.ChainID())
 	require.True(ok, "l2 network required")
 
-	l1EL, ok := orch.l1ELs.Get(l1ELID)
+	l1EL, ok := orch.GetL1EL(l1ELID)
 	require.True(ok, "l1 EL node required")
 
-	l1CL, ok := orch.l1CLs.Get(l1CLID)
+	l1CL, ok := orch.GetL1CL(l1CLID)
 	require.True(ok, "l1 CL node required")
 
-	l2EL, ok := orch.l2ELs.Get(l2ELID)
+	l2EL, ok := orch.GetL2EL(l2ELID)
 	require.True(ok, "l2 EL node required")
 
-	l2CL, ok := orch.l2CLs.Get(l2CLID)
+	l2CL, ok := orch.GetL2CL(l2CLID)
 	require.True(ok, "l2 CL node required")
 
-	proposerKey, err := orch.keys.Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
+	proposerKey, err := orch.GetKeys().Secret(devkeys.ProposerRole.Key(proposerID.ChainID().ToBig()))
 	require.NoError(err, "failed to get proposer key")
 	proposerKeyStr := hexutil.Encode(crypto.FromECDSA(proposerKey))
 
@@ -234,11 +234,11 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("fault-proof-proposer-%s.env", proposerID.String()))
-	err = writeEnvFile(envFile, envVars)
+	err = WriteEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof proposer env file")
 
 	if cfg.envFilePath != nil {
-		err = writeEnvFile(*cfg.envFilePath, envVars)
+		err = WriteEnvFile(*cfg.envFilePath, envVars)
 		p.Require().NoError(err, "must write env file")
 		logger.Info("env file written", "path", *cfg.envFilePath)
 	}

@@ -83,6 +83,14 @@ func WithAuth(jwtPath string) GethOption {
 	}
 }
 
+// WithVirtualHosts sets the allowed HTTP virtual hosts for the geth node.
+func WithVirtualHosts(hosts []string) GethOption {
+	return func(_ *ethconfig.Config, nodeCfg *node.Config) error {
+		nodeCfg.HTTPVirtualHosts = hosts
+		return nil
+	}
+}
+
 type gethBackend struct {
 	chain *core.BlockChain
 }
