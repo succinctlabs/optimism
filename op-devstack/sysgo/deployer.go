@@ -180,6 +180,7 @@ func WithDeployer() stack.Option[*Orchestrator] {
 
 type L2Deployment struct {
 	systemConfigProxyAddr          common.Address
+	optimismPortal2                common.Address
 	disputeGameFactoryProxy        common.Address
 	l1StandardBridgeProxy          common.Address
 	proxyAdmin                     common.Address

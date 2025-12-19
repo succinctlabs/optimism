@@ -178,7 +178,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
-	disputeGameFactoryProxy := l2Net.deployment.disputeGameFactoryProxy
+	portalAddr := l2Net.deployment.optimismPortal2
+	factoryAddr := l2Net.deployment.disputeGameFactoryProxy
 
 	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
 	require.NoError(err, "failed to get verifier address")
@@ -188,7 +189,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
 	logger.Info("VERIFIER_ADDRESS", "address", verifierAddr)
-	logger.Info("FACTORY_ADDRESS", "address", disputeGameFactoryProxy)
+	logger.Info("PORTAL_ADDRESS", "address", portalAddr)
+	logger.Info("FACTORY_ADDRESS", "address", factoryAddr)
 
 	envVars := map[string]string{
 		"L1_RPC":           l1RPC,
@@ -196,7 +198,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		"L2_RPC":           l2RPC,
 		"L2_NODE_RPC":      l2NodeRPC,
 		"VERIFIER_ADDRESS": verifierAddr.String(),
-		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
+		"PORTAL_ADDRESS":   portalAddr.String(),
+		"FACTORY_ADDRESS":  factoryAddr.String(),
 		"GAME_TYPE":        "42",
 		"PRIVATE_KEY":      proposerKeyStr,
 		"L1_CONFIG_DIR":    cfg.l1ConfigDir,

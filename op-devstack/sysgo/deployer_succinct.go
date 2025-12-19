@@ -449,6 +449,7 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	o.P().Require().True(ok, "l2 network required")
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
+	l2Net.deployment.optimismPortal2 = addrs.OptimismPortal2
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 }
 
@@ -574,25 +575,25 @@ func execDeployFdgContracts(p devtest.P, repoRoot, envFile string) (FdgAddresses
 }
 
 type FdgAddresses struct {
+	OptimismPortal2 common.Address
 	FactoryProxy    common.Address
 	Sp1Verifier     common.Address
-	OptimismPortal2 common.Address
 }
 
 func parseDeploymentAddresses(stdoutStr string) (FdgAddresses, error) {
 	m, err := parseNamedAddresses(stdoutStr,
+		"optimismPortal2",
 		"factoryProxy",
 		"sp1Verifier",
-		"optimismPortal2",
 	)
 	if err != nil {
 		return FdgAddresses{}, err
 	}
 
 	return FdgAddresses{
+		OptimismPortal2: common.HexToAddress(m["optimismPortal2"]),
 		FactoryProxy:    common.HexToAddress(m["factoryProxy"]),
 		Sp1Verifier:     common.HexToAddress(m["sp1Verifier"]),
-		OptimismPortal2: common.HexToAddress(m["optimismPortal2"]),
 	}, nil
 }
 
