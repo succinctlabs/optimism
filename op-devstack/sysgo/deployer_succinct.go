@@ -495,9 +495,8 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	disputeGameFinalityDelaySecs := resolveDisputeGameFinalityDelaySecs(cfgs.disputeGameFinalityDelaySecs)
 	maxChallengeDuration := resolveMaxChallengeDuration(cfgs.maxChallengeDuration)
 	maxProveDuration := resolveMaxProveDuration(cfgs.maxProveDuration)
-	finalizationPeriodSecs := resolveFinalizationPeriodSecs(cfgs.finalizationPeriodSecs)
 
-	startingL2BlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber, finalizationPeriodSecs)
+	startingL2BlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber, disputeGameFinalityDelaySecs)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
@@ -602,7 +601,6 @@ type FdgConfigs struct {
 	disputeGameFinalityDelaySecs *uint64
 	maxChallengeDuration         *uint64
 	maxProveDuration             *uint64
-	finalizationPeriodSecs       *uint64
 }
 
 type FdgOption func(*FdgConfigs)
@@ -632,15 +630,6 @@ func WithFdgMaxChallengeDuration(n uint64) FdgOption {
 func WithFdgMaxProveDuration(n uint64) FdgOption {
 	return func(cfg *FdgConfigs) {
 		cfg.maxProveDuration = &n
-	}
-}
-
-// WithFdgFinalizationPeriodSecs sets the finalization period in seconds for the FDG deployment.
-// This determines how long to wait for L2 blocks to finalize before starting the game.
-// Default is 3600 (1 hour). For e2e tests, a lower value like 60 speeds up deployment.
-func WithFdgFinalizationPeriodSecs(n uint64) FdgOption {
-	return func(cfg *FdgConfigs) {
-		cfg.finalizationPeriodSecs = &n
 	}
 }
 
