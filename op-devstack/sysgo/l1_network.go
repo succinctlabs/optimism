@@ -23,3 +23,8 @@ func (n *L1Network) hydrate(system stack.ExtensibleSystem) {
 	})
 	system.AddL1Network(sysL1Net)
 }
+
+// Genesis returns the L1 genesis configuration.
+func (n *L1Network) Genesis() *core.Genesis {
+	return n.genesis
+}

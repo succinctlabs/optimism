@@ -117,6 +117,7 @@ func (n *OpGeth) Start() {
 				ListenAddr:  "127.0.0.1:0",
 				MaxPeers:    10,
 			}
+			nodeCfg.HTTPVirtualHosts = []string{"*"}
 			return nil
 		})
 	require.NoError(err)

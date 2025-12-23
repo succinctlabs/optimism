@@ -165,3 +165,33 @@ func rangeHydrateFn[I any, H hydrator](sys stack.ExtensibleSystem) func(id I, v 
 		return true
 	}
 }
+
+// GetL1EL returns the L1ELNode for the given ID.
+func (o *Orchestrator) GetL1EL(id stack.L1ELNodeID) (L1ELNode, bool) {
+	return o.l1ELs.Get(id)
+}
+
+// GetL1CL returns the L1CLNode for the given ID.
+func (o *Orchestrator) GetL1CL(id stack.L1CLNodeID) (*L1CLNode, bool) {
+	return o.l1CLs.Get(id)
+}
+
+// GetL2EL returns the L2ELNode for the given ID.
+func (o *Orchestrator) GetL2EL(id stack.L2ELNodeID) (L2ELNode, bool) {
+	return o.l2ELs.Get(id)
+}
+
+// GetL2CL returns the L2CLNode for the given ID.
+func (o *Orchestrator) GetL2CL(id stack.L2CLNodeID) (L2CLNode, bool) {
+	return o.l2CLs.Get(id)
+}
+
+// GetKeys returns the devkeys.Keys for the orchestrator.
+func (o *Orchestrator) GetKeys() devkeys.Keys {
+	return o.keys
+}
+
+// GetL1Net returns the L1Network for the given chain ID.
+func (o *Orchestrator) GetL1Net(chainID eth.ChainID) (*L1Network, bool) {
+	return o.l1Nets.Get(chainID)
+}

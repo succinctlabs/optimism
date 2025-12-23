@@ -85,10 +85,10 @@ func (o *Orchestrator) deploySP1MockVerifier(
 
 	l1ChainID := l1ELID.ChainID()
 
-	l1EL, ok := o.l1ELs.Get(l1ELID)
+	l1EL, ok := o.GetL1EL(l1ELID)
 	require.True(ok, "l1 EL node required")
 
-	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID.ToBig()))
+	l1PAOKey, err := o.GetKeys().Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID.ToBig()))
 	if err != nil {
 		return "", fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
 	}
@@ -101,7 +101,7 @@ func (o *Orchestrator) deploySP1MockVerifier(
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("sp1-mock-verifier-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
-	if err = writeEnvFile(envFile, envVars); err != nil {
+	if err = WriteEnvFile(envFile, envVars); err != nil {
 		return "", fmt.Errorf("failed to write sp1-mock-verifier env: %w", err)
 	}
 
@@ -206,31 +206,32 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
 	require.True(ok, "l1 network required")
 
-	l1CL, ok := o.l1CLs.Get(l1CLID)
+	l1CL, ok := o.GetL1CL(l1CLID)
 	require.True(ok, "l1 CL node required")
 
-	l1EL, ok := o.l1ELs.Get(l1ELID)
+	l1EL, ok := o.GetL1EL(l1ELID)
 	require.True(ok, "l1 EL node required")
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	require.True(ok, "l2 network required")
 
-	l2CL, ok := o.l2CLs.Get(l2CLID)
+	l2CL, ok := o.GetL2CL(l2CLID)
 	require.True(ok, "l2 CL node required")
 
-	l2EL, ok := o.l2ELs.Get(l2ELID)
+	l2EL, ok := o.GetL2EL(l2ELID)
 	require.True(ok, "l2 EL node required")
 
 	l1ChainID := l1CLID.ChainID().ToBig()
-	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
+	l1PAOKey, err := o.GetKeys().Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
 	require.NoError(err, "failed to get L1ProxyAdminOwnerRole key")
 	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
 
-	proposerKey, err := o.keys.Secret(devkeys.ProposerRole.Key(l2ChainID.ToBig()))
+	proposerKey, err := o.GetKeys().Secret(devkeys.ProposerRole.Key(l2ChainID.ToBig()))
 	require.NoError(err, "failed to get ProposerRole key")
 	proposerAddr := crypto.PubkeyToAddress(proposerKey.PublicKey)
 
-	startingBlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber)
+	finalizationPeriodSecs := resolveFinalizationPeriodSecs(cfgs.FinalizationPeriodSecs)
+	startingBlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.StartingBlockNumber, finalizationPeriodSecs)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
@@ -271,7 +272,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-l2oo-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
-	if err = writeEnvFile(envFile, envVars); err != nil {
+	if err = WriteEnvFile(envFile, envVars); err != nil {
 		return "", fmt.Errorf("failed to write op-succinct-l2oo env: %w", err)
 	}
 
@@ -308,9 +309,10 @@ func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
 
 // L2OOConfigs holds configuration for OPSuccinctL2OutputOracle contract deployment
 type L2OOConfigs struct {
-	StartingBlockNumber *uint64
-	SubmissionInterval  *uint64
-	RangeProofInterval  *uint64
+	StartingBlockNumber    *uint64
+	SubmissionInterval     *uint64
+	RangeProofInterval     *uint64
+	FinalizationPeriodSecs *uint64
 }
 
 type L2OOOption func(*L2OOConfigs)
@@ -336,16 +338,34 @@ func WithL2OORangeProofInterval(n uint64) L2OOOption {
 	}
 }
 
+// WithL2OOFinalizationPeriodSecs sets the finalization period in seconds for the L2OO deployment.
+// This determines how long to wait for L2 blocks to finalize before starting the oracle.
+// Default is 3600 (1 hour). For e2e tests, a lower value speeds up deployment.
+func WithL2OOFinalizationPeriodSecs(n uint64) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.FinalizationPeriodSecs = &n
+	}
+}
+
+const defaultFinalizationPeriodSecs = 3600
+
+// resolveFinalizationPeriodSecs returns the configured finalization period or the default.
+func resolveFinalizationPeriodSecs(cfgFinalizationPeriodSecs *uint64) uint64 {
+	if cfgFinalizationPeriodSecs != nil {
+		return *cfgFinalizationPeriodSecs
+	}
+	return uint64(defaultFinalizationPeriodSecs)
+}
+
 // resolveStartingBlockNumber determines the starting block number for L2OO and FDG deployments
-func resolveStartingBlockNumber(p devtest.P, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64) (uint64, error) {
+func resolveStartingBlockNumber(p devtest.P, l2Rpc string, l2BlockTime uint64, cfgStartingBlockNumber *uint64, finalizationPeriodSecs uint64) (uint64, error) {
 	logger := p.Logger().New("component", "succinct-deployer")
 
 	var v uint64
 	if cfgStartingBlockNumber != nil {
 		v = *cfgStartingBlockNumber
 	} else {
-		const defaultFinalizationPeriodSecs = 3600
-		v = defaultFinalizationPeriodSecs/l2BlockTime + 1
+		v = finalizationPeriodSecs/l2BlockTime + 1
 	}
 	target := new(big.Int).SetUint64(v)
 
@@ -450,23 +470,23 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	l1Net, ok := o.l1Nets.Get(l1CLID.ChainID())
 	require.True(ok, "l1 network required")
 
-	l1CL, ok := o.l1CLs.Get(l1CLID)
+	l1CL, ok := o.GetL1CL(l1CLID)
 	require.True(ok, "l1 CL node required")
 
-	l1EL, ok := o.l1ELs.Get(l1ELID)
+	l1EL, ok := o.GetL1EL(l1ELID)
 	require.True(ok, "l1 EL node required")
 
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	require.True(ok, "l2 network required")
 
-	l2CL, ok := o.l2CLs.Get(l2CLID)
+	l2CL, ok := o.GetL2CL(l2CLID)
 	require.True(ok, "l2 CL node required")
 
-	l2EL, ok := o.l2ELs.Get(l2ELID)
+	l2EL, ok := o.GetL2EL(l2ELID)
 	require.True(ok, "l2 EL node required")
 
 	l1ChainID := l1CLID.ChainID().ToBig()
-	l1PAOKey, err := o.keys.Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
+	l1PAOKey, err := o.GetKeys().Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
 	if err != nil {
 		return FdgAddresses{}, fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
 	}
@@ -476,7 +496,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	maxChallengeDuration := resolveMaxChallengeDuration(cfgs.maxChallengeDuration)
 	maxProveDuration := resolveMaxProveDuration(cfgs.maxProveDuration)
 
-	startingL2BlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber)
+	startingL2BlockNumber, err := resolveStartingBlockNumber(p, l2EL.UserRPC(), l2Net.rollupCfg.BlockTime, cfgs.startingL2BlockNumber, disputeGameFinalityDelaySecs)
 	o.P().Require().NoError(err, "failed to resolve starting block number")
 
 	base := p.TempDir()
@@ -519,7 +539,7 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-fdg-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
-	if err = writeEnvFile(envFile, envVars); err != nil {
+	if err = WriteEnvFile(envFile, envVars); err != nil {
 		return FdgAddresses{}, fmt.Errorf("failed to write op-succinct-fdg env: %w", err)
 	}
 
@@ -735,7 +755,8 @@ func parseNamedAddresses(stdoutStr string, names ...string) (map[string]string, 
 	return result, nil
 }
 
-func writeEnvFile(path string, kv map[string]string) error {
+// WriteEnvFile writes key-value pairs to a file in .env format.
+func WriteEnvFile(path string, kv map[string]string) error {
 	var keys []string
 	for k := range kv {
 		keys = append(keys, k)

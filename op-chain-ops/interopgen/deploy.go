@@ -259,7 +259,7 @@ func DeployL2ToL1(l1Host *script.Host, superCfg *SuperchainConfig, superDeployme
 		return nil, fmt.Errorf("failed to deploy L2 OP chain: %w", err)
 	}
 
-	opSuccinctOutput := opcm.NewDeployOPSuccinctScripts(l1Host)
+	opSuccinctOutput := opcm.NewDeployOPSuccinctScripts(l1Host, opcm.SP1ProofModePlonk)
 
 	// Collect deployment addresses
 	return &L2Deployment{
