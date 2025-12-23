@@ -178,7 +178,8 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	l1BeaconRPC := l1CL.beaconHTTPAddr
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
 	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
-	disputeGameFactoryProxy := l2Net.deployment.disputeGameFactoryProxy
+	anchorStateRegistryAddr := l2Net.deployment.anchorStateRegistry
+	factoryAddr := l2Net.deployment.disputeGameFactoryProxy
 
 	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
 	require.NoError(err, "failed to get verifier address")
@@ -188,20 +189,22 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	logger.Info("L2_RPC", "url", l2RPC)
 	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
 	logger.Info("VERIFIER_ADDRESS", "address", verifierAddr)
-	logger.Info("FACTORY_ADDRESS", "address", disputeGameFactoryProxy)
+	logger.Info("ANCHOR_STATE_REGISTRY_ADDRESS", "address", anchorStateRegistryAddr)
+	logger.Info("FACTORY_ADDRESS", "address", factoryAddr)
 
 	envVars := map[string]string{
-		"L1_RPC":           l1RPC,
-		"L1_BEACON_RPC":    l1BeaconRPC,
-		"L2_RPC":           l2RPC,
-		"L2_NODE_RPC":      l2NodeRPC,
-		"VERIFIER_ADDRESS": verifierAddr.String(),
-		"FACTORY_ADDRESS":  disputeGameFactoryProxy.String(),
-		"GAME_TYPE":        "42",
-		"PRIVATE_KEY":      proposerKeyStr,
-		"L1_CONFIG_DIR":    cfg.l1ConfigDir,
-		"L2_CONFIG_DIR":    cfg.l2ConfigDir,
-		"LOG_FORMAT":       "json",
+		"L1_RPC":                        l1RPC,
+		"L1_BEACON_RPC":                 l1BeaconRPC,
+		"L2_RPC":                        l2RPC,
+		"L2_NODE_RPC":                   l2NodeRPC,
+		"VERIFIER_ADDRESS":              verifierAddr.String(),
+		"ANCHOR_STATE_REGISTRY_ADDRESS": anchorStateRegistryAddr.String(),
+		"FACTORY_ADDRESS":               factoryAddr.String(),
+		"GAME_TYPE":                     "42",
+		"PRIVATE_KEY":                   proposerKeyStr,
+		"L1_CONFIG_DIR":                 cfg.l1ConfigDir,
+		"L2_CONFIG_DIR":                 cfg.l2ConfigDir,
+		"LOG_FORMAT":                    "json",
 	}
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")

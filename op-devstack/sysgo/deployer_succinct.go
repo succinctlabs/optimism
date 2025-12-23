@@ -449,6 +449,7 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net, ok := o.l2Nets.Get(l2CLID.ChainID())
 	o.P().Require().True(ok, "l2 network required")
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
+	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 }
 
@@ -574,25 +575,25 @@ func execDeployFdgContracts(p devtest.P, repoRoot, envFile string) (FdgAddresses
 }
 
 type FdgAddresses struct {
-	FactoryProxy    common.Address
-	Sp1Verifier     common.Address
-	OptimismPortal2 common.Address
+	AnchorStateRegistry common.Address
+	FactoryProxy        common.Address
+	Sp1Verifier         common.Address
 }
 
 func parseDeploymentAddresses(stdoutStr string) (FdgAddresses, error) {
 	m, err := parseNamedAddresses(stdoutStr,
+		"anchorStateRegistry",
 		"factoryProxy",
 		"sp1Verifier",
-		"optimismPortal2",
 	)
 	if err != nil {
 		return FdgAddresses{}, err
 	}
 
 	return FdgAddresses{
-		FactoryProxy:    common.HexToAddress(m["factoryProxy"]),
-		Sp1Verifier:     common.HexToAddress(m["sp1Verifier"]),
-		OptimismPortal2: common.HexToAddress(m["optimismPortal2"]),
+		AnchorStateRegistry: common.HexToAddress(m["anchorStateRegistry"]),
+		FactoryProxy:        common.HexToAddress(m["factoryProxy"]),
+		Sp1Verifier:         common.HexToAddress(m["sp1Verifier"]),
 	}, nil
 }
 
