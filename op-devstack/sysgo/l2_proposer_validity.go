@@ -38,11 +38,11 @@ type L2SuccinctValidityProposer struct {
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
-var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
+var _ L2ProposerBackend = (*L2SuccinctValidityProposer)(nil)
 
-// ValidityProposer extends L2Prop with validity-specific methods.
+// ValidityProposer extends L2ProposerBackend with validity-specific methods.
 type ValidityProposer interface {
-	L2Prop
+	L2ProposerBackend
 	Start()
 	Stop()
 	DatabaseURL() string

@@ -17,8 +17,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// L2Chall is the interface for L2 challengers, similar to L2Prop for proposers.
-type L2Chall interface {
+// L2ChallengerBackend is the interface for L2 challengers managed by the orchestrator.
+type L2ChallengerBackend interface {
 	hydrate(system stack.ExtensibleSystem)
 }
 
@@ -33,7 +33,7 @@ type L2Challenger struct {
 	config   *config.Config
 }
 
-var _ L2Chall = (*L2Challenger)(nil)
+var _ L2ChallengerBackend = (*L2Challenger)(nil)
 
 func (p *L2Challenger) hydrate(system stack.ExtensibleSystem) {
 	bFrontend := shim.NewL2Challenger(shim.L2ChallengerConfig{

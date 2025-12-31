@@ -33,11 +33,11 @@ type L2SuccinctFaultProofProposer struct {
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
-var _ L2Prop = (*L2SuccinctFaultProofProposer)(nil)
+var _ L2ProposerBackend = (*L2SuccinctFaultProofProposer)(nil)
 
-// FaultProofProposer extends L2Prop with faultproof-specific methods.
+// FaultProofProposer extends L2ProposerBackend with faultproof-specific methods.
 type FaultProofProposer interface {
-	L2Prop
+	L2ProposerBackend
 	Start()
 	Stop()
 }

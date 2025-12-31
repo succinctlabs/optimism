@@ -32,11 +32,11 @@ type L2SuccinctFaultProofChallenger struct {
 	l2MetricsRegistrar L2MetricsRegistrar
 }
 
-var _ L2Chall = (*L2SuccinctFaultProofChallenger)(nil)
+var _ L2ChallengerBackend = (*L2SuccinctFaultProofChallenger)(nil)
 
-// FaultProofChallenger extends L2Chall with faultproof-specific methods.
+// FaultProofChallenger extends L2ChallengerBackend with faultproof-specific methods.
 type FaultProofChallenger interface {
-	L2Chall
+	L2ChallengerBackend
 	Start()
 	Stop()
 }

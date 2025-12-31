@@ -21,12 +21,13 @@ import (
 	oprpc "github.com/ethereum-optimism/optimism/op-service/rpc"
 )
 
-type L2Prop interface {
+// L2ProposerBackend is the interface for L2 proposers managed by the orchestrator.
+type L2ProposerBackend interface {
 	hydrate(system stack.ExtensibleSystem)
 	UserRPC() string
 }
 
-var _ L2Prop = (*L2Proposer)(nil)
+var _ L2ProposerBackend = (*L2Proposer)(nil)
 
 type L2Proposer struct {
 	id      stack.L2ProposerID
