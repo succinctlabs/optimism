@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
-	ps "github.com/ethereum-optimism/optimism/op-proposer/proposer"
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -25,7 +24,6 @@ import (
 type L2SuccinctFaultProofProposer struct {
 	mu                 sync.Mutex
 	id                 stack.L2ProposerID
-	service            *ps.ProposerService
 	userRPC            string
 	execPath           string
 	args               []string
