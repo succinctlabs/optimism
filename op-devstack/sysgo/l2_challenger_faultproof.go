@@ -139,7 +139,7 @@ func WithSuperSuccinctFaultProofChallenger(challengerID stack.L2ChallengerID,
 func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID stack.L2ChallengerID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), challengerID)
 	p := orch.P().WithCtx(ctx)
-	logger := p.Logger().New("component", "succinct-faultproof-challenger")
+	logger := p.Logger().New("component", "succinct-fp-challenger")
 
 	require := p.Require()
 	require.False(orch.challengers.Has(challengerID), "challenger must not already exist")
@@ -196,7 +196,7 @@ func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID
 	}
 
 	envDir := p.TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("fault-proof-challenger-%s.env", challengerID.String()))
+	envFile := filepath.Join(envDir, fmt.Sprintf("fp-challenger-%s.env", challengerID.String()))
 	err = WriteEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof challenger env file")
 

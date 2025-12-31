@@ -146,7 +146,7 @@ func WithSuperSuccinctFaultProofProposer(proposerID stack.L2ProposerID,
 func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
-	logger := p.Logger().New("component", "succinct-faultproof")
+	logger := p.Logger().New("component", "succinct-fp-proposer")
 
 	require := p.Require()
 	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
@@ -239,7 +239,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	}
 
 	envDir := p.TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("fault-proof-proposer-%s.env", proposerID.String()))
+	envFile := filepath.Join(envDir, fmt.Sprintf("fp-proposer-%s.env", proposerID.String()))
 	err = WriteEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof proposer env file")
 
