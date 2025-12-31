@@ -225,7 +225,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "TIMEOUT", cfg.timeout)
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
-	setEnvIfNotNil(envVars, "BACKUP_FILE", cfg.backupFile)
+	setEnvIfNotNil(envVars, "BACKUP_PATH", cfg.backupPath)
 
 	if areMetricsEnabled() {
 		metricsPort, err := getAvailableLocalPort()
@@ -284,7 +284,7 @@ type FaultProofProposerConfig struct {
 	mockMode                 *bool
 	rustLog                  *string
 	envFilePath              *string
-	backupFile               *string
+	backupPath               *string
 }
 
 type FaultProofProposerOption = ProposerOption[FaultProofProposerConfig]
@@ -372,10 +372,10 @@ func WithFPWriteEnvFile(path string) FaultProofProposerOption {
 	)
 }
 
-// WithFPBackupFile enables state backup for faster recovery after restarts.
-func WithFPBackupFile(path string) FaultProofProposerOption {
+// WithFPBackupPath enables state backup for faster recovery after restarts.
+func WithFPBackupPath(path string) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
-		cfg.backupFile = &path
+		cfg.backupPath = &path
 	},
 	)
 }
