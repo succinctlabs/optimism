@@ -538,6 +538,16 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"RUST_LOG":                                   "info",
 	}
 
+	// Add vkey overrides if specified (for testing hardfork/version mismatch scenarios).
+	if cfgs.overrideAggregationVkey != nil {
+		envVars["OVERRIDE_AGGREGATION_VKEY"] = *cfgs.overrideAggregationVkey
+		logger.Info("Using override aggregation vkey", "vkey", *cfgs.overrideAggregationVkey)
+	}
+	if cfgs.overrideRangeVkeyCommitment != nil {
+		envVars["OVERRIDE_RANGE_VKEY_COMMITMENT"] = *cfgs.overrideRangeVkeyCommitment
+		logger.Info("Using override range vkey commitment", "commitment", *cfgs.overrideRangeVkeyCommitment)
+	}
+
 	envDir := p.TempDir()
 	envFile := filepath.Join(envDir, fmt.Sprintf("op-succinct-fdg-%s.env", strings.ReplaceAll(l2ChainID.String(), "-", "_")))
 	if err = WriteEnvFile(envFile, envVars); err != nil {
@@ -602,6 +612,10 @@ type FdgConfigs struct {
 	disputeGameFinalityDelaySecs *uint64
 	maxChallengeDuration         *uint64
 	maxProveDuration             *uint64
+	// Vkey overrides for testing hardfork/version mismatch scenarios.
+	// When set, these are passed to the deployment script instead of computing from ELFs.
+	overrideAggregationVkey      *string
+	overrideRangeVkeyCommitment  *string
 }
 
 type FdgOption func(*FdgConfigs)
@@ -631,6 +645,22 @@ func WithFdgMaxChallengeDuration(n uint64) FdgOption {
 func WithFdgMaxProveDuration(n uint64) FdgOption {
 	return func(cfg *FdgConfigs) {
 		cfg.maxProveDuration = &n
+	}
+}
+
+// WithFdgOverrideAggregationVkey overrides the aggregation vkey used during contract deployment.
+// This is useful for testing vkey mismatch scenarios (e.g., simulating old games with old vkeys).
+func WithFdgOverrideAggregationVkey(vkey string) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.overrideAggregationVkey = &vkey
+	}
+}
+
+// WithFdgOverrideRangeVkeyCommitment overrides the range vkey commitment used during contract deployment.
+// This is useful for testing vkey mismatch scenarios (e.g., simulating old games with old vkeys).
+func WithFdgOverrideRangeVkeyCommitment(commitment string) FdgOption {
+	return func(cfg *FdgConfigs) {
+		cfg.overrideRangeVkeyCommitment = &commitment
 	}
 }
 
