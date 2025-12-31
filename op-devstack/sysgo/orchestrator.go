@@ -48,7 +48,7 @@ type Orchestrator struct {
 	supervisors    locks.RWMap[stack.SupervisorID, Supervisor]
 	testSequencers locks.RWMap[stack.TestSequencerID, *TestSequencer]
 	batchers       locks.RWMap[stack.L2BatcherID, *L2Batcher]
-	challengers    locks.RWMap[stack.L2ChallengerID, *L2Challenger]
+	challengers    locks.RWMap[stack.L2ChallengerID, L2Chall]
 	proposers      locks.RWMap[stack.L2ProposerID, L2Prop]
 
 	// service name => prometheus endpoints to scrape
@@ -88,6 +88,11 @@ func (o *Orchestrator) ControlPlane() stack.ControlPlane {
 // GetProposer returns the L2Prop for the given proposer ID.
 func (o *Orchestrator) GetProposer(id stack.L2ProposerID) (L2Prop, bool) {
 	return o.proposers.Get(id)
+}
+
+// GetChallenger returns the L2Chall for the given challenger ID.
+func (o *Orchestrator) GetChallenger(id stack.L2ChallengerID) (L2Chall, bool) {
+	return o.challengers.Get(id)
 }
 
 func (o *Orchestrator) EnableTimeTravel() {
@@ -138,7 +143,7 @@ func (o *Orchestrator) Hydrate(sys stack.ExtensibleSystem) {
 	o.supervisors.Range(rangeHydrateFn[stack.SupervisorID, Supervisor](sys))
 	o.testSequencers.Range(rangeHydrateFn[stack.TestSequencerID, *TestSequencer](sys))
 	o.batchers.Range(rangeHydrateFn[stack.L2BatcherID, *L2Batcher](sys))
-	o.challengers.Range(rangeHydrateFn[stack.L2ChallengerID, *L2Challenger](sys))
+	o.challengers.Range(rangeHydrateFn[stack.L2ChallengerID, L2Chall](sys))
 	o.proposers.Range(rangeHydrateFn[stack.L2ProposerID, L2Prop](sys))
 	if o.syncTester != nil {
 		o.syncTester.hydrate(sys)
