@@ -30,6 +30,7 @@ type L2SuccinctFaultProofChallenger struct {
 	logger             log.Logger
 	sub                *SubProcess
 	l2MetricsRegistrar L2MetricsRegistrar
+	metricsPort        string
 }
 
 var _ L2ChallengerBackend = (*L2SuccinctFaultProofChallenger)(nil)
@@ -97,6 +98,12 @@ func (c *L2SuccinctFaultProofChallenger) Start() {
 
 	err := c.sub.Start(c.execPath, c.args, []string{})
 	c.p.Require().NoError(err, "Must start challenger")
+
+	if c.metricsPort != "" && c.l2MetricsRegistrar != nil {
+		metricsTarget := NewPrometheusMetricsTarget("localhost", c.metricsPort, false)
+		c.l2MetricsRegistrar.RegisterL2MetricsTargets(c.id, metricsTarget)
+		c.logger.Info("Registered fault-proof challenger metrics", "port", c.metricsPort)
+	}
 }
 
 // Stop stops the fault-proof challenger subprocess.
@@ -181,13 +188,11 @@ func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID
 	setEnvIfNotNil(envVars, "MALICIOUS_CHALLENGE_PERCENTAGE", cfg.maliciousChallengePercentage)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
+	var metricsPort string
 	if areMetricsEnabled() {
-		metricsPort, err := getAvailableLocalPort()
+		metricsPort, err = getAvailableLocalPort()
 		require.NoError(err, "failed to get available port for challenger metrics")
 		envVars["CHALLENGER_METRICS_PORT"] = metricsPort
-		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
-		orch.RegisterL2MetricsTargets(challengerID, metricsTarget)
-		logger.Info("Registered fault-proof challenger metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
@@ -213,6 +218,7 @@ func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID
 		p:                  p,
 		logger:             logger,
 		l2MetricsRegistrar: orch,
+		metricsPort:        metricsPort,
 	}
 	logger.Info("Starting fault-proof challenger")
 	c.Start()

@@ -31,6 +31,7 @@ type L2SuccinctFaultProofProposer struct {
 	logger             log.Logger
 	sub                *SubProcess
 	l2MetricsRegistrar L2MetricsRegistrar
+	metricsPort        string
 }
 
 var _ L2ProposerBackend = (*L2SuccinctFaultProofProposer)(nil)
@@ -107,6 +108,12 @@ func (k *L2SuccinctFaultProofProposer) Start() {
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
+
+	if k.metricsPort != "" && k.l2MetricsRegistrar != nil {
+		metricsTarget := NewPrometheusMetricsTarget("localhost", k.metricsPort, false)
+		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
+		k.logger.Info("Registered fault-proof proposer metrics", "port", k.metricsPort)
+	}
 }
 
 // Stops the fault-proof proposer.
@@ -224,13 +231,11 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
+	var metricsPort string
 	if areMetricsEnabled() {
-		metricsPort, err := getAvailableLocalPort()
-		require.NoError(err, "failed to get available port for metrics")
+		metricsPort, err = getAvailableLocalPort()
+		require.NoError(err, "failed to get available port for proposer metrics")
 		envVars["PROPOSER_METRICS_PORT"] = metricsPort
-		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
-		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
-		logger.Info("Registered fault-proof proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
@@ -257,6 +262,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		p:                  p,
 		logger:             logger,
 		l2MetricsRegistrar: orch,
+		metricsPort:        metricsPort,
 	}
 	logger.Info("Starting fault-proof proposer")
 	k.Start()
