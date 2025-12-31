@@ -224,6 +224,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "MAX_CONCURRENT_RANGE_PROOFS", cfg.maxConcurrentRangeProofs)
 	setEnvIfNotNil(envVars, "TIMEOUT", cfg.timeout)
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
+	setEnvIfNotNil(envVars, "PROVE_ONLY_MODE", cfg.proveOnlyMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
 	if areMetricsEnabled() {
@@ -281,6 +282,7 @@ type FaultProofProposerConfig struct {
 	fetchInterval            *uint64
 	timeout                  *uint64
 	mockMode                 *bool
+	proveOnlyMode            *bool
 	rustLog                  *string
 	envFilePath              *string
 }
@@ -350,6 +352,17 @@ func WithFPTimeout(n uint64) FaultProofProposerOption {
 func WithFPMockMode(enabled bool) FaultProofProposerOption {
 	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
 		cfg.mockMode = &enabled
+	},
+	)
+}
+
+// WithFPProveOnlyMode enables prove-only mode for the proposer.
+// In prove-only mode, the proposer will only defend existing games but will not
+// create new games, resolve games, or claim bonds. This is used during hardfork
+// transitions when running an old proposer alongside a new one.
+func WithFPProveOnlyMode(enabled bool) FaultProofProposerOption {
+	return FaultProofProposerOption(func(p devtest.P, id stack.L2ProposerID, cfg *FaultProofProposerConfig) {
+		cfg.proveOnlyMode = &enabled
 	},
 	)
 }
