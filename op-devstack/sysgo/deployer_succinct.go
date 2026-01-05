@@ -774,3 +774,103 @@ func WriteEnvFile(path string, kv map[string]string) error {
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
+
+// ===========================================================
+// Game Implementation Upgrade Helpers (for hardfork testing)
+// ===========================================================
+
+// GameImplDeployConfig holds configuration for deploying a new game implementation
+// with custom vkeys. Used for testing hardfork scenarios.
+type GameImplDeployConfig struct {
+	FactoryProxy        common.Address
+	VerifierAddress     common.Address
+	AnchorStateRegistry common.Address
+	AccessManager       common.Address
+	AggregationVkey     string
+	RangeVkeyCommitment string
+	RollupConfigHash    string
+	MaxChallengeDuration uint64
+	MaxProveDuration     uint64
+	ChallengerBondWei    string
+}
+
+// DeployGameImplWithVkeys deploys a new OPSuccinctFaultDisputeGame implementation
+// with the specified vkeys. This is used for testing hardfork scenarios where the
+// on-chain vkeys need to differ from the proposer's computed vkeys.
+//
+// Parameters:
+//   - l1ELID: L1 execution layer node ID
+//   - cfg: Game implementation deployment configuration including custom vkeys
+//
+// Returns the address of the newly deployed game implementation.
+func (o *Orchestrator) DeployGameImplWithVkeys(
+	l1ELID stack.L1ELNodeID,
+	cfg GameImplDeployConfig,
+) (common.Address, error) {
+	p := o.P()
+	logger := p.Logger().New("component", "succinct-deployer")
+	require := p.Require()
+
+	rootPrefix, err := findMonorepoRoot("Cargo.lock")
+	require.NoError(err, "failed to locate monorepo root")
+
+	repoRoot, err := filepath.Abs(rootPrefix)
+	require.NoError(err, "failed to resolve monorepo root")
+
+	l1EL, ok := o.GetL1EL(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	l1ChainID := l1ELID.ChainID()
+	l1PAOKey, err := o.GetKeys().Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID.ToBig()))
+	if err != nil {
+		return common.Address{}, fmt.Errorf("failed to get L1ProxyAdminOwnerRole key: %w", err)
+	}
+	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
+
+	envVars := map[string]string{
+		"L1_RPC":                l1EL.UserRPC(),
+		"PRIVATE_KEY":           l1PAOKeyStr,
+		"FACTORY_PROXY":         cfg.FactoryProxy.Hex(),
+		"VERIFIER_ADDRESS":      cfg.VerifierAddress.Hex(),
+		"ANCHOR_STATE_REGISTRY": cfg.AnchorStateRegistry.Hex(),
+		"ACCESS_MANAGER":        cfg.AccessManager.Hex(),
+		"AGGREGATION_VKEY":      cfg.AggregationVkey,
+		"RANGE_VKEY_COMMITMENT": cfg.RangeVkeyCommitment,
+		"ROLLUP_CONFIG_HASH":    cfg.RollupConfigHash,
+		"MAX_CHALLENGE_DURATION": fmt.Sprintf("%d", cfg.MaxChallengeDuration),
+		"MAX_PROVE_DURATION":     fmt.Sprintf("%d", cfg.MaxProveDuration),
+		"CHALLENGER_BOND_WEI":    cfg.ChallengerBondWei,
+	}
+
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, "deploy-game-impl.env")
+	if err = WriteEnvFile(envFile, envVars); err != nil {
+		return common.Address{}, fmt.Errorf("failed to write game impl deploy env: %w", err)
+	}
+
+	addr, err := execDeployGameImplOnly(p, repoRoot, envFile)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	logger.Info("Deployed new game implementation with custom vkeys", "address", addr)
+	return common.HexToAddress(addr), nil
+}
+
+// execDeployGameImplOnly runs `just deploy-game-impl-only <envFile>` and parses the output
+func execDeployGameImplOnly(p devtest.P, repoRoot, envFile string) (string, error) {
+	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-game-impl-only", envFile)
+	cmd.Dir = repoRoot
+
+	logger := p.Logger().New("component", "succinct-deployer")
+
+	logger.Info("Executing deploy-game-impl-only", "cmd", strings.Join(cmd.Args, " "))
+	stdoutStr, runErr := execCommand(cmd, logger)
+	p.Require().NoError(runErr, "failed to execute deploy-game-impl-only command")
+
+	addrMap, err := parseNamedAddresses(stdoutStr, "gameImpl")
+	if err != nil {
+		return "", fmt.Errorf("failed to parse game impl address: %w", err)
+	}
+	return addrMap["gameImpl"], nil
+}
