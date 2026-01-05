@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
-	ps "github.com/ethereum-optimism/optimism/op-proposer/proposer"
 	"github.com/ethereum-optimism/optimism/op-service/client"
 	"github.com/ethereum-optimism/optimism/op-service/logpipe"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -25,7 +24,6 @@ import (
 type L2SuccinctFaultProofProposer struct {
 	mu                 sync.Mutex
 	id                 stack.L2ProposerID
-	service            *ps.ProposerService
 	userRPC            string
 	execPath           string
 	args               []string
@@ -33,13 +31,14 @@ type L2SuccinctFaultProofProposer struct {
 	logger             log.Logger
 	sub                *SubProcess
 	l2MetricsRegistrar L2MetricsRegistrar
+	metricsPort        string
 }
 
-var _ L2Prop = (*L2SuccinctFaultProofProposer)(nil)
+var _ L2ProposerBackend = (*L2SuccinctFaultProofProposer)(nil)
 
-// FaultProofProposer extends L2Prop with faultproof-specific methods.
+// FaultProofProposer extends L2ProposerBackend with faultproof-specific methods.
 type FaultProofProposer interface {
-	L2Prop
+	L2ProposerBackend
 	Start()
 	Stop()
 }
@@ -109,6 +108,12 @@ func (k *L2SuccinctFaultProofProposer) Start() {
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
+
+	if k.metricsPort != "" && k.l2MetricsRegistrar != nil {
+		metricsTarget := NewPrometheusMetricsTarget("localhost", k.metricsPort, false)
+		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
+		k.logger.Info("Registered fault-proof proposer metrics", "port", k.metricsPort)
+	}
 }
 
 // Stops the fault-proof proposer.
@@ -141,7 +146,7 @@ func WithSuperSuccinctFaultProofProposer(proposerID stack.L2ProposerID,
 func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID stack.L2ProposerID, l1CLID stack.L1CLNodeID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofProposerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), proposerID)
 	p := orch.P().WithCtx(ctx)
-	logger := p.Logger().New("component", "succinct-faultproof")
+	logger := p.Logger().New("component", "succinct-fp-proposer")
 
 	require := p.Require()
 	require.False(orch.proposers.Has(proposerID), "proposer must not already exist")
@@ -226,17 +231,15 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 	setEnvIfNotNil(envVars, "MOCK_MODE", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
+	var metricsPort string
 	if areMetricsEnabled() {
-		metricsPort, err := getAvailableLocalPort()
-		require.NoError(err, "failed to get available port for metrics")
+		metricsPort, err = getAvailableLocalPort()
+		require.NoError(err, "failed to get available port for proposer metrics")
 		envVars["PROPOSER_METRICS_PORT"] = metricsPort
-		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
-		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
-		logger.Info("Registered fault-proof proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
-	envFile := filepath.Join(envDir, fmt.Sprintf("fault-proof-proposer-%s.env", proposerID.String()))
+	envFile := filepath.Join(envDir, fmt.Sprintf("fp-proposer-%s.env", proposerID.String()))
 	err = WriteEnvFile(envFile, envVars)
 	p.Require().NoError(err, "must write fault proof proposer env file")
 
@@ -259,6 +262,7 @@ func WithSuccinctFaultProofProposerPostDeploy(orch *Orchestrator, proposerID sta
 		p:                  p,
 		logger:             logger,
 		l2MetricsRegistrar: orch,
+		metricsPort:        metricsPort,
 	}
 	logger.Info("Starting fault-proof proposer")
 	k.Start()
