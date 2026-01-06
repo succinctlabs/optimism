@@ -17,6 +17,11 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// L2ChallengerBackend is the interface for L2 challengers managed by the orchestrator.
+type L2ChallengerBackend interface {
+	hydrate(system stack.ExtensibleSystem)
+}
+
 type l2ChallengerOpts struct {
 	useCannonKonaConfig bool
 }
@@ -27,6 +32,8 @@ type L2Challenger struct {
 	l2NetIDs []stack.L2NetworkID
 	config   *config.Config
 }
+
+var _ L2ChallengerBackend = (*L2Challenger)(nil)
 
 func (p *L2Challenger) hydrate(system stack.ExtensibleSystem) {
 	bFrontend := shim.NewL2Challenger(shim.L2ChallengerConfig{

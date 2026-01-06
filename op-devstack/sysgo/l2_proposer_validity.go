@@ -36,13 +36,14 @@ type L2SuccinctValidityProposer struct {
 	sub                *SubProcess
 	databaseURL        string
 	l2MetricsRegistrar L2MetricsRegistrar
+	metricsPort        string
 }
 
-var _ L2Prop = (*L2SuccinctValidityProposer)(nil)
+var _ L2ProposerBackend = (*L2SuccinctValidityProposer)(nil)
 
-// ValidityProposer extends L2Prop with validity-specific methods.
+// ValidityProposer extends L2ProposerBackend with validity-specific methods.
 type ValidityProposer interface {
-	L2Prop
+	L2ProposerBackend
 	Start()
 	Stop()
 	DatabaseURL() string
@@ -217,6 +218,12 @@ func (k *L2SuccinctValidityProposer) Start() {
 
 	err := k.sub.Start(k.execPath, k.args, []string{})
 	k.p.Require().NoError(err, "Must start")
+
+	if k.metricsPort != "" && k.l2MetricsRegistrar != nil {
+		metricsTarget := NewPrometheusMetricsTarget("localhost", k.metricsPort, false)
+		k.l2MetricsRegistrar.RegisterL2MetricsTargets(k.id, metricsTarget)
+		k.logger.Info("Registered validity proposer metrics", "port", k.metricsPort)
+	}
 }
 
 // Stops the validity proposer.
@@ -344,13 +351,11 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 	setEnvIfNotNil(envVars, "OP_SUCCINCT_MOCK", cfg.mockMode)
 	setEnvIfNotNil(envVars, "RUST_LOG", cfg.rustLog)
 
+	var metricsPort string
 	if areMetricsEnabled() {
-		metricsPort, err := getAvailableLocalPort()
-		require.NoError(err, "failed to get available port for metrics")
+		metricsPort, err = getAvailableLocalPort()
+		require.NoError(err, "failed to get available port for proposer metrics")
 		envVars["METRICS_PORT"] = metricsPort
-		metricsTarget := NewPrometheusMetricsTarget("localhost", metricsPort, false)
-		orch.RegisterL2MetricsTargets(proposerID, metricsTarget)
-		logger.Info("Registered validity proposer metrics", "port", metricsPort)
 	}
 
 	envDir := p.TempDir()
@@ -378,6 +383,7 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 		logger:             logger,
 		databaseURL:        embeddedPG.URL,
 		l2MetricsRegistrar: orch,
+		metricsPort:        metricsPort,
 	}
 	logger.Info("Starting validity proposer")
 	k.Start()
