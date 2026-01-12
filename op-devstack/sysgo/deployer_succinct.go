@@ -18,12 +18,18 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/transactions"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum-optimism/optimism/op-service/txmgr"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/lmittmann/w3"
+	w3eth "github.com/lmittmann/w3/module/eth"
 )
 
 // =============================================================
@@ -451,6 +457,20 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
+
+	// Update the original AnchorStateRegistry's respectedGameType to match OP Succinct (42).
+	// The original ASR (deployed with the chain) defaults to respectedGameType=1, but
+	// OP Succinct creates games with type 42. Without this, withdrawals via the original
+	// OptimismPortal2 won't recognize OP Succinct games as valid.
+	l1EL, ok := o.GetL1EL(l1ELID)
+	require.True(ok, "l1 EL node required for setRespectedGameType")
+
+	originalPortalAddr := l2Net.rollupCfg.DepositContractAddress
+	l1ChainID := l1CLID.ChainID().ToBig()
+	logger := o.P().Logger().New("component", "succinct-deployer", "chain", l2CLID.ChainID().String())
+
+	err = setRespectedGameType(o.P(), l1EL.UserRPC(), originalPortalAddr, l1ChainID, o.GetKeys(), logger)
+	require.NoError(err, "failed to set respected game type on original AnchorStateRegistry")
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
@@ -754,6 +774,74 @@ func parseNamedAddresses(stdoutStr string, names ...string) (map[string]string, 
 	}
 
 	return result, nil
+}
+
+// opSuccinctGameType is the game type used by OP Succinct FaultDisputeGame contracts.
+const opSuccinctGameType = 42
+
+// setRespectedGameType sets the respected game type on the original AnchorStateRegistry
+// to match the OP Succinct game type (42). This is needed because the original
+// AnchorStateRegistry (deployed with the chain) defaults to respectedGameType=1,
+// but OP Succinct creates games with type 42.
+func setRespectedGameType(
+	p devtest.P,
+	l1ELRpc string,
+	originalPortalAddr common.Address,
+	l1ChainID *big.Int,
+	keys devkeys.Keys,
+	logger log.Logger,
+) error {
+	// Connect to L1
+	rpcClient, err := rpc.DialContext(p.Ctx(), l1ELRpc)
+	if err != nil {
+		return fmt.Errorf("failed to dial L1 RPC: %w", err)
+	}
+	defer rpcClient.Close()
+
+	client := ethclient.NewClient(rpcClient)
+	w3Client := w3.NewClient(rpcClient)
+
+	// Get the original AnchorStateRegistry from the portal
+	var originalASR common.Address
+	err = w3Client.Call(w3eth.CallFunc(originalPortalAddr, anchorStateRegistryFn).Returns(&originalASR))
+	if err != nil {
+		return fmt.Errorf("failed to get AnchorStateRegistry from portal: %w", err)
+	}
+
+	logger.Info("Setting respected game type on original AnchorStateRegistry",
+		"portal", originalPortalAddr.Hex(),
+		"asr", originalASR.Hex(),
+		"gameType", opSuccinctGameType,
+	)
+
+	// Get the Guardian key (SuperchainConfigGuardianKey is the Guardian of AnchorStateRegistry)
+	guardianKey, err := keys.Secret(devkeys.SuperchainConfigGuardianKey.Key(l1ChainID))
+	if err != nil {
+		return fmt.Errorf("failed to get Guardian key: %w", err)
+	}
+
+	// Encode the call data
+	data, err := setRespectedGameTypeFn.EncodeArgs(uint32(opSuccinctGameType))
+	if err != nil {
+		return fmt.Errorf("failed to encode setRespectedGameType args: %w", err)
+	}
+
+	// Send the transaction
+	candidate := txmgr.TxCandidate{
+		To:       &originalASR,
+		TxData:   data,
+		GasLimit: 100_000,
+	}
+	_, receipt, err := transactions.SendTx(p.Ctx(), client, candidate, guardianKey)
+	if err != nil {
+		return fmt.Errorf("failed to send setRespectedGameType tx: %w", err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return fmt.Errorf("setRespectedGameType tx failed: status=%d", receipt.Status)
+	}
+
+	logger.Info("Successfully set respected game type", "txHash", receipt.TxHash.Hex())
+	return nil
 }
 
 // WriteEnvFile writes key-value pairs to a file in .env format.
