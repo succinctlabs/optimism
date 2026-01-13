@@ -296,8 +296,8 @@ func (b *StandardBridge) forGamePublished(l2BlockNumber *big.Int) disputeGame {
 			bindings.WithClient(b.l1Client.EthClient()),
 			bindings.WithTo(game.Proxy),
 			bindings.WithTest(b.t))
-		seqNum, err := contractio.Read(gameContract.L2SequenceNumber(), b.ctx)
-		b.require.NoError(err, "Failed to read sequence number")
+		seqNum, err := contractio.Read(gameContract.L2BlockNumber(), b.ctx)
+		b.require.NoError(err, "Failed to read block number")
 		gameSeqNum = seqNum.Uint64()
 		b.log.Info("Found latest game", "index", gameIndex, "seqNum", gameSeqNum)
 		return gameSeqNum >= l2SequenceNumber
