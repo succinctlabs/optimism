@@ -301,7 +301,7 @@ func (b *StandardBridge) forGamePublished(l2BlockNumber *big.Int) disputeGame {
 		gameSeqNum = seqNum.Uint64()
 		b.log.Info("Found latest game", "index", gameIndex, "seqNum", gameSeqNum)
 		return gameSeqNum >= l2SequenceNumber
-	}, 90*time.Second, 100*time.Millisecond, "did not find a game of type %v at or after l2 sequence number %v", respectedGameType, l2SequenceNumber)
+	}, 20*time.Minute, 100*time.Millisecond, "did not find a game of type %v at or after l2 sequence number %v", respectedGameType, l2SequenceNumber)
 
 	gameBlockNum := gameSeqNum
 	if superRootsActive {
