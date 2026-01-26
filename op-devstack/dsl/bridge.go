@@ -409,12 +409,16 @@ func (w *Withdrawal) Prove(user *EOA) {
 // ProveWithdrawalParameters calls ProveWithdrawalParametersForBlock with the most recent L2 output after the latest game.
 // Ported from op-node/withdrawals/utils.go to fit in the op-devstack
 func (w *Withdrawal) proveWithdrawalParameters() ProvenWithdrawalParameters {
-	// Wait for a suitable game to be published
-	latestGame := w.bridge.forGamePublished(w.initReceipt.BlockNumber)
+	// Wait for a suitable game to be published (just to ensure one exists)
+	w.bridge.forGamePublished(w.initReceipt.BlockNumber)
 
 	// Wait for the next L1 block to ensure we're not in the same block as game creation.
 	// The OptimismPortal requires block.timestamp > disputeGameProxy.createdAt().
 	w.bridge.l1Client.WaitForBlock()
+
+	// Re-fetch the latest game AFTER the block wait to avoid stale data.
+	// A new game may have been created since forGamePublished returned.
+	latestGame := w.bridge.forGamePublished(w.initReceipt.BlockNumber)
 
 	// Fetch the block header from the L2 node
 	l2Header, err := w.bridge.l2Client.InfoByNumber(w.ctx, latestGame.L2BlockNumber)
