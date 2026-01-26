@@ -412,6 +412,10 @@ func (w *Withdrawal) proveWithdrawalParameters() ProvenWithdrawalParameters {
 	// Wait for a suitable game to be published
 	latestGame := w.bridge.forGamePublished(w.initReceipt.BlockNumber)
 
+	// Wait for the next L1 block to ensure we're not in the same block as game creation.
+	// The OptimismPortal requires block.timestamp > disputeGameProxy.createdAt().
+	w.bridge.l1Client.WaitForBlock()
+
 	// Fetch the block header from the L2 node
 	l2Header, err := w.bridge.l2Client.InfoByNumber(w.ctx, latestGame.L2BlockNumber)
 	w.require.NoErrorf(err, "failed to fetch block header %v", latestGame.L2BlockNumber)
