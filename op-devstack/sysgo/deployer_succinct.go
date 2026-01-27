@@ -19,11 +19,10 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
-	bindingspreview "github.com/ethereum-optimism/optimism/op-node/bindings/preview"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
@@ -34,10 +33,12 @@ import (
 // This must match the GAME_TYPE value used in the deployment scripts.
 const OPSuccinctGameType uint32 = 42
 
-// setRespectedGameType updates the respectedGameType on OptimismPortal2 to the specified game type.
+// setRespectedGameType updates the respectedGameType on AnchorStateRegistry to the specified game type.
 // This is necessary for withdrawals to work correctly with the StandardBridge DSL,
 // which filters games by the portal's respectedGameType.
-func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, portalAddr common.Address, gameType uint32) {
+// Note: In recent Optimism contract versions, setRespectedGameType is on AnchorStateRegistry,
+// not OptimismPortal2. The guardian (SuperchainConfigGuardian) is required to call this function.
+func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, anchorStateRegistryAddr common.Address, gameType uint32) {
 	p := o.P()
 	require := p.Require()
 	logger := p.Logger().New("component", "succinct-deployer")
@@ -51,29 +52,41 @@ func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, portalAddr c
 	require.NoError(err, "failed to dial L1 RPC")
 	client := ethclient.NewClient(rpcClient)
 
-	// Get the guardian key (same as L1ProxyAdminOwner in devstack)
-	chainOps := devkeys.ChainOperatorKeys(l1ChainID.ToBig())
-	guardianKey, err := o.keys.Secret(chainOps(devkeys.L1ProxyAdminOwnerRole))
+	// Get the guardian key (SuperchainConfigGuardian - required to call setRespectedGameType)
+	superOps := devkeys.SuperchainOperatorKeys(l1ChainID.ToBig())
+	guardianKey, err := o.keys.Secret(superOps(devkeys.SuperchainConfigGuardianKey))
 	require.NoError(err, "failed to get guardian key")
 
-	transactOpts, err := bind.NewKeyedTransactorWithChainID(guardianKey, l1ChainID.ToBig())
-	require.NoError(err, "failed to create transact opts")
-	transactOpts.Context = p.Ctx()
-
-	portal, err := bindingspreview.NewOptimismPortal2(portalAddr, client)
-	require.NoError(err, "failed to create OptimismPortal2 binding")
-
-	logger.Info("Setting respectedGameType on OptimismPortal2",
-		"portal", portalAddr.Hex(),
+	logger.Info("Setting respectedGameType on AnchorStateRegistry",
+		"anchorStateRegistry", anchorStateRegistryAddr.Hex(),
 		"gameType", gameType)
 
-	tx, err := portal.SetRespectedGameType(transactOpts, gameType)
+	// AnchorStateRegistry.setRespectedGameType(uint32)
+	// Selector: bytes4(keccak256("setRespectedGameType(uint32)")) = 0x7fc48504
+	// We use a raw call since there's no AnchorStateRegistry binding available
+	selector := crypto.Keccak256([]byte("setRespectedGameType(uint32)"))[:4]
+	// Encode gameType as uint32 (padded to 32 bytes)
+	gameTypeBytes := common.LeftPadBytes(big.NewInt(int64(gameType)).Bytes(), 32)
+	data := append(selector, gameTypeBytes...)
+
+	// Send raw transaction to AnchorStateRegistry
+	nonce, err := client.PendingNonceAt(p.Ctx(), crypto.PubkeyToAddress(guardianKey.PublicKey))
+	require.NoError(err, "failed to get nonce")
+
+	gasPrice, err := client.SuggestGasPrice(p.Ctx())
+	require.NoError(err, "failed to get gas price")
+
+	tx := types.NewTransaction(nonce, anchorStateRegistryAddr, big.NewInt(0), 100000, gasPrice, data)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(l1ChainID.ToBig()), guardianKey)
+	require.NoError(err, "failed to sign tx")
+
+	err = client.SendTransaction(p.Ctx(), signedTx)
 	require.NoError(err, "failed to send setRespectedGameType tx")
 
-	_, err = wait.ForReceiptOK(p.Ctx(), client, tx.Hash())
+	_, err = wait.ForReceiptOK(p.Ctx(), client, signedTx.Hash())
 	require.NoError(err, "failed to wait for setRespectedGameType receipt")
 
-	logger.Info("Successfully set respectedGameType", "txHash", tx.Hash().Hex())
+	logger.Info("Successfully set respectedGameType", "txHash", signedTx.Hash().Hex())
 }
 
 // =============================================================
@@ -502,9 +515,9 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 
-	// Set respectedGameType to 42 (OPSuccinct game type) on OptimismPortal2
+	// Set respectedGameType to 42 (OPSuccinct game type) on AnchorStateRegistry
 	// This is required for the StandardBridge DSL to find games of the correct type
-	setRespectedGameType(o, l1ELID, l2Net.deployment.optimismPortalProxy, OPSuccinctGameType)
+	setRespectedGameType(o, l1ELID, addrs.AnchorStateRegistry, OPSuccinctGameType)
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
