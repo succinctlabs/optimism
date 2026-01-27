@@ -44,6 +44,7 @@ type FaultDisputeGame struct {
 	// IDisputeGame.sol read methods
 	L1Head           func() TypedCall[common.Hash] `sol:"l1Head"`
 	L2SequenceNumber func() TypedCall[*big.Int]    `sol:"l2SequenceNumber"`
+	L2BlockNumber    func() TypedCall[*big.Int]    `sol:"l2BlockNumber"`
 	Status           func() TypedCall[uint8]       `sol:"status"`
 	GameType         func() TypedCall[uint32]      `sol:"gameType"`
 
