@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,6 +33,79 @@ import (
 // OPSuccinctGameType is the game type used by OPSuccinct fault dispute games.
 // This must match the GAME_TYPE value used in the deployment scripts.
 const OPSuccinctGameType uint32 = 42
+
+// setStandardPortalRespectedGameType reads the AnchorStateRegistry from the standard OptimismPortal2
+// and sets its respectedGameType to the specified game type. This is necessary because the
+// StandardBridge DSL uses the portal from the rollup config (standard devstack deployment),
+// which has its own AnchorStateRegistry separate from the OPSuccinct-deployed one.
+func setStandardPortalRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, l2ChainID eth.ChainID, gameType uint32) {
+	p := o.P()
+	require := p.Require()
+	logger := p.Logger().New("component", "succinct-deployer")
+
+	l1ChainID := l1ELID.ChainID()
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
+	require.NoError(err, "failed to dial L1 RPC")
+	client := ethclient.NewClient(rpcClient)
+
+	// Get the standard portal address from the L2 network's rollup config
+	l2Net, ok := o.l2Nets.Get(l2ChainID)
+	require.True(ok, "l2 network required")
+	portalAddr := l2Net.rollupCfg.DepositContractAddress
+
+	logger.Info("Reading AnchorStateRegistry from standard OptimismPortal2",
+		"portal", portalAddr.Hex())
+
+	// Read anchorStateRegistry() from the portal
+	// Function selector: bytes4(keccak256("anchorStateRegistry()")) = 0x72d5fe21
+	asrSelector := crypto.Keccak256([]byte("anchorStateRegistry()"))[:4]
+	asrResult, err := client.CallContract(p.Ctx(), ethereum.CallMsg{
+		To:   &portalAddr,
+		Data: asrSelector,
+	}, nil)
+	require.NoError(err, "failed to read anchorStateRegistry from portal")
+	require.Len(asrResult, 32, "unexpected anchorStateRegistry result length")
+
+	anchorStateRegistryAddr := common.BytesToAddress(asrResult[12:32])
+	logger.Info("Found standard AnchorStateRegistry",
+		"anchorStateRegistry", anchorStateRegistryAddr.Hex())
+
+	// Get the guardian key (SuperchainConfigGuardian - required for standard ASR)
+	superOps := devkeys.SuperchainOperatorKeys(l1ChainID.ToBig())
+	guardianKey, err := o.keys.Secret(superOps(devkeys.SuperchainConfigGuardianKey))
+	require.NoError(err, "failed to get guardian key (SuperchainConfigGuardian)")
+
+	logger.Info("Setting respectedGameType on standard AnchorStateRegistry",
+		"anchorStateRegistry", anchorStateRegistryAddr.Hex(),
+		"gameType", gameType)
+
+	// AnchorStateRegistry.setRespectedGameType(uint32)
+	selector := crypto.Keccak256([]byte("setRespectedGameType(uint32)"))[:4]
+	gameTypeBytes := common.LeftPadBytes(big.NewInt(int64(gameType)).Bytes(), 32)
+	data := append(selector, gameTypeBytes...)
+
+	nonce, err := client.PendingNonceAt(p.Ctx(), crypto.PubkeyToAddress(guardianKey.PublicKey))
+	require.NoError(err, "failed to get nonce")
+
+	gasPrice, err := client.SuggestGasPrice(p.Ctx())
+	require.NoError(err, "failed to get gas price")
+
+	tx := types.NewTransaction(nonce, anchorStateRegistryAddr, big.NewInt(0), 100000, gasPrice, data)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(l1ChainID.ToBig()), guardianKey)
+	require.NoError(err, "failed to sign tx")
+
+	err = client.SendTransaction(p.Ctx(), signedTx)
+	require.NoError(err, "failed to send setRespectedGameType tx")
+
+	_, err = wait.ForReceiptOK(p.Ctx(), client, signedTx.Hash())
+	require.NoError(err, "failed to wait for setRespectedGameType receipt")
+
+	logger.Info("Successfully set respectedGameType on standard AnchorStateRegistry", "txHash", signedTx.Hash().Hex())
+}
 
 // setRespectedGameType updates the respectedGameType on AnchorStateRegistry to the specified game type.
 // This is necessary for withdrawals to work correctly with the StandardBridge DSL,
@@ -518,9 +592,11 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
 
-	// Set respectedGameType to 42 (OPSuccinct game type) on AnchorStateRegistry
-	// This is required for the StandardBridge DSL to find games of the correct type
+	// Set respectedGameType to 42 (OPSuccinct game type) on BOTH AnchorStateRegistries:
+	// 1. The OPSuccinct-deployed AnchorStateRegistry (for the OPSuccinct DGF)
+	// 2. The standard devstack's AnchorStateRegistry (for the StandardBridge DSL which uses the standard portal)
 	setRespectedGameType(o, l1ELID, addrs.AnchorStateRegistry, OPSuccinctGameType)
+	setStandardPortalRespectedGameType(o, l1ELID, l2CLID.ChainID(), OPSuccinctGameType)
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
