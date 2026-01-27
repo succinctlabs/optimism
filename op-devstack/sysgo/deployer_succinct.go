@@ -590,7 +590,10 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	o.P().Require().True(ok, "l2 network required")
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
-	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
+	// NOTE: We intentionally do NOT overwrite l2Net.deployment.disputeGameFactoryProxy.
+	// The OPSuccinct games are now registered in the STANDARD DGF (which OptimismPortal2 uses),
+	// not a separate OPSuccinct DGF. This ensures withdrawals work correctly because
+	// OptimismPortal2 looks up games from the same DGF where they were created.
 
 	// Set respectedGameType to 42 (OPSuccinct game type) on BOTH AnchorStateRegistries:
 	// 1. The OPSuccinct-deployed AnchorStateRegistry (for the OPSuccinct DGF)
@@ -664,6 +667,12 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
 	require.NoError(err, "failed to get verifier address")
 
+	// Get the standard DGF address from the devstack deployment.
+	// This ensures games are created in the same DGF that OptimismPortal2 references.
+	standardDgf := o.wb.outL2Deployment[l2ChainID].DisputeGameFactoryProxyAddr()
+	logger.Info("Using existing standard DisputeGameFactory for OPSuccinct games",
+		"standardDgf", standardDgf.Hex())
+
 	envVars := map[string]string{
 		"L1_RPC":                              l1EL.UserRPC(),
 		"L1_BEACON_RPC":                       l1CL.beaconHTTPAddr,
@@ -682,6 +691,9 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"PERMISSIONLESS_MODE":                        "true",
 		"OP_SUCCINCT_MOCK":                           strconv.FormatBool(os.Getenv("NETWORK_PRIVATE_KEY") == ""),
 		"RUST_LOG":                                   "info",
+		// Pass the standard DGF address so the deployment registers game type 42 there
+		// instead of creating a new DGF. This ensures OptimismPortal2 uses the same DGF.
+		"EXISTING_DISPUTE_GAME_FACTORY_PROXY": standardDgf.Hex(),
 	}
 
 	envDir := p.TempDir()
