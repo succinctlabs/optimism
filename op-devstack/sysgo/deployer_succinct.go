@@ -37,7 +37,8 @@ const OPSuccinctGameType uint32 = 42
 // This is necessary for withdrawals to work correctly with the StandardBridge DSL,
 // which filters games by the portal's respectedGameType.
 // Note: In recent Optimism contract versions, setRespectedGameType is on AnchorStateRegistry,
-// not OptimismPortal2. The guardian (SuperchainConfigGuardian) is required to call this function.
+// not OptimismPortal2. The OPSuccinct FDG deployment creates a MockSystemConfig with the deployer
+// (L1ProxyAdminOwnerRole) as the guardian, so we must use that key to call setRespectedGameType.
 func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, anchorStateRegistryAddr common.Address, gameType uint32) {
 	p := o.P()
 	require := p.Require()
@@ -52,10 +53,12 @@ func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, anchorStateR
 	require.NoError(err, "failed to dial L1 RPC")
 	client := ethclient.NewClient(rpcClient)
 
-	// Get the guardian key (SuperchainConfigGuardian - required to call setRespectedGameType)
-	superOps := devkeys.SuperchainOperatorKeys(l1ChainID.ToBig())
-	guardianKey, err := o.keys.Secret(superOps(devkeys.SuperchainConfigGuardianKey))
-	require.NoError(err, "failed to get guardian key")
+	// Get the guardian key - the OPSuccinct FDG deployment creates a MockSystemConfig with
+	// the deployer (L1ProxyAdminOwnerRole) as the guardian. This is different from the standard
+	// devstack which uses SuperchainConfigGuardianKey.
+	chainOps := devkeys.ChainOperatorKeys(l1ChainID.ToBig())
+	guardianKey, err := o.keys.Secret(chainOps(devkeys.L1ProxyAdminOwnerRole))
+	require.NoError(err, "failed to get guardian key (L1ProxyAdminOwner)")
 
 	logger.Info("Setting respectedGameType on AnchorStateRegistry",
 		"anchorStateRegistry", anchorStateRegistryAddr.Hex(),
