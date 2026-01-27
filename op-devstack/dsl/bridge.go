@@ -374,12 +374,16 @@ func (w *Withdrawal) Prove(user *EOA) {
 
 	w.t.Log("proveWithdrawal: proving withdrawal...")
 
+	// First, wait for at least one suitable game to exist (blocking wait).
+	// This ensures the proposer has created a game covering the withdrawal block.
+	w.bridge.forGamePublished(w.initReceipt.BlockNumber)
+
 	// Retry loop that re-fetches parameters on each attempt.
 	// A new game may be created during retries that includes the withdrawal in its L2 state.
 	// Re-computing parameters ensures we use the latest game data.
 	w.require.Eventually(func() bool {
-		// Re-fetch parameters on each attempt to get the latest game
-		params = w.proveWithdrawalParameters()
+		// Re-fetch parameters on each attempt to get the latest game (non-blocking)
+		params = w.proveWithdrawalParametersLatestGame()
 
 		tx := bindings.WithdrawalTransaction{
 			Nonce:    params.Nonce,
@@ -411,11 +415,38 @@ func (w *Withdrawal) Prove(user *EOA) {
 	}, 30*time.Second, 1*time.Second, "Sending prove transaction")
 }
 
-// ProveWithdrawalParameters calls ProveWithdrawalParametersForBlock with the most recent L2 output after the latest game.
-// Ported from op-node/withdrawals/utils.go to fit in the op-devstack
-func (w *Withdrawal) proveWithdrawalParameters() ProvenWithdrawalParameters {
-	// Wait for a suitable game covering the withdrawal block
-	latestGame := w.bridge.forGamePublished(w.initReceipt.BlockNumber)
+// proveWithdrawalParametersLatestGame fetches the latest game (non-blocking) and computes withdrawal parameters.
+// This should only be called after forGamePublished has confirmed a suitable game exists.
+func (w *Withdrawal) proveWithdrawalParametersLatestGame() ProvenWithdrawalParameters {
+	respectedGameType := w.bridge.RespectedGameType()
+	superRootsActive := w.bridge.UsesSuperRoots()
+
+	// Get the latest game (non-blocking)
+	game, gameIndex, err := w.bridge.findLatestGame(respectedGameType)
+	w.require.NoError(err, "failed to find latest game")
+
+	gameContract := bindings.NewBindings[bindings.FaultDisputeGame](
+		bindings.WithClient(w.bridge.l1Client.EthClient()),
+		bindings.WithTo(game.Proxy),
+		bindings.WithTest(w.t))
+	seqNum, err := contractio.Read(gameContract.L2BlockNumber(), w.ctx)
+	w.require.NoError(err, "Failed to read block number")
+	gameSeqNum := seqNum.Uint64()
+
+	gameBlockNum := gameSeqNum
+	if superRootsActive {
+		blockNum, err := w.bridge.rollupCfg.TargetBlockNumber(gameSeqNum)
+		w.require.NoError(err, "Failed to convert game timestamp to block number")
+		gameBlockNum = blockNum
+	}
+
+	latestGame := disputeGame{
+		Index:          gameIndex,
+		Address:        game.Proxy,
+		L2BlockNumber:  gameBlockNum,
+		SequenceNumber: gameSeqNum,
+		UsesSuperRoots: superRootsActive,
+	}
 
 	// Fetch the block header from the L2 node
 	l2Header, err := w.bridge.l2Client.InfoByNumber(w.ctx, latestGame.L2BlockNumber)
