@@ -373,25 +373,30 @@ func (w *Withdrawal) Prove(user *EOA) {
 	var params ProvenWithdrawalParameters
 
 	w.t.Log("proveWithdrawal: proving withdrawal...")
-	params = w.proveWithdrawalParameters()
-	tx := bindings.WithdrawalTransaction{
-		Nonce:    params.Nonce,
-		Sender:   params.Sender,
-		Target:   params.Target,
-		Value:    params.Value,
-		GasLimit: params.GasLimit,
-		Data:     params.Data,
-	}
 
-	var call bindings.TypedCall[any]
-	if params.SuperRootProof == nil {
-		call = w.bridge.l1Portal.ProveWithdrawalTransaction(tx, params.DisputeGameIndex, params.OutputRootProof, params.WithdrawalProof)
-	} else {
-		call = w.bridge.l1Portal.ProveWithdrawalTransactionSuperRoot(tx, params.DisputeGameAddress, params.OutputRootIndex, *params.SuperRootProof, params.OutputRootProof, params.WithdrawalProof)
-	}
-	// Retry as withdrawals can't be proven in the same block as the game is created.
-	// estimateGas works against the current head so we may need to retry until it has progressed enough.
+	// Retry loop that re-fetches parameters on each attempt.
+	// A new game may be created during retries that includes the withdrawal in its L2 state.
+	// Re-computing parameters ensures we use the latest game data.
 	w.require.Eventually(func() bool {
+		// Re-fetch parameters on each attempt to get the latest game
+		params = w.proveWithdrawalParameters()
+
+		tx := bindings.WithdrawalTransaction{
+			Nonce:    params.Nonce,
+			Sender:   params.Sender,
+			Target:   params.Target,
+			Value:    params.Value,
+			GasLimit: params.GasLimit,
+			Data:     params.Data,
+		}
+
+		var call bindings.TypedCall[any]
+		if params.SuperRootProof == nil {
+			call = w.bridge.l1Portal.ProveWithdrawalTransaction(tx, params.DisputeGameIndex, params.OutputRootProof, params.WithdrawalProof)
+		} else {
+			call = w.bridge.l1Portal.ProveWithdrawalTransactionSuperRoot(tx, params.DisputeGameAddress, params.OutputRootIndex, *params.SuperRootProof, params.OutputRootProof, params.WithdrawalProof)
+		}
+
 		proveReceipt, err := contractio.Write(call, w.ctx, user.Plan())
 		if err != nil {
 			w.log.Error("Failed to send prove transaction", "err", err)
@@ -409,15 +414,7 @@ func (w *Withdrawal) Prove(user *EOA) {
 // ProveWithdrawalParameters calls ProveWithdrawalParametersForBlock with the most recent L2 output after the latest game.
 // Ported from op-node/withdrawals/utils.go to fit in the op-devstack
 func (w *Withdrawal) proveWithdrawalParameters() ProvenWithdrawalParameters {
-	// Wait for a suitable game to be published (just to ensure one exists)
-	w.bridge.forGamePublished(w.initReceipt.BlockNumber)
-
-	// Wait for the next L1 block to ensure we're not in the same block as game creation.
-	// The OptimismPortal requires block.timestamp > disputeGameProxy.createdAt().
-	w.bridge.l1Client.WaitForBlock()
-
-	// Re-fetch the latest game AFTER the block wait to avoid stale data.
-	// A new game may have been created since forGamePublished returned.
+	// Wait for a suitable game covering the withdrawal block
 	latestGame := w.bridge.forGamePublished(w.initReceipt.BlockNumber)
 
 	// Fetch the block header from the L2 node
