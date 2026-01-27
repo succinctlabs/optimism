@@ -18,13 +18,63 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
+	bindingspreview "github.com/ethereum-optimism/optimism/op-node/bindings/preview"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// OPSuccinctGameType is the game type used by OPSuccinct fault dispute games.
+// This must match the GAME_TYPE value used in the deployment scripts.
+const OPSuccinctGameType uint32 = 42
+
+// setRespectedGameType updates the respectedGameType on OptimismPortal2 to the specified game type.
+// This is necessary for withdrawals to work correctly with the StandardBridge DSL,
+// which filters games by the portal's respectedGameType.
+func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, portalAddr common.Address, gameType uint32) {
+	p := o.P()
+	require := p.Require()
+	logger := p.Logger().New("component", "succinct-deployer")
+
+	l1ChainID := l1ELID.ChainID()
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
+	require.NoError(err, "failed to dial L1 RPC")
+	client := ethclient.NewClient(rpcClient)
+
+	// Get the guardian key (same as L1ProxyAdminOwner in devstack)
+	chainOps := devkeys.ChainOperatorKeys(l1ChainID.ToBig())
+	guardianKey, err := o.keys.Secret(chainOps(devkeys.L1ProxyAdminOwnerRole))
+	require.NoError(err, "failed to get guardian key")
+
+	transactOpts, err := bind.NewKeyedTransactorWithChainID(guardianKey, l1ChainID.ToBig())
+	require.NoError(err, "failed to create transact opts")
+	transactOpts.Context = p.Ctx()
+
+	portal, err := bindingspreview.NewOptimismPortal2(portalAddr, client)
+	require.NoError(err, "failed to create OptimismPortal2 binding")
+
+	logger.Info("Setting respectedGameType on OptimismPortal2",
+		"portal", portalAddr.Hex(),
+		"gameType", gameType)
+
+	tx, err := portal.SetRespectedGameType(transactOpts, gameType)
+	require.NoError(err, "failed to send setRespectedGameType tx")
+
+	_, err = wait.ForReceiptOK(p.Ctx(), client, tx.Hash())
+	require.NoError(err, "failed to wait for setRespectedGameType receipt")
+
+	logger.Info("Successfully set respectedGameType", "txHash", tx.Hash().Hex())
+}
 
 // =============================================================
 // SP1MockVerifier Deployment
@@ -451,6 +501,10 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
 	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
+
+	// Set respectedGameType to 42 (OPSuccinct game type) on OptimismPortal2
+	// This is required for the StandardBridge DSL to find games of the correct type
+	setRespectedGameType(o, l1ELID, l2Net.deployment.optimismPortalProxy, OPSuccinctGameType)
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
