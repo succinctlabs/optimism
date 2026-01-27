@@ -183,6 +183,7 @@ type L2Deployment struct {
 	anchorStateRegistry            common.Address
 	disputeGameFactoryProxy        common.Address
 	l1StandardBridgeProxy          common.Address
+	optimismPortalProxy            common.Address
 	proxyAdmin                     common.Address
 	permissionlessDelayedWETHProxy common.Address
 	sp1Verifier                    common.Address
@@ -202,6 +203,10 @@ func (d *L2Deployment) DisputeGameFactoryProxyAddr() common.Address {
 
 func (d *L2Deployment) L1StandardBridgeProxyAddr() common.Address {
 	return d.l1StandardBridgeProxy
+}
+
+func (d *L2Deployment) OptimismPortalProxyAddr() common.Address {
+	return d.optimismPortalProxy
 }
 
 func (d *L2Deployment) ProxyAdminAddr() common.Address {
@@ -482,6 +487,7 @@ func (wb *worldBuilder) buildL2DeploymentOutputs() {
 			systemConfigProxyAddr:          ch.SystemConfigProxy,
 			disputeGameFactoryProxy:        ch.DisputeGameFactoryProxy,
 			l1StandardBridgeProxy:          ch.L1StandardBridgeProxy,
+			optimismPortalProxy:            ch.OptimismPortalProxy,
 			proxyAdmin:                     ch.OpChainProxyAdminImpl,
 			permissionlessDelayedWETHProxy: ch.DelayedWethPermissionlessGameProxy,
 			sp1Verifier:                    ch.SP1Verifier,
