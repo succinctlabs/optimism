@@ -49,6 +49,8 @@ func setEnvIfNotNil[T any](envVars map[string]string, key string, val *T) {
 		envVars[key] = v
 	case bool:
 		envVars[key] = fmt.Sprintf("%t", v)
+	case float64:
+		envVars[key] = fmt.Sprintf("%v", v)
 	default:
 		envVars[key] = fmt.Sprintf("%d", v)
 	}
