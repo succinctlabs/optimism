@@ -774,3 +774,110 @@ func WriteEnvFile(path string, kv map[string]string) error {
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
+
+// =============================================================
+// Game Implementation Upgrade (Forge Script)
+// =============================================================
+
+// UpgradeGameImplConfig holds configuration for upgrading game implementation via Forge script.
+// This is used by tests to simulate hardfork scenarios where vkeys change.
+type UpgradeGameImplConfig struct {
+	FactoryAddress       common.Address
+	GameType             uint32
+	MaxChallengeDuration uint64
+	MaxProveDuration     uint64
+	VerifierAddress      common.Address
+	RollupConfigHash     string // "0x..." format
+	AggregationVkey      string // "0x..." format
+	RangeVkeyCommitment  string // "0x..." format
+	ChallengerBondWei    string // wei amount as string
+	AnchorStateRegistry  common.Address
+	AccessManager        common.Address
+}
+
+// UpgradeGameImpl deploys a new game implementation and upgrades the factory using
+// the UpgradeOPSuccinctFDG Forge script. This mirrors what operators do in production.
+func (o *Orchestrator) UpgradeGameImpl(
+	l1ELID stack.L1ELNodeID,
+	cfg UpgradeGameImplConfig,
+) (common.Address, error) {
+	p := o.P()
+	logger := p.Logger().New("component", "succinct-deployer")
+	require := p.Require()
+
+	rootPrefix, err := findMonorepoRoot("Cargo.lock")
+	if err != nil {
+		return common.Address{}, fmt.Errorf("find monorepo root: %w", err)
+	}
+
+	repoRoot, err := filepath.Abs(rootPrefix)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("resolve monorepo root: %w", err)
+	}
+
+	l1EL, ok := o.GetL1EL(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	l1ChainID := l1ELID.ChainID().ToBig()
+	l1PAOKey, err := o.GetKeys().Secret(devkeys.L1ProxyAdminOwnerRole.Key(l1ChainID))
+	if err != nil {
+		return common.Address{}, fmt.Errorf("get L1ProxyAdminOwnerRole key: %w", err)
+	}
+	l1PAOKeyStr := hexutil.Encode(crypto.FromECDSA(l1PAOKey))
+
+	envVars := map[string]string{
+		"L1_RPC":                 strings.ReplaceAll(l1EL.UserRPC(), "ws://", "http://"),
+		"PRIVATE_KEY":           l1PAOKeyStr,
+		"FACTORY_ADDRESS":       cfg.FactoryAddress.Hex(),
+		"GAME_TYPE":             fmt.Sprintf("%d", cfg.GameType),
+		"MAX_CHALLENGE_DURATION": fmt.Sprintf("%d", cfg.MaxChallengeDuration),
+		"MAX_PROVE_DURATION":     fmt.Sprintf("%d", cfg.MaxProveDuration),
+		"VERIFIER_ADDRESS":       cfg.VerifierAddress.Hex(),
+		"ROLLUP_CONFIG_HASH":     cfg.RollupConfigHash,
+		"AGGREGATION_VKEY":       cfg.AggregationVkey,
+		"RANGE_VKEY_COMMITMENT":  cfg.RangeVkeyCommitment,
+		"CHALLENGER_BOND_WEI":    cfg.ChallengerBondWei,
+		"ANCHOR_STATE_REGISTRY":  cfg.AnchorStateRegistry.Hex(),
+		"ACCESS_MANAGER":         cfg.AccessManager.Hex(),
+	}
+
+	envDir := p.TempDir()
+	envFile := filepath.Join(envDir, "upgrade-game-impl.env")
+	if err = WriteEnvFile(envFile, envVars); err != nil {
+		return common.Address{}, fmt.Errorf("write env file: %w", err)
+	}
+
+	addr, err := execUpgradeGameImpl(p, repoRoot, envFile, logger)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	logger.Info("Upgraded game implementation via Forge script", "newImpl", addr)
+	return common.HexToAddress(addr), nil
+}
+
+// execUpgradeGameImpl runs `just upgrade-game-impl <envFile>` and parses the output
+func execUpgradeGameImpl(p devtest.P, repoRoot, envFile string, logger log.Logger) (string, error) {
+	cmd := exec.CommandContext(p.Ctx(), "just", "upgrade-game-impl", envFile)
+	cmd.Dir = repoRoot
+
+	logger.Info("Executing upgrade-game-impl", "cmd", strings.Join(cmd.Args, " "))
+	stdoutStr, err := execCommand(cmd, logger)
+	if err != nil {
+		return "", err
+	}
+
+	return parseUpgradeGameImplOutput(stdoutStr)
+}
+
+// upgradeGameImplAddrRE parses the Forge script output.
+// Expected line: "New OPSuccinctFaultDisputeGame implementation deployed at:  0x..."
+var upgradeGameImplAddrRE = regexp.MustCompile(`New OPSuccinctFaultDisputeGame implementation deployed at:\s+(0x[0-9a-fA-F]{40})`)
+
+func parseUpgradeGameImplOutput(stdoutStr string) (string, error) {
+	matches := upgradeGameImplAddrRE.FindStringSubmatch(stdoutStr)
+	if len(matches) < 2 {
+		return "", fmt.Errorf("failed to parse implementation address from output:\n%s", stdoutStr)
+	}
+	return matches[1], nil
+}
