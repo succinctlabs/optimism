@@ -107,65 +107,6 @@ func setStandardPortalRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID
 	logger.Info("Successfully set respectedGameType on standard AnchorStateRegistry", "txHash", signedTx.Hash().Hex())
 }
 
-// setRespectedGameType updates the respectedGameType on AnchorStateRegistry to the specified game type.
-// This is necessary for withdrawals to work correctly with the StandardBridge DSL,
-// which filters games by the portal's respectedGameType.
-// Note: In recent Optimism contract versions, setRespectedGameType is on AnchorStateRegistry,
-// not OptimismPortal2. The OPSuccinct FDG deployment creates a MockSystemConfig with the deployer
-// (L1ProxyAdminOwnerRole) as the guardian, so we must use that key to call setRespectedGameType.
-func setRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, anchorStateRegistryAddr common.Address, gameType uint32) {
-	p := o.P()
-	require := p.Require()
-	logger := p.Logger().New("component", "succinct-deployer")
-
-	l1ChainID := l1ELID.ChainID()
-
-	l1EL, ok := o.l1ELs.Get(l1ELID)
-	require.True(ok, "l1 EL node required")
-
-	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
-	require.NoError(err, "failed to dial L1 RPC")
-	client := ethclient.NewClient(rpcClient)
-
-	// Get the guardian key - the OPSuccinct FDG deployment creates a MockSystemConfig with
-	// the deployer (L1ProxyAdminOwnerRole) as the guardian. This is different from the standard
-	// devstack which uses SuperchainConfigGuardianKey.
-	chainOps := devkeys.ChainOperatorKeys(l1ChainID.ToBig())
-	guardianKey, err := o.keys.Secret(chainOps(devkeys.L1ProxyAdminOwnerRole))
-	require.NoError(err, "failed to get guardian key (L1ProxyAdminOwner)")
-
-	logger.Info("Setting respectedGameType on AnchorStateRegistry",
-		"anchorStateRegistry", anchorStateRegistryAddr.Hex(),
-		"gameType", gameType)
-
-	// AnchorStateRegistry.setRespectedGameType(uint32)
-	// Selector: bytes4(keccak256("setRespectedGameType(uint32)")) = 0x7fc48504
-	// We use a raw call since there's no AnchorStateRegistry binding available
-	selector := crypto.Keccak256([]byte("setRespectedGameType(uint32)"))[:4]
-	// Encode gameType as uint32 (padded to 32 bytes)
-	gameTypeBytes := common.LeftPadBytes(big.NewInt(int64(gameType)).Bytes(), 32)
-	data := append(selector, gameTypeBytes...)
-
-	// Send raw transaction to AnchorStateRegistry
-	nonce, err := client.PendingNonceAt(p.Ctx(), crypto.PubkeyToAddress(guardianKey.PublicKey))
-	require.NoError(err, "failed to get nonce")
-
-	gasPrice, err := client.SuggestGasPrice(p.Ctx())
-	require.NoError(err, "failed to get gas price")
-
-	tx := types.NewTransaction(nonce, anchorStateRegistryAddr, big.NewInt(0), 100000, gasPrice, data)
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(l1ChainID.ToBig()), guardianKey)
-	require.NoError(err, "failed to sign tx")
-
-	err = client.SendTransaction(p.Ctx(), signedTx)
-	require.NoError(err, "failed to send setRespectedGameType tx")
-
-	_, err = wait.ForReceiptOK(p.Ctx(), client, signedTx.Hash())
-	require.NoError(err, "failed to wait for setRespectedGameType receipt")
-
-	logger.Info("Successfully set respectedGameType", "txHash", signedTx.Hash().Hex())
-}
-
 // =============================================================
 // SP1MockVerifier Deployment
 // =============================================================
