@@ -18,13 +18,94 @@ import (
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
 	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/geth"
+	"github.com/ethereum-optimism/optimism/op-e2e/e2eutils/wait"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
+
+// OPSuccinctGameType is the game type used by OPSuccinct fault dispute games.
+// This must match the GAME_TYPE value used in the deployment scripts.
+const OPSuccinctGameType uint32 = 42
+
+// setStandardPortalRespectedGameType reads the AnchorStateRegistry from the standard OptimismPortal2
+// and sets its respectedGameType to the specified game type. This is necessary because the
+// StandardBridge DSL uses the portal from the rollup config (standard devstack deployment),
+// which has its own AnchorStateRegistry separate from the OPSuccinct-deployed one.
+func setStandardPortalRespectedGameType(o *Orchestrator, l1ELID stack.L1ELNodeID, l2ChainID eth.ChainID, gameType uint32) {
+	p := o.P()
+	require := p.Require()
+	logger := p.Logger().New("component", "succinct-deployer")
+
+	l1ChainID := l1ELID.ChainID()
+
+	l1EL, ok := o.l1ELs.Get(l1ELID)
+	require.True(ok, "l1 EL node required")
+
+	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
+	require.NoError(err, "failed to dial L1 RPC")
+	client := ethclient.NewClient(rpcClient)
+
+	// Get the standard portal address from the L2 network's rollup config
+	l2Net, ok := o.l2Nets.Get(l2ChainID)
+	require.True(ok, "l2 network required")
+	portalAddr := l2Net.rollupCfg.DepositContractAddress
+
+	logger.Info("Reading AnchorStateRegistry from standard OptimismPortal2",
+		"portal", portalAddr.Hex())
+
+	// Read anchorStateRegistry() from the portal
+	// Function selector: bytes4(keccak256("anchorStateRegistry()")) = 0x72d5fe21
+	asrSelector := crypto.Keccak256([]byte("anchorStateRegistry()"))[:4]
+	asrResult, err := client.CallContract(p.Ctx(), ethereum.CallMsg{
+		To:   &portalAddr,
+		Data: asrSelector,
+	}, nil)
+	require.NoError(err, "failed to read anchorStateRegistry from portal")
+	require.Len(asrResult, 32, "unexpected anchorStateRegistry result length")
+
+	anchorStateRegistryAddr := common.BytesToAddress(asrResult[12:32])
+	logger.Info("Found standard AnchorStateRegistry",
+		"anchorStateRegistry", anchorStateRegistryAddr.Hex())
+
+	// Get the guardian key (SuperchainConfigGuardian - required for standard ASR)
+	superOps := devkeys.SuperchainOperatorKeys(l1ChainID.ToBig())
+	guardianKey, err := o.keys.Secret(superOps(devkeys.SuperchainConfigGuardianKey))
+	require.NoError(err, "failed to get guardian key (SuperchainConfigGuardian)")
+
+	logger.Info("Setting respectedGameType on standard AnchorStateRegistry",
+		"anchorStateRegistry", anchorStateRegistryAddr.Hex(),
+		"gameType", gameType)
+
+	// AnchorStateRegistry.setRespectedGameType(uint32)
+	selector := crypto.Keccak256([]byte("setRespectedGameType(uint32)"))[:4]
+	gameTypeBytes := common.LeftPadBytes(big.NewInt(int64(gameType)).Bytes(), 32)
+	data := append(selector, gameTypeBytes...)
+
+	nonce, err := client.PendingNonceAt(p.Ctx(), crypto.PubkeyToAddress(guardianKey.PublicKey))
+	require.NoError(err, "failed to get nonce")
+
+	gasPrice, err := client.SuggestGasPrice(p.Ctx())
+	require.NoError(err, "failed to get gas price")
+
+	tx := types.NewTransaction(nonce, anchorStateRegistryAddr, big.NewInt(0), 100000, gasPrice, data)
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(l1ChainID.ToBig()), guardianKey)
+	require.NoError(err, "failed to sign tx")
+
+	err = client.SendTransaction(p.Ctx(), signedTx)
+	require.NoError(err, "failed to send setRespectedGameType tx")
+
+	_, err = wait.ForReceiptOK(p.Ctx(), client, signedTx.Hash())
+	require.NoError(err, "failed to wait for setRespectedGameType receipt")
+
+	logger.Info("Successfully set respectedGameType on standard AnchorStateRegistry", "txHash", signedTx.Hash().Hex())
+}
 
 // =============================================================
 // SP1MockVerifier Deployment
@@ -450,7 +531,15 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	o.P().Require().True(ok, "l2 network required")
 	l2Net.deployment.sp1Verifier = addrs.Sp1Verifier
 	l2Net.deployment.anchorStateRegistry = addrs.AnchorStateRegistry
-	l2Net.deployment.disputeGameFactoryProxy = addrs.FactoryProxy
+	// NOTE: We intentionally do NOT overwrite l2Net.deployment.disputeGameFactoryProxy.
+	// The OPSuccinct games are now registered in the STANDARD DGF (which OptimismPortal2 uses),
+	// not a separate OPSuccinct DGF. This ensures withdrawals work correctly because
+	// OptimismPortal2 looks up games from the same DGF where they were created.
+
+	// Set respectedGameType to 42 (OPSuccinct game type) on the standard AnchorStateRegistry.
+	// Since we're using the standard ASR for games (to pass isGameProper() checks),
+	// we only need to set it once using the SuperchainConfigGuardianKey.
+	setStandardPortalRespectedGameType(o, l1ELID, l2CLID.ChainID(), OPSuccinctGameType)
 }
 
 // deployOpSuccinctFaultDisputeGame deploys an OPSuccinctFaultDisputeGame contract
@@ -518,6 +607,31 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	verifierAddr, err := l2Net.deployment.resolveSP1VerifierAddr()
 	require.NoError(err, "failed to get verifier address")
 
+	// Get the standard DGF address from the devstack deployment.
+	// This ensures games are created in the same DGF that OptimismPortal2 references.
+	standardDgf := o.wb.outL2Deployment[l2ChainID].DisputeGameFactoryProxyAddr()
+	logger.Info("Using existing standard DisputeGameFactory for OPSuccinct games",
+		"standardDgf", standardDgf.Hex())
+
+	// Get the standard AnchorStateRegistry address by reading from OptimismPortal2.
+	// This ensures games reference the same ASR that OptimismPortal2 uses for isGameProper() checks.
+	portalAddr := l2Net.rollupCfg.DepositContractAddress
+	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
+	require.NoError(err, "failed to dial L1 RPC for ASR lookup")
+	client := ethclient.NewClient(rpcClient)
+
+	asrSelector := crypto.Keccak256([]byte("anchorStateRegistry()"))[:4]
+	asrResult, err := client.CallContract(p.Ctx(), ethereum.CallMsg{
+		To:   &portalAddr,
+		Data: asrSelector,
+	}, nil)
+	require.NoError(err, "failed to read anchorStateRegistry from portal")
+	require.Len(asrResult, 32, "unexpected anchorStateRegistry result length")
+
+	standardAsr := common.BytesToAddress(asrResult[12:32])
+	logger.Info("Using existing standard AnchorStateRegistry for OPSuccinct games",
+		"standardAsr", standardAsr.Hex())
+
 	envVars := map[string]string{
 		"L1_RPC":                              l1EL.UserRPC(),
 		"L1_BEACON_RPC":                       l1CL.beaconHTTPAddr,
@@ -536,6 +650,12 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"PERMISSIONLESS_MODE":                        "true",
 		"OP_SUCCINCT_MOCK":                           strconv.FormatBool(os.Getenv("NETWORK_PRIVATE_KEY") == ""),
 		"RUST_LOG":                                   "info",
+		// Pass the standard ASR address so games reference the same ASR as OptimismPortal2.
+		// This is required for isGameProper() check in proveWithdrawal to pass.
+		"EXISTING_ANCHOR_STATE_REGISTRY": standardAsr.Hex(),
+		// Pass the standard DGF address so the deployment registers game type 42 there
+		// instead of creating a new DGF. This ensures OptimismPortal2 uses the same DGF.
+		"EXISTING_DISPUTE_GAME_FACTORY_PROXY": standardDgf.Hex(),
 	}
 
 	envDir := p.TempDir()
