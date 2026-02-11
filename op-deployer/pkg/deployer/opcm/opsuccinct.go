@@ -15,6 +15,9 @@ const (
 	SP1ProofModeGroth16 SP1ProofMode = "groth16"
 )
 
+// UseOPSuccinctOverrideKey is the global deploy override key that enables OP Succinct deployment.
+const UseOPSuccinctOverrideKey = "useOPSuccinct"
+
 // SP1ProofModeOverrideKey is the global deploy override key used to select the SP1 proof mode.
 // This is consumed by the op-deployer OP Succinct pipeline stage.
 const SP1ProofModeOverrideKey = "sp1ProofMode"

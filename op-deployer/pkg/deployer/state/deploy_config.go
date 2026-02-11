@@ -25,6 +25,13 @@ var (
 func CombineDeployConfig(intent *Intent, chainIntent *ChainIntent, state *State, chainState *ChainState) (genesis.DeployConfig, error) {
 	upgradeSchedule := standard.DefaultHardforkScheduleForTag(standard.CurrentTag)
 
+	// Default OperatorFeeVaultRecipient to BaseFeeVaultRecipient if not set.
+	// This maintains backward compatibility with intents that predate this field.
+	operatorFeeVaultRecipient := chainIntent.OperatorFeeVaultRecipient
+	if operatorFeeVaultRecipient == (common.Address{}) {
+		operatorFeeVaultRecipient = chainIntent.BaseFeeVaultRecipient
+	}
+
 	cfg := genesis.DeployConfig{
 		L1DependenciesConfig: genesis.L1DependenciesConfig{
 			L1StandardBridgeProxy:       chainState.L1StandardBridgeProxy,
@@ -54,7 +61,7 @@ func CombineDeployConfig(intent *Intent, chainIntent *ChainIntent, state *State,
 				BaseFeeVaultRecipient:                    chainIntent.BaseFeeVaultRecipient,
 				L1FeeVaultRecipient:                      chainIntent.L1FeeVaultRecipient,
 				SequencerFeeVaultRecipient:               chainIntent.SequencerFeeVaultRecipient,
-				OperatorFeeVaultRecipient:                chainIntent.OperatorFeeVaultRecipient,
+				OperatorFeeVaultRecipient:                operatorFeeVaultRecipient,
 			},
 			GovernanceDeployConfig: genesis.GovernanceDeployConfig{
 				EnableGovernance:      false,

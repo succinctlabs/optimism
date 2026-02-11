@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/contracts/gameargs"
 	"github.com/ethereum-optimism/optimism/op-challenger/game/fault/types"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/opcm"
+	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/standard"
 	"github.com/ethereum-optimism/optimism/op-deployer/pkg/deployer/state"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -56,6 +57,10 @@ func deployDisputeGame(
 	game state.AdditionalDisputeGame,
 ) error {
 	lgr := env.Logger.New("gameType", game.DisputeGameType)
+
+	if game.DisputeAbsolutePrestate == (common.Hash{}) {
+		game.DisputeAbsolutePrestate = standard.DisputeAbsolutePrestate
+	}
 
 	lgr.Info("deploying VM", "vmType", game.VMType)
 	var vmAddr common.Address

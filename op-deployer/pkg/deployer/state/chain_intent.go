@@ -117,8 +117,7 @@ func (c *ChainIntent) Check() error {
 
 	if c.BaseFeeVaultRecipient == emptyAddress ||
 		c.L1FeeVaultRecipient == emptyAddress ||
-		c.SequencerFeeVaultRecipient == emptyAddress ||
-		c.OperatorFeeVaultRecipient == emptyAddress {
+		c.SequencerFeeVaultRecipient == emptyAddress {
 		return fmt.Errorf("%w: chainId=%s", ErrFeeVaultZeroAddress, c.ID)
 	}
 

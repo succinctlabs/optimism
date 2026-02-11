@@ -10,6 +10,12 @@ import (
 
 func DeployOPSuccinct(env *Env, intent *state.Intent, st *state.State, chainID common.Hash) error {
 	lgr := env.Logger.New("stage", "deploy-opsuccinct", "chain", chainID.Hex())
+
+	if !shouldDeployOPSuccinct(intent) {
+		lgr.Info("op-succinct deployment not needed")
+		return nil
+	}
+
 	lgr.Info("Deploying OP Succinct contracts")
 
 	mode, err := sp1ProofModeFromIntent(intent)
@@ -27,6 +33,18 @@ func DeployOPSuccinct(env *Env, intent *state.Intent, st *state.State, chainID c
 	chainState.SP1MockVerifier = output.SP1MockVerifier
 
 	return nil
+}
+
+func shouldDeployOPSuccinct(intent *state.Intent) bool {
+	if intent == nil || len(intent.GlobalDeployOverrides) == 0 {
+		return false
+	}
+	raw, ok := intent.GlobalDeployOverrides[opcm.UseOPSuccinctOverrideKey]
+	if !ok || raw == nil {
+		return false
+	}
+	use, ok := raw.(bool)
+	return ok && use
 }
 
 func sp1ProofModeFromIntent(intent *state.Intent) (opcm.SP1ProofMode, error) {
