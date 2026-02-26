@@ -364,7 +364,7 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 		return "", fmt.Errorf("failed to write L1 chain config: %w", err)
 	}
 
-	addr, err := execDeployOracle(o.P(), repoRoot, envFile)
+	addr, err := execDeployOracle(o.P(), repoRoot, envFile, cfgs.Features)
 	if err != nil {
 		return "", err
 	}
@@ -373,9 +373,15 @@ func (o *Orchestrator) deployOpSuccinctL2OutputOracle(
 	return addr, nil
 }
 
-// execDeployOracle runs `just deploy-oracle <envFile>` and parses the output
-func execDeployOracle(p devtest.P, repoRoot, envFile string) (string, error) {
-	cmd := exec.CommandContext(p.Ctx(), "just", "deploy-oracle", envFile)
+// execDeployOracle runs `just deploy-oracle <envFile> [features]` and parses the output.
+// If features is non-empty, it is passed as an extra argument so that deploy-oracle
+// compiles fetch-l2oo-config with the matching Cargo feature flags (e.g., "altda").
+func execDeployOracle(p devtest.P, repoRoot, envFile, features string) (string, error) {
+	args := []string{"deploy-oracle", envFile}
+	if features != "" {
+		args = append(args, features)
+	}
+	cmd := exec.CommandContext(p.Ctx(), "just", args...)
 	cmd.Dir = repoRoot
 
 	logger := p.Logger().New("component", "succinct-deployer")
@@ -394,6 +400,7 @@ type L2OOConfigs struct {
 	SubmissionInterval     *uint64
 	RangeProofInterval     *uint64
 	FinalizationPeriodSecs *uint64
+	Features               string // Cargo features for deploy-oracle (e.g., "altda")
 }
 
 type L2OOOption func(*L2OOConfigs)
@@ -425,6 +432,14 @@ func WithL2OORangeProofInterval(n uint64) L2OOOption {
 func WithL2OOFinalizationPeriodSecs(n uint64) L2OOOption {
 	return func(cfg *L2OOConfigs) {
 		cfg.FinalizationPeriodSecs = &n
+	}
+}
+
+// WithL2OOFeatures sets Cargo features for the deploy-oracle step (e.g., "altda").
+// This ensures the vkey commitment matches the proposer binary's feature flags.
+func WithL2OOFeatures(features string) L2OOOption {
+	return func(cfg *L2OOConfigs) {
+		cfg.Features = features
 	}
 }
 
