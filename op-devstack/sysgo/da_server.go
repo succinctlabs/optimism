@@ -1,6 +1,8 @@
 package sysgo
 
 import (
+	"os"
+
 	altda "github.com/ethereum-optimism/optimism/op-alt-da"
 	bss "github.com/ethereum-optimism/optimism/op-batcher/batcher"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
@@ -32,6 +34,10 @@ func WithAltDA(l2ChainID eth.ChainID) stack.Option[*Orchestrator] {
 
 		endpoint := server.HttpEndpoint()
 		logger.Info("Started AltDA server", "endpoint", endpoint)
+
+		// Export DA server URL for op-succinct proposer subprocess.
+		// The Rust host reads ALTDA_SERVER_URL from env to fetch batch data.
+		os.Setenv("ALTDA_SERVER_URL", endpoint)
 
 		altDACLICfg := altda.CLIConfig{
 			Enabled:      true,
