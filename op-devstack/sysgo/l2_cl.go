@@ -3,8 +3,10 @@ package sysgo
 import (
 	"os"
 
+	altda "github.com/ethereum-optimism/optimism/op-alt-da"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/stack"
+	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	nodeSync "github.com/ethereum-optimism/optimism/op-node/rollup/sync"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
@@ -38,6 +40,13 @@ type L2CLConfig struct {
 	NoDiscovery bool
 
 	FollowSource string
+
+	// AltDA is the AltDA CLI configuration for this L2 CL node.
+	AltDA altda.CLIConfig
+
+	// RollupAltDAConfig, when set, overrides the rollup config's AltDAConfig.
+	// This allows AltDA to be enabled without modifying the L2 network's rollup config directly.
+	RollupAltDAConfig *rollup.AltDAConfig
 }
 
 func L2CLSequencer() L2CLOption {

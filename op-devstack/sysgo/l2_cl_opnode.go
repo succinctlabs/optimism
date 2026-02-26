@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 
-	altda "github.com/ethereum-optimism/optimism/op-alt-da"
 	"github.com/ethereum-optimism/optimism/op-chain-ops/devkeys"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
 	"github.com/ethereum-optimism/optimism/op-devstack/shim"
@@ -347,9 +346,12 @@ func withOpNode(l2CLID stack.L2CLNodeID, l1CLID stack.L1CLNodeID, l1ELID stack.L
 			ConductorEnabled:                false,
 			ConductorRpc:                    nil,
 			ConductorRpcTimeout:             0,
-			AltDA:                           altda.CLIConfig{},
+			AltDA:                           cfg.AltDA,
 			IgnoreMissingPectraBlobSchedule: false,
 			ExperimentalOPStackAPI:          true,
+		}
+		if cfg.RollupAltDAConfig != nil {
+			nodeCfg.Rollup.AltDAConfig = cfg.RollupAltDAConfig
 		}
 		if cfg.SafeDBPath != "" {
 			nodeCfg.SafeDBPath = cfg.SafeDBPath
