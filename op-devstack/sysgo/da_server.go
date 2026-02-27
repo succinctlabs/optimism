@@ -3,6 +3,8 @@ package sysgo
 import (
 	"os"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	altda "github.com/ethereum-optimism/optimism/op-alt-da"
 	bss "github.com/ethereum-optimism/optimism/op-batcher/batcher"
 	"github.com/ethereum-optimism/optimism/op-devstack/devtest"
@@ -12,7 +14,8 @@ import (
 )
 
 // WithAltDA starts a DA server and configures the batcher and op-node to use AltDA mode
-// with GenericCommitment (no on-chain challenge contract needed).
+// with Keccak256 commitments. The DA server computes keccak256(data) as the commitment,
+// which the Rust AltDA data source can verify inside the zkVM proof.
 //
 // The DA server is started and batcher/L2CL options are accumulated during the Deploy phase.
 // The rollup config is overridden via L2CLConfig.RollupAltDAConfig, which is applied
@@ -23,9 +26,9 @@ func WithAltDA(l2ChainID eth.ChainID) stack.Option[*Orchestrator] {
 		p := orch.P()
 		logger := p.Logger()
 
-		// Start DA server with in-memory storage
+		// Start DA server with in-memory storage (Keccak256 commitment mode)
 		store := altda.NewMemStore()
-		server := altda.NewDAServer("127.0.0.1", 0, store, logger, true)
+		server := altda.NewDAServer("127.0.0.1", 0, store, logger, false)
 		p.Require().NoError(server.Start(), "failed to start DA server")
 		p.Cleanup(func() {
 			logger.Info("Stopping DA server")
@@ -43,13 +46,16 @@ func WithAltDA(l2ChainID eth.ChainID) stack.Option[*Orchestrator] {
 			Enabled:      true,
 			DAServerURL:  endpoint,
 			VerifyOnRead: true,
-			GenericDA:    true,
+			GenericDA:    false,
 		}
 
+		// Keccak256 mode requires a non-zero DAChallengeAddress to pass rollup config validation.
+		// The address is unused — challenges are never triggered in e2e tests.
 		altDAConfig := &rollup.AltDAConfig{
-			CommitmentType:    altda.GenericCommitmentString,
-			DAChallengeWindow: 10,
-			DAResolveWindow:   10,
+			CommitmentType:     altda.KeccakCommitmentString,
+			DAChallengeAddress: common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			DAChallengeWindow:  10,
+			DAResolveWindow:    10,
 		}
 
 		// Append batcher option — consumed by WithBatcher's AfterDeploy
