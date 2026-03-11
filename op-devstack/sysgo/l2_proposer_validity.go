@@ -332,8 +332,8 @@ func WithSuccinctValidityProposerPostDeploy(orch *Orchestrator, proposerID stack
 
 	setEnvFromEnvOrDefault(envVars, "NETWORK_PRIVATE_KEY", "")
 
-	// Mock mode: default true, false if NETWORK_PRIVATE_KEY is set (real proving)
-	if envVars["NETWORK_PRIVATE_KEY"] != "" {
+	// Mock mode: default true, false if NETWORK_PRIVATE_KEY is set or SP1_PROVER=cluster (real proving)
+	if envVars["NETWORK_PRIVATE_KEY"] != "" || os.Getenv("SP1_PROVER") == "cluster" {
 		envVars["OP_SUCCINCT_MOCK"] = "false"
 	} else {
 		envVars["OP_SUCCINCT_MOCK"] = "true"

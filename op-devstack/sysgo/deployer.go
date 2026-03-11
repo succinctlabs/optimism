@@ -234,7 +234,7 @@ func (d *L2Deployment) OPSuccinctL2OutputOracleAddr() common.Address {
 // otherwise uses the mock verifier for local testing.
 func (d *L2Deployment) resolveSP1VerifierAddr() (common.Address, error) {
 	var addr common.Address
-	if os.Getenv("NETWORK_PRIVATE_KEY") != "" {
+	if os.Getenv("NETWORK_PRIVATE_KEY") != "" || os.Getenv("SP1_PROVER") == "cluster" {
 		addr = d.sp1Verifier
 	} else {
 		addr = d.sp1MockVerifier
