@@ -536,9 +536,15 @@ func WithDeployOPSuccinctFaultDisputeGamePostDeploy(o *Orchestrator,
 	// not a separate OPSuccinct DGF. This ensures withdrawals work correctly because
 	// OptimismPortal2 looks up games from the same DGF where they were created.
 
-	// Set respectedGameType to 42 (OPSuccinct game type) on the standard AnchorStateRegistry.
-	// Since we're using the standard ASR for games (to pass isGameProper() checks),
-	// we only need to set it once using the SuperchainConfigGuardianKey.
+	// Set respectedGameType to 42 (OPSuccinct game type) on the *standard* AnchorStateRegistry.
+	// OPSuccinct games use their own ASR (initialized with respectedGameType=42 by
+	// DeployOPSuccinctFDG), so this call is NOT for OPSuccinct's own validation path.
+	// It is required for OptimismPortal2's withdrawal flow: Portal2 reads from its own
+	// standard ASR, and that ASR's `isGameClaimValid` ultimately checks the game's
+	// `wasRespectedGameTypeWhenCreated()`. Bumping `respectedGameType=42` on the standard
+	// ASR also sets `respectedGameTypeUpdatedAt = block.timestamp`, ensuring OPSuccinct
+	// games created after this point are not treated as "retired" by the standard ASR
+	// during withdrawal validation. The Guardian key is required by the standard ASR.
 	setStandardPortalRespectedGameType(o, l1ELID, l2CLID.ChainID(), OPSuccinctGameType)
 }
 
@@ -608,29 +614,16 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 	require.NoError(err, "failed to get verifier address")
 
 	// Get the standard DGF address from the devstack deployment.
-	// This ensures games are created in the same DGF that OptimismPortal2 references.
+	// This ensures games are created in the same DGF that OptimismPortal2 references —
+	// which is what OptimismPortal2's ASR needs for isGameProper() (via isGameRegistered)
+	// during withdrawal validation. OPSuccinct does NOT reuse the standard ASR itself:
+	// the standard ASR is initialized with a placeholder startingAnchorRoot that does not
+	// match the proposer's L2 view, which would break fast-finality bootstrap. Instead,
+	// OPSuccinct deploys its own ASR (initialized via DeployOPSuccinctFDG with a
+	// proposer-derived startingAnchorRoot) that references this same standard DGF.
 	standardDgf := o.wb.outL2Deployment[l2ChainID].DisputeGameFactoryProxyAddr()
 	logger.Info("Using existing standard DisputeGameFactory for OPSuccinct games",
 		"standardDgf", standardDgf.Hex())
-
-	// Get the standard AnchorStateRegistry address by reading from OptimismPortal2.
-	// This ensures games reference the same ASR that OptimismPortal2 uses for isGameProper() checks.
-	portalAddr := l2Net.rollupCfg.DepositContractAddress
-	rpcClient, err := rpc.DialContext(p.Ctx(), l1EL.UserRPC())
-	require.NoError(err, "failed to dial L1 RPC for ASR lookup")
-	client := ethclient.NewClient(rpcClient)
-
-	asrSelector := crypto.Keccak256([]byte("anchorStateRegistry()"))[:4]
-	asrResult, err := client.CallContract(p.Ctx(), ethereum.CallMsg{
-		To:   &portalAddr,
-		Data: asrSelector,
-	}, nil)
-	require.NoError(err, "failed to read anchorStateRegistry from portal")
-	require.Len(asrResult, 32, "unexpected anchorStateRegistry result length")
-
-	standardAsr := common.BytesToAddress(asrResult[12:32])
-	logger.Info("Using existing standard AnchorStateRegistry for OPSuccinct games",
-		"standardAsr", standardAsr.Hex())
 
 	envVars := map[string]string{
 		"L1_RPC":                              l1EL.UserRPC(),
@@ -650,11 +643,14 @@ func (o *Orchestrator) deployOpSuccinctFaultDisputeGame(
 		"PERMISSIONLESS_MODE":                        "true",
 		"OP_SUCCINCT_MOCK":                           strconv.FormatBool(os.Getenv("NETWORK_PRIVATE_KEY") == ""),
 		"RUST_LOG":                                   "info",
-		// Pass the standard ASR address so games reference the same ASR as OptimismPortal2.
-		// This is required for isGameProper() check in proveWithdrawal to pass.
-		"EXISTING_ANCHOR_STATE_REGISTRY": standardAsr.Hex(),
 		// Pass the standard DGF address so the deployment registers game type 42 there
-		// instead of creating a new DGF. This ensures OptimismPortal2 uses the same DGF.
+		// instead of creating a new DGF. This ensures OptimismPortal2's ASR (which uses
+		// the standard DGF for isGameRegistered checks) can validate OPSuccinct games
+		// during withdrawal proving. OPSuccinct deploys its own AnchorStateRegistry that
+		// also references this DGF but holds an independent (proposer-derived) starting
+		// anchor and respectedGameType; do NOT also pass EXISTING_ANCHOR_STATE_REGISTRY
+		// since the standard ASR's placeholder startingAnchorRoot would break OPSuccinct
+		// fast-finality bootstrap.
 		"EXISTING_DISPUTE_GAME_FACTORY_PROXY": standardDgf.Hex(),
 	}
 
