@@ -121,22 +121,22 @@ func (c *L2SuccinctFaultProofChallenger) Stop() {
 }
 
 // WithSuccinctFaultProofChallenger creates a fault-proof challenger after deployment.
-func WithSuccinctFaultProofChallenger(challengerID stack.L2ChallengerID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) stack.Option[*Orchestrator] {
+func WithSuccinctFaultProofChallenger(challengerID stack.L2ChallengerID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) stack.Option[*Orchestrator] {
 	return stack.AfterDeploy(func(orch *Orchestrator) {
-		WithSuccinctFaultProofChallengerPostDeploy(orch, challengerID, l1ELID, l2ELID, opts...)
+		WithSuccinctFaultProofChallengerPostDeploy(orch, challengerID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
 // WithSuperSuccinctFaultProofChallenger creates a fault-proof challenger in the Finally phase.
 func WithSuperSuccinctFaultProofChallenger(challengerID stack.L2ChallengerID,
-	l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) stack.Option[*Orchestrator] {
+	l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) stack.Option[*Orchestrator] {
 	return stack.Finally(func(orch *Orchestrator) {
-		WithSuccinctFaultProofChallengerPostDeploy(orch, challengerID, l1ELID, l2ELID, opts...)
+		WithSuccinctFaultProofChallengerPostDeploy(orch, challengerID, l1ELID, l2CLID, l2ELID, opts...)
 	})
 }
 
 // WithSuccinctFaultProofChallengerPostDeploy sets up and starts the OP Succinct fault-proof challenger.
-func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID stack.L2ChallengerID, l1ELID stack.L1ELNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) {
+func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID stack.L2ChallengerID, l1ELID stack.L1ELNodeID, l2CLID stack.L2CLNodeID, l2ELID stack.L2ELNodeID, opts ...FaultProofChallengerOption) {
 	ctx := stack.ContextWithID(orch.P().Ctx(), challengerID)
 	p := orch.P().WithCtx(ctx)
 	logger := p.Logger().New("component", "succinct-fp-challenger")
@@ -153,6 +153,9 @@ func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID
 	l2EL, ok := orch.GetL2EL(l2ELID)
 	require.True(ok, "l2 EL node required")
 
+	l2CL, ok := orch.GetL2CL(l2CLID)
+	require.True(ok, "l2 CL node required")
+
 	// Use ChallengerRole for the challenger key
 	challengerKey, err := orch.GetKeys().Secret(devkeys.ChallengerRole.Key(challengerID.ChainID().ToBig()))
 	require.NoError(err, "failed to get challenger key")
@@ -165,17 +168,20 @@ func WithSuccinctFaultProofChallengerPostDeploy(orch *Orchestrator, challengerID
 
 	l1RPC := l1EL.UserRPC()
 	l2RPC := strings.ReplaceAll(l2EL.UserRPC(), "ws://", "http://")
+	l2NodeRPC := strings.ReplaceAll(l2CL.UserRPC(), "ws://", "http://")
 	anchorStateRegistryAddr := l2Net.deployment.anchorStateRegistry
 	factoryAddr := l2Net.deployment.disputeGameFactoryProxy
 
 	logger.Info("L1_RPC", "url", l1RPC)
 	logger.Info("L2_RPC", "url", l2RPC)
+	logger.Info("L2_NODE_RPC", "url", l2NodeRPC)
 	logger.Info("ANCHOR_STATE_REGISTRY_ADDRESS", "address", anchorStateRegistryAddr)
 	logger.Info("FACTORY_ADDRESS", "address", factoryAddr)
 
 	envVars := map[string]string{
 		"L1_RPC":                        l1RPC,
 		"L2_RPC":                        l2RPC,
+		"L2_NODE_RPC":                   l2NodeRPC,
 		"ANCHOR_STATE_REGISTRY_ADDRESS": anchorStateRegistryAddr.String(),
 		"FACTORY_ADDRESS":               factoryAddr.String(),
 		"GAME_TYPE":                     "42",
